@@ -1373,17 +1373,22 @@ async function __handleLogin(){
   __setLoginMsg("");
   const email = (document.getElementById("loginUser")?.value || "").trim();
   const pass = (document.getElementById("loginPass")?.value || "");
-  if(!email || !pass){
-    __setLoginMsg("Ingrese usuario y password.");
+
+  if(!email){
+    __setLoginMsg("Ingrese usuario (correo).");
     return;
   }
+
+  // guardamos el último correo (comodidad)
+  try{ __lsSet("midis_last_email_v1", email); }catch(e){}
+
   const r = await __login(email, pass);
   if(!r.ok){
     __setLoginMsg(r.msg);
     return;
   }
 
-  if(r.user.forceChangePassword){
+  if(r.user && r.user.forceChangePassword){
     __setScreens("pw");
   } else {
     __setScreens("app");
@@ -2150,8 +2155,12 @@ document.addEventListener("DOMContentLoaded", ()=>{
   // Bootstrap auth
   __bootstrapAuth();
 
+  try{ __setApiStatus(); }catch(e){}
+
+
   // Login
   document.getElementById("btnLogin")?.addEventListener("click", __handleLogin);
+  document.getElementById("loginUser")?.addEventListener("keydown", (e)=>{ if(e.key==="Enter") __handleLogin(); });
   document.getElementById("loginPass")?.addEventListener("keydown", (e)=>{ if(e.key==="Enter") __handleLogin(); });
 
   // Cambio password
@@ -4264,11 +4273,31 @@ const __API_CFG = (function(){
   //   window.__API_CFG.baseUrl  (ej: https://coe-midis-api.coemidis2.workers.dev)
   // Si no existe, usa el endpoint por defecto.
   const g = (window.__API_CFG && typeof window.__API_CFG === "object") ? window.__API_CFG : {};
-  const baseUrl = (g.baseUrl && String(g.baseUrl).trim())
+
+  function __normalizeBaseUrl(u){
+    u = String(u || "").trim();
+    // Mucha gente pega el /health completo: lo saneamos
+    u = u.replace(/\/health\/?$/i, "");
+    // Quitar trailing slashes
+    u = u.replace(/\/+$/g, "");
+    return u;
+  }
+
+  const rawBase = (g.baseUrl && String(g.baseUrl).trim())
     ? String(g.baseUrl).trim()
     : "https://coe-midis-api.coemidis2.workers.dev";
+
+  const baseUrl = __normalizeBaseUrl(rawBase);
+
   const timeoutMsRaw = (g.timeoutMs !== undefined && g.timeoutMs !== null) ? Number(g.timeoutMs) : 15000;
   const timeoutMs = (isFinite(timeoutMsRaw) && timeoutMsRaw > 0) ? timeoutMsRaw : 15000;
+
+  // Mantener sincronizada la config global (por si otros bloques la leen)
+  try{
+    window.__API_CFG = window.__API_CFG || {};
+    window.__API_CFG.baseUrl = baseUrl;
+    window.__API_CFG.timeoutMs = timeoutMs;
+  }catch(e){}
 
   return { baseUrl, timeoutMs };
 })();
@@ -4282,7 +4311,11 @@ const __SYNC_KEYS = {
 };
 
 function __isApiConfigured(){
-  return !!(__API_CFG.baseUrl && __API_CFG.baseUrl.indexOf("TU-WORKER") === -1);
+  const u = (__API_CFG && __API_CFG.baseUrl) ? String(__API_CFG.baseUrl).trim() : "";
+  if(!u) return false;
+  if(/tu-worker/i.test(u) || /TU-WORKER/.test(u)) return false;
+  if(!/^https?:\/\//i.test(u)) return false;
+  return true;
 }
 
 function __getDeviceId(){
@@ -4371,6 +4404,34 @@ async function __api(path, opt){
   return { res: res, data: data };
 }
 
+async function __setApiStatus(){
+  const el = document.getElementById("apiStatus");
+  if(!el) return;
+
+  if(!__isApiConfigured()){
+    el.textContent = "API: no configurado (revisa patch_cf_sync.js)";
+    return;
+  }
+  if(!navigator.onLine){
+    el.textContent = "API: sin internet";
+    return;
+  }
+
+  el.textContent = "API: verificando…";
+  try{
+    const out = await __api("/health", { method:"GET" });
+    if(out.res && out.res.ok && out.data && out.data.ok === true){
+      el.textContent = "API: OK (" + (out.data.at || "sin hora") + ")";
+    }else{
+      const st = out.res ? out.res.status : "¿?";
+      el.textContent = "API: error (" + st + ")";
+    }
+  }catch(e){
+    el.textContent = "API: error de red";
+  }
+}
+
+
 // ---- UI inserts: net badge + sync button ----
 function __ensureSyncControls(){
   const nameEl = document.getElementById("userNameTop");
@@ -4455,28 +4516,68 @@ async function __calcPending(){
 // ---- AUTH: override ----
 async function __login(email, password){
   if(!__isApiConfigured()){
-    return { ok:false, msg:"Servidor no configurado. Edita __API_CFG.baseUrl (patch_cf_sync.js)." };
+    const b = (__API_CFG && __API_CFG.baseUrl) ? String(__API_CFG.baseUrl) : "";
+    return { ok:false, msg:"Servidor no configurado. Revisa __API_CFG.baseUrl (patch_cf_sync.js). Base actual: " + b };
   }
 
+  const normEmail = String(email || "").trim().toLowerCase();
+
   if(!navigator.onLine){
-    // offline: solo si ya hay sesión válida en cache
+    // offline: solo si ya hay sesión válida en cache (token) o sesión health-mode
     const sess = __sessionLoad();
-    if(sess && sess.token && sess.user && String(sess.user.email).toLowerCase() === String(email).toLowerCase() && __isJwtUsableOffline(sess.token)){
-      currentUser = sess.user;
-      return { ok:true, user: currentUser, token: sess.token, offline:true };
+    if(sess && sess.user && String(sess.user.email || "").toLowerCase() === normEmail){
+      if(sess.token && __isJwtUsableOffline(sess.token)){
+        currentUser = sess.user;
+        return { ok:true, user: currentUser, token: sess.token, offline:true };
+      }
+      if(!sess.token && sess.mode === "health"){
+        currentUser = sess.user;
+        return { ok:true, user: currentUser, token: null, offline:true, healthMode:true };
+      }
     }
     return { ok:false, msg:"Sin conexión. Conéctate a internet para iniciar sesión." };
   }
 
   try{
-    const out = await __api("/auth/login", { method:"POST", body:{ email: email, password: password } });
+    const out = await __api("/auth/login", { method:"POST", body:{ email: email, password: String(password || "") } });
     const res = out.res;
     const data = out.data;
 
+    const err = data && data.error ? String(data.error) : "";
+    const notFound = (res && res.status === 404) || (err === "not_found");
+
+    // Si el Worker NO tiene módulo AUTH, permite entrar en modo “health”
+    // (no habilita admin remoto, pero sí permite usar el app local y probar sync si el Worker no exige token)
+    if(notFound){
+      const h = await __api("/health", { method:"GET" });
+      if(h.res && h.res.ok && h.data && h.data.ok === true){
+        const domainOk = /@midis\.gob\.pe$/i.test(String(email||"").trim());
+        if(!domainOk){
+          return { ok:false, msg:"/health responde OK, pero este correo no está permitido para acceso directo." };
+        }
+
+        const user = {
+          id: String(email||"").trim(),
+          fullName: String(email||"").trim(),
+          email: String(email||"").trim(),
+          role: __ROLES.ADMIN,
+          active: true,
+          forceChangePassword: false
+        };
+
+        currentUser = user;
+        __sessionSave({ token: null, user: user, at: __nowIso(), mode:"health" });
+        try{ __audit("LOGIN", "session", user.email, { remote:false, healthMode:true }); }catch(e){}
+
+        return { ok:true, user: user, token: null, healthMode:true };
+      }
+      return { ok:false, msg:"El Worker responde /health, pero no tiene /auth/login. Implementa AUTH en el Worker o habilita el endpoint." };
+    }
+
     if(!res || !res.ok || !data || !data.token){
-      const err = data && data.error ? data.error : "login_failed";
-      if(err === "invalid_credentials") return { ok:false, msg:"Usuario o password incorrecto." };
-      return { ok:false, msg:"No se pudo iniciar sesión (" + err + ")." };
+      const e2 = err || "login_failed";
+      if(e2 === "invalid_credentials") return { ok:false, msg:"Usuario o password incorrecto." };
+      return { ok:false, msg:"No se pudo iniciar sesión (" + e2 + ")." };
     }
 
     const u = data.user || {};
@@ -4490,11 +4591,18 @@ async function __login(email, password){
     };
 
     currentUser = user;
-    __sessionSave({ token: data.token, user: user, at: __nowIso() });
+    __sessionSave({ token: data.token, user: user, at: __nowIso(), mode:"token" });
     try{ __audit("LOGIN", "session", user.email, { remote:true }); }catch(e){}
 
     return { ok:true, user: user, token: data.token };
   }catch(e){
+    // Ayuda para diagnóstico: si /health está OK pero login falla => típico CORS/endpoint.
+    try{
+      const h = await __api("/health", { method:"GET" });
+      if(h.res && h.res.ok && h.data && h.data.ok === true){
+        return { ok:false, msg:"/health OK, pero falló el login. Revisa CORS y el endpoint /auth/login en el Worker." };
+      }
+    }catch(_e){}
     return { ok:false, msg:"Error de red al iniciar sesión." };
   }
 }
@@ -4503,10 +4611,33 @@ async function __bootstrapAuth(){
   __ensureSyncControls();
   __setNetBadge();
 
+  // Insertar un indicador simple de estado API en el login (sin tocar el HTML)
+  try{
+    const card = document.querySelector("#loginScreen .card-body");
+    if(card && !document.getElementById("apiStatus")){
+      const st = document.createElement("div");
+      st.id = "apiStatus";
+      st.className = "text-muted small mt-2";
+      st.textContent = "API: verificando…";
+      card.appendChild(st);
+    }
+  }catch(e){}
+
+  // Prefill usuario (último usado o el de William)
+  try{
+    const inp = document.getElementById("loginUser");
+    if(inp && !inp.value){
+      const last = __lsGet("midis_last_email_v1");
+      inp.value = last ? String(last) : "whuatay@midis.gob.pe";
+    }
+  }catch(e){}
+
+  try{ __setApiStatus(); }catch(e){}
+
   const sess = __sessionLoad();
-  if(sess && sess.token && sess.user){
-    // Validar token online si se puede
-    if(navigator.onLine && __isApiConfigured()){
+  if(sess && sess.user){
+    // Si hay token, validarlo cuando hay internet
+    if(sess.token && navigator.onLine && __isApiConfigured()){
       try{
         const out = await __api("/auth/me", { method:"GET", token: sess.token });
         if(!out.res || !out.res.ok){
@@ -4515,46 +4646,19 @@ async function __bootstrapAuth(){
           __setScreens("login");
           return;
         }
-        // refresca rol/nombre por si cambió
-        const me = out.data && out.data.user ? out.data.user : null;
-        if(me){
-          sess.user.role = me.role || sess.user.role;
-          sess.user.fullName = me.name || sess.user.fullName;
-          __sessionSave(sess);
-        }
       }catch(e){
-        // si falla por red, seguimos con cache solo si token no expira pronto
-        if(!__isJwtUsableOffline(sess.token)){
-          __sessionClear();
-          currentUser = null;
-          __setScreens("login");
-          return;
-        }
-      }
-    } else {
-      if(!__isJwtUsableOffline(sess.token)){
-        __sessionClear();
-        currentUser = null;
-        __setScreens("login");
-        return;
+        // Si falla validación por red, dejamos que entre (modo offline).
       }
     }
 
     currentUser = sess.user;
 
-    if(currentUser && currentUser.forceChangePassword){
-      __setScreens("pw");
-      return;
-    }
-
     __setScreens("app");
     __applyRoleAccess();
     try{ __initAppData(); }catch(e){}
 
-    // Auto pull al iniciar (opción A)
-    setTimeout(function(){
-      __syncPullAuto();
-    }, 250);
+    // Auto pull al iniciar
+    setTimeout(function(){ __syncPullAuto(); }, 250);
 
     return;
   }
@@ -4564,12 +4668,15 @@ async function __bootstrapAuth(){
 
 async function __handleLogin(){
   __setLoginMsg("");
-  const email = (document.getElementById("loginUser") && document.getElementById("loginUser").value ? document.getElementById("loginUser").value : "").trim();
-  const pass = (document.getElementById("loginPass") && document.getElementById("loginPass").value ? document.getElementById("loginPass").value : "");
-  if(!email || !pass){
-    __setLoginMsg("Ingrese usuario y password.");
+  const email = (document.getElementById("loginUser")?.value || "").trim();
+  const pass = (document.getElementById("loginPass")?.value || "");
+
+  if(!email){
+    __setLoginMsg("Ingrese usuario (correo).");
     return;
   }
+
+  try{ __lsSet("midis_last_email_v1", email); }catch(e){}
 
   const r = await __login(email, pass);
   if(!r.ok){
@@ -4585,9 +4692,7 @@ async function __handleLogin(){
     try{ __initAppData(); }catch(e){}
 
     // Auto pull post-login
-    setTimeout(function(){
-      __syncPullAuto();
-    }, 250);
+    setTimeout(function(){ __syncPullAuto(); }, 250);
   }
 }
 
@@ -4795,8 +4900,7 @@ async function __syncPush(){
   if(!__isApiConfigured()) throw new Error('server_not_configured');
   if(!navigator.onLine) throw new Error('offline');
 
-  const token = __tokenGet();
-  if(!token) throw new Error('no_token');
+  const token = __tokenGet(); // opcional
 
   if(currentUser && currentUser.role === __ROLES.CONS){
     return { ok:true, acked:[], skipped:true };
@@ -4835,7 +4939,11 @@ async function __syncPush(){
   for(let i=0;i<toSend.length;i+=batchSize){
     const batch = toSend.slice(i, i+batchSize);
     const out = await __api('/sync/push', { method:'POST', token: token, body:{ records: batch } });
-    if(!out.res || !out.res.ok){
+    if(out.res && out.res.status === 401){
+    throw new Error('unauthorized');
+  }
+
+  if(!out.res || !out.res.ok){
       const err = out.data && out.data.error ? out.data.error : 'push_failed';
       throw new Error(err);
     }
@@ -4882,11 +4990,14 @@ async function __syncPull(since){
   if(!__isApiConfigured()) throw new Error('server_not_configured');
   if(!navigator.onLine) throw new Error('offline');
 
-  const token = __tokenGet();
-  if(!token) throw new Error('no_token');
+  const token = __tokenGet(); // opcional
 
   const s = since || __getLastPull();
   const out = await __api('/sync/pull?since=' + encodeURIComponent(s) + '&limit=5000', { method:'GET', token: token });
+  if(out.res && out.res.status === 401){
+    throw new Error('unauthorized');
+  }
+
   if(!out.res || !out.res.ok){
     const err = out.data && out.data.error ? out.data.error : 'pull_failed';
     throw new Error(err);
