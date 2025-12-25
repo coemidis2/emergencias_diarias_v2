@@ -42,10 +42,11 @@ body { background: #f5f5f5; }
  <script src="./patch_cf_sync.js"></script>
 <script>
   window.__API_CFG = window.__API_CFG || {};
-  // Fallback: si no existe patch_cf_sync.js o no define baseUrl, usa este valor
-  if(!window.__API_CFG.baseUrl){
+  // Fallback: si no está definido en patch_cf_sync.js, usa el Worker por defecto
+  if (!window.__API_CFG.baseUrl) {
     window.__API_CFG.baseUrl = "https://coe-midis-api.coemidis2.workers.dev";
   }
+  if (!window.__API_CFG.timeoutMs) window.__API_CFG.timeoutMs = 15000;
 </script>
 
 </head>
@@ -4259,12 +4260,13 @@ document.addEventListener("DOMContentLoaded", ()=>{
 // =====================================================================
 
 // === CONFIGURACIÓN ===
-const __API_CFG = {
-  // TODO: pega aquí tu URL del Worker
-  baseUrl: "https://TU-WORKER.workers.dev",
-  // timeout de red (ms)
-  timeoutMs: 15000
-};
+// Lee la configuración desde window.__API_CFG (definida en patch_cf_sync.js o en el fallback del <head>)
+const __API_CFG = (() => {
+  const g = (window.__API_CFG && typeof window.__API_CFG === "object") ? window.__API_CFG : {};
+  const baseUrl = g.baseUrl ? String(g.baseUrl).trim() : "";
+  const timeoutMs = (g.timeoutMs && Number(g.timeoutMs) > 0) ? Number(g.timeoutMs) : 15000;
+  return { baseUrl, timeoutMs };
+})();
 
 // Keys extra para Sync
 const __SYNC_KEYS = {
@@ -4275,8 +4277,12 @@ const __SYNC_KEYS = {
 };
 
 function __isApiConfigured(){
-  return !!(__API_CFG.baseUrl && __API_CFG.baseUrl.indexOf("TU-WORKER") === -1);
+  const u = (__API_CFG && __API_CFG.baseUrl) ? String(__API_CFG.baseUrl).trim() : "";
+  return /^https?:\/\//i.test(u);
 }
+
+// Compat: algunos botones usan __apiConfigured()
+function __apiConfigured(){ return __isApiConfigured(); }
 
 function __getDeviceId(){
   let v = null;
