@@ -37,7 +37,27 @@ body { background: #f5f5f5; }
   border-bottom: 1px solid #e6e6e6;
 }
 
+
+/* ======= Observaciones (RP/RC) ======= */
+
+/* ======= Export PDF (Seguimiento) ======= */
+.exporting #btnSegExportPdf,
+.exporting #btnSegConsultar{ display:none !important; }
+
+.exporting #btnGestExportPdf,
+.exporting #btnGestConsultar,
+.exporting #btnGestVerBitacora{ display:none !important; }
+
+/* ======= Observaciones (RP/RC) ======= */
+.obs-banner{ border-left: 6px solid #ffc107; }
+.obs-banner.obs-read{ opacity: .85; }
+.obs-banner .obs-meta{ font-size: .85rem; }
+.obs-banner .obs-text{ white-space: pre-wrap; }
+.obs-badge{ letter-spacing:.2px; }
+
 </style>
+
+/* ======= API======= */
 
  <script src="./patch_cf_sync.js"></script>
 <script>
@@ -47,6 +67,8 @@ body { background: #f5f5f5; }
     window.__API_CFG.baseUrl = "https://coe-midis-api.coemidis2.workers.dev";
   }
 </script>
+
+/* ======= API======= */
 
 </head>
 
@@ -147,6 +169,13 @@ body { background: #f5f5f5; }
 
   <li class="nav-item">
     <a class="nav-link" data-bs-toggle="tab" href="#dashTab">Dashboard</a>
+  </li>
+
+  <li class="nav-item d-none" id="segReportesNavItem">
+    <a class="nav-link" data-bs-toggle="tab" href="#segReportesTab">Seguimiento Reportes</a>
+  </li>
+  <li class="nav-item d-none" id="gestReportesNavItem">
+    <a class="nav-link" data-bs-toggle="tab" href="#gestReportesTab">Gestión de Reportes</a>
   </li>
 </ul>
 
@@ -254,6 +283,9 @@ body { background: #f5f5f5; }
       <h4 class="text-primary">Reporte Preliminar</h4>
 
       <div id="rpContentWrap">
+
+      <div id="rpObsBanner" class="alert alert-warning obs-banner d-none" role="alert"></div>
+
 
       <div class="row g-3">
         <div class="col-md-4">
@@ -403,6 +435,8 @@ body { background: #f5f5f5; }
   <div class="card mt-3">
     <div class="card-body">
       <h4 class="text-primary">Reporte Complementario (RC)</h4>
+
+      <div id="rcObsBanner" class="alert alert-warning obs-banner d-none" role="alert"></div>
 
       <div id="datosBasicosRC" class="mb-3"></div>
 
@@ -616,7 +650,7 @@ body { background: #f5f5f5; }
             <thead>
               <tr>
                 <th>Código</th><th>Estado</th><th>Peligro</th><th>Departamento</th><th>Provincia</th><th>Distrito</th>
-                <th>Fecha del peligro</th><th>Total usuarios</th><th>Total servicios</th>
+                <th>Fecha del peligro</th><th>Total usuarios</th><th>Total servicios</th><th>Ver</th>
               </tr>
             </thead>
             <tbody id="dashAfectaMidisTbody"></tbody>
@@ -630,14 +664,437 @@ body { background: #f5f5f5; }
 </div>
 
 
+
+<!-- ====================== SEGUIMIENTO REPORTES (ADMIN) ======================= -->
+<div class="tab-pane fade" id="segReportesTab">
+  <div class="card mt-3">
+    <div class="card-body" id="segReportesContent">
+      <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+        <h4 class="text-primary mb-0">Seguimiento Reportes</h4>
+        <button id="btnSegExportPdf" class="btn btn-outline-danger btn-sm">Exportar PDF</button>
+      </div>
+      <div class="text-muted small mb-3">Consulta y seguimiento de Reportes Preliminares (RP) y Reportes Complementarios (RC) por región y registrador.</div>
+
+      <div class="row g-2 align-items-end mb-3">
+        <div class="col-md-3">
+          <label class="form-label">Desde</label>
+          <input type="date" id="segDesde" class="form-control">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Hasta</label>
+          <input type="date" id="segHasta" class="form-control">
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Registrador</label>
+          <select id="segRegistrador" class="form-select"></select>
+        </div>
+        <div class="col-md-2 d-grid">
+          <button id="btnSegConsultar" class="btn btn-primary">Consultar</button>
+        </div>
+      </div>
+
+      <div class="mb-3">
+        <h5 class="text-primary">Histograma: reportes por región</h5>
+        <div style="height:320px">
+          <canvas id="segChartRegion"></canvas>
+        </div>
+      </div>
+
+      <div class="mb-3">
+        <h5 class="text-primary">Matriz de reportes por región</h5>
+        <div class="table-responsive">
+          <table class="table table-bordered table-sm">
+            <thead class="table-light">
+              <tr>
+                <th>Región</th>
+                <th class="text-end">Cantidad Reportes Preliminares</th>
+                <th class="text-end">Cantidad Reportes Complementarios</th>
+                <th class="text-end">Total</th>
+              </tr>
+            </thead>
+            <tbody id="segMatrixBody"></tbody>
+            <tfoot class="table-light">
+              <tr>
+                <th>Total</th>
+                <th class="text-end" id="segTotalRP">0</th>
+                <th class="text-end" id="segTotalRC">0</th>
+                <th class="text-end" id="segTotalAll">0</th>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+
+      <div class="mb-2">
+        <h5 class="text-primary">Reportes Complementarios abiertos</h5>
+        <div class="table-responsive">
+          <table class="table table-bordered table-sm">
+            <thead class="table-light">
+              <tr>
+                <th>Registrador</th>
+                <th>Región</th>
+                <th class="text-end">Reportes complementarios abiertos</th>
+              </tr>
+            </thead>
+            <tbody id="segOpenRCBody"></tbody>
+          </table>
+        </div>
+        <div class="small text-muted">“Abierto” = RC en estado Borrador/Pendiente/Observado y la emergencia no está Cerrada.</div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+
+
+<!-- ====================== GESTIÓN DE REPORTES (ADMIN) ======================= -->
+<div class="tab-pane fade" id="gestReportesTab">
+  <div class="card mt-3">
+    <div class="card-body" id="gestReportesContent">
+      <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+        <h4 class="text-primary mb-0">Gestión de Reportes</h4>
+        <button id="btnGestExportPdf" class="btn btn-outline-danger btn-sm">Exportar PDF</button>
+      </div>
+      <div class="text-muted small mb-3">
+        Panel de gestión para supervisar <b>reportes no cerrados</b>, <b>tiempos</b>, <b>calidad</b> y <b>cuellos de botella</b>.
+      </div>
+
+      <!-- Filtros -->
+      <div class="row g-2 align-items-end mb-3">
+        <div class="col-md-2">
+          <label class="form-label">Desde</label>
+          <input type="date" id="gestDesde" class="form-control">
+        </div>
+        <div class="col-md-2">
+          <label class="form-label">Hasta</label>
+          <input type="date" id="gestHasta" class="form-control">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Registrador</label>
+          <select id="gestRegistrador" class="form-select"></select>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Región (Departamento)</label>
+          <select id="gestRegion" class="form-select"></select>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label">Fecha base</label>
+          <select id="gestBaseFecha" class="form-select">
+            <option value="fechaPeligro">Fecha de peligro</option>
+            <option value="fechaHora">Fecha registro RP</option>
+            <option value="rpEnviadoEn">Fecha envío RP</option>
+          </select>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label">Inactividad (días)</label>
+          <input type="number" id="gestInactDias" class="form-control" min="1" step="1" value="3">
+        </div>
+        <div class="col-md-2 d-grid">
+          <button id="btnGestConsultar" class="btn btn-primary">Actualizar</button>
+        </div>
+        <div class="col-md-2">
+          <div class="form-check mt-4">
+            <input class="form-check-input" type="checkbox" id="gestSoloNoCerrados" checked>
+            <label class="form-check-label" for="gestSoloNoCerrados">Solo no cerrados</label>
+          </div>
+        </div>
+      </div>
+
+      <!-- KPI Cards -->
+      <div class="row g-2 mb-3">
+        <div class="col-md-3">
+          <div class="card shadow-sm">
+            <div class="card-body py-2">
+              <div class="small text-muted">Total (filtrado)</div>
+              <div class="h4 mb-0" id="gestKpiTotal">0</div>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-3">
+          <div class="card shadow-sm">
+            <div class="card-body py-2">
+              <div class="small text-muted">Abiertas</div>
+              <div class="h4 mb-0" id="gestKpiAbiertas">0</div>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-3">
+          <div class="card shadow-sm">
+            <div class="card-body py-2">
+              <div class="small text-muted">Cerradas</div>
+              <div class="h4 mb-0" id="gestKpiCerradas">0</div>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-3">
+          <div class="card shadow-sm">
+            <div class="card-body py-2">
+              <div class="small text-muted">Inactivas (≥ N días)</div>
+              <div class="h4 mb-0" id="gestKpiInactivas">0</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-md-3">
+          <div class="card shadow-sm">
+            <div class="card-body py-2">
+              <div class="small text-muted">RP Pendiente</div>
+              <div class="h4 mb-0" id="gestKpiRpPendiente">0</div>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-3">
+          <div class="card shadow-sm">
+            <div class="card-body py-2">
+              <div class="small text-muted">RP Observado</div>
+              <div class="h4 mb-0" id="gestKpiRpObservado">0</div>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-3">
+          <div class="card shadow-sm">
+            <div class="card-body py-2">
+              <div class="small text-muted">RC Abiertos</div>
+              <div class="h4 mb-0" id="gestKpiRcAbiertos">0</div>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-3">
+          <div class="card shadow-sm">
+            <div class="card-body py-2">
+              <div class="small text-muted">Promedio días abierto</div>
+              <div class="h4 mb-0" id="gestKpiPromDias">0</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Embudo y Aging -->
+      <div class="row g-3 mb-3">
+        <div class="col-md-6">
+          <h5 class="text-primary">Embudo RP (estado actual)</h5>
+          <div style="height:280px"><canvas id="gestChartFunnelRP"></canvas></div>
+        </div>
+        <div class="col-md-6">
+          <h5 class="text-primary">Embudo RC (último RC)</h5>
+          <div style="height:280px"><canvas id="gestChartFunnelRC"></canvas></div>
+        </div>
+        <div class="col-md-12">
+          <h5 class="text-primary">Aging (antigüedad de emergencias no cerradas)</h5>
+          <div style="height:300px"><canvas id="gestChartAging"></canvas></div>
+          <div class="small text-muted mt-1">Tramos sugeridos: 0–2 / 3–7 / 8–15 / 16+ días.</div>
+        </div>
+      </div>
+
+      <!-- Ranking Aging + Inactividad -->
+      <div class="mb-3">
+        <h5 class="text-primary">Ranking: casos abiertos e inactividad</h5>
+        <div class="table-responsive">
+          <table class="table table-bordered table-sm">
+            <thead class="table-light">
+              <tr>
+                <th>Código</th>
+                <th>Región</th>
+                <th>Registrador (RP)</th>
+                <th class="text-end">Días abierto</th>
+                <th class="text-end">Días sin movimiento</th>
+                <th>Estado RP</th>
+                <th>Último RC</th>
+                <th>Cierre</th>
+              </tr>
+            </thead>
+            <tbody id="gestAgingTbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Backlog por registrador -->
+      <div class="mb-3">
+        <h5 class="text-primary">Backlog por registrador</h5>
+        <div class="table-responsive">
+          <table class="table table-bordered table-sm">
+            <thead class="table-light">
+              <tr>
+                <th>Registrador</th>
+                <th class="text-end">Emergencias abiertas (RP)</th>
+                <th class="text-end">RP Pendiente</th>
+                <th class="text-end">RP Observado</th>
+                <th class="text-end">RC Abiertos</th>
+                <th class="text-end">Cierre pendiente</th>
+                <th class="text-end">Sin movimiento (≥ N días)</th>
+              </tr>
+            </thead>
+            <tbody id="gestBacklogTbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- SLA -->
+      <div class="mb-3">
+        <h5 class="text-primary">Tiempos (SLA) – promedios del filtro</h5>
+        <div class="table-responsive">
+          <table class="table table-bordered table-sm">
+            <thead class="table-light">
+              <tr>
+                <th>Métrica</th>
+                <th class="text-end">Promedio (días)</th>
+                <th class="text-end">Casos (n)</th>
+              </tr>
+            </thead>
+            <tbody id="gestSlaTbody"></tbody>
+          </table>
+        </div>
+        <div class="small text-muted">Los tiempos se calculan con las marcas de fecha disponibles (registro / envío / aprobación / observación / cierre).</div>
+      </div>
+
+      <!-- Calidad / Observaciones -->
+      <div class="row g-3 mb-3">
+        <div class="col-md-6">
+          <h5 class="text-primary">Motivos de observación (clasificación aproximada)</h5>
+          <div style="height:260px"><canvas id="gestChartObsMotivos"></canvas></div>
+          <div class="small text-muted mt-1">Sugerencia: que el Administrador escriba la observación con “Tipo / Sección / Prioridad” para reporte más preciso.</div>
+        </div>
+        <div class="col-md-6">
+          <h5 class="text-primary">Checklist de completitud (casos con faltantes)</h5>
+          <div class="table-responsive">
+            <table class="table table-bordered table-sm">
+              <thead class="table-light">
+                <tr>
+                  <th>Código</th>
+                  <th>Región</th>
+                  <th>Registrador</th>
+                  <th class="text-end">% RP</th>
+                  <th class="text-end">% RC (último)</th>
+                  <th>Faltantes clave</th>
+                </tr>
+              </thead>
+              <tbody id="gestIncompletosTbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Priorización -->
+      <div class="mb-3">
+        <h5 class="text-primary">Priorización operativa (impacto + urgencia)</h5>
+        <div class="row g-2 mb-2">
+          <div class="col-md-6">
+            <div class="table-responsive">
+              <table class="table table-bordered table-sm">
+                <thead class="table-light">
+                  <tr>
+                    <th colspan="3">Matriz (medianas del filtro)</th>
+                  </tr>
+                  <tr>
+                    <th></th>
+                    <th class="text-center">Urgencia baja</th>
+                    <th class="text-center">Urgencia alta</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <th>Impacto alto</th>
+                    <td class="text-center" id="gestQuad10">0</td>
+                    <td class="text-center" id="gestQuad11">0</td>
+                  </tr>
+                  <tr>
+                    <th>Impacto bajo</th>
+                    <td class="text-center" id="gestQuad00">0</td>
+                    <td class="text-center" id="gestQuad01">0</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="small text-muted">Impacto: usuarios afectados (suma). Urgencia: días abierto. “Alto” = ≥ mediana del conjunto filtrado.</div>
+          </div>
+          <div class="col-md-6">
+            <div class="small text-muted mt-2">
+              <b>Sugerencia de uso:</b> prioriza primero <b>Impacto alto + Urgencia alta</b>, luego Impacto alto + Urgencia baja (si hay alta exposición).
+            </div>
+          </div>
+        </div>
+
+        <div class="table-responsive">
+          <table class="table table-bordered table-sm">
+            <thead class="table-light">
+              <tr>
+                <th>Código</th>
+                <th>Región</th>
+                <th>Registrador</th>
+                <th class="text-end">Usuarios afectados</th>
+                <th class="text-end">Servicios afectados</th>
+                <th class="text-end">Días abierto</th>
+              </tr>
+            </thead>
+            <tbody id="gestPrioridadTbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Casos en riesgo -->
+      <div class="mb-3">
+        <h5 class="text-primary">Casos en riesgo (reglas rápidas)</h5>
+        <div class="table-responsive">
+          <table class="table table-bordered table-sm">
+            <thead class="table-light">
+              <tr>
+                <th>Código</th>
+                <th>Región</th>
+                <th>Registrador</th>
+                <th>Regla</th>
+                <th class="text-end">Días</th>
+              </tr>
+            </thead>
+            <tbody id="gestRiesgoTbody"></tbody>
+          </table>
+        </div>
+        <div class="small text-muted">Reglas: RP aprobado sin RC; RC observado sin reenvío; cierre pendiente; abierto > 15 días.</div>
+      </div>
+
+      <!-- Bitácora -->
+      <div class="mb-1">
+        <h5 class="text-primary">Bitácora / Libro de novedades (auditoría)</h5>
+        <div class="row g-2 align-items-end">
+          <div class="col-md-4">
+            <label class="form-label">Código de emergencia</label>
+            <input type="text" id="gestCodigoBit" class="form-control" placeholder="Ej.: RP-2025-0001">
+          </div>
+          <div class="col-md-2 d-grid">
+            <button id="btnGestVerBitacora" class="btn btn-outline-secondary">Ver bitácora</button>
+          </div>
+          <div class="col-md-6 small text-muted">
+            Se muestran los últimos movimientos registrados en el sistema (envío, aprobación, observación, cierre, etc.).
+          </div>
+        </div>
+        <div class="table-responsive mt-2">
+          <table class="table table-bordered table-sm">
+            <thead class="table-light">
+              <tr>
+                <th>Fecha/Hora</th>
+                <th>Usuario</th>
+                <th>Acción</th>
+                <th>Detalle</th>
+              </tr>
+            </thead>
+            <tbody id="gestBitacoraTbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+
 </div><!-- tab-content -->
 
-<!-- MODAL PARA VER EMERGENCIA CERRADA -->
+<!-- MODAL PARA VER DETALLE / RP / RC -->
 <div class="modal fade" id="modalVerEmergencia" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-lg modal-dialog-scrollable">
     <div class="modal-content">
       <div class="modal-header">
-        <h5 class="modal-title">Detalle de emergencia cerrada</h5>
+        <h5 class="modal-title">Detalle de emergencia</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
       </div>
       <div class="modal-body" id="contenidoVerEmergencia">
@@ -660,18 +1117,6 @@ body { background: #f5f5f5; }
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
       </div>
       <div class="modal-body">
-        <ul class="nav nav-tabs mb-3" id="admTabs" role="tablist">
-          <li class="nav-item" role="presentation">
-            <button class="nav-link active" id="admTabUsuarios" data-bs-toggle="tab" data-bs-target="#admPaneUsuarios" type="button" role="tab">Usuarios</button>
-          </li>
-          <li class="nav-item" role="presentation">
-            <button class="nav-link" id="admTabAudit" data-bs-toggle="tab" data-bs-target="#admPaneAudit" type="button" role="tab">Bitácora / Auditoría</button>
-          </li>
-        </ul>
-
-        <div class="tab-content">
-          <div class="tab-pane fade show active" id="admPaneUsuarios" role="tabpanel">
-
 
         <div class="row g-2 align-items-end mb-3">
           <div class="col-md-5">
@@ -687,8 +1132,6 @@ body { background: #f5f5f5; }
             <select id="admRole" class="form-control">
               <option value="Registrador">Registrador</option>
               <option value="Consulta">Consulta</option>
-            
-              <option value="Administrador">Administrador</option>
             </select>
           </div>
           <div class="col-12 d-flex gap-2">
@@ -702,16 +1145,6 @@ body { background: #f5f5f5; }
           <div class="small">Usuario: <span class="fw-semibold" id="admTempUser"></span></div>
           <div class="small">Clave temporal: <span class="fw-semibold" id="admTempPass"></span></div>
           <div class="small text-muted mt-1">El usuario deberá cambiar la clave al primer ingreso.</div>
-        </div>
-
-        
-        <div class="d-flex flex-wrap gap-2 align-items-end justify-content-between mb-2">
-          <div class="input-group" style="max-width:460px">
-            <span class="input-group-text">Buscar</span>
-            <input id="admUserSearch" type="text" class="form-control" placeholder="Nombre o correo">
-            <button id="btnAdmUsersRefresh" class="btn btn-outline-primary" type="button">Actualizar</button>
-          </div>
-          <div class="small text-muted" id="admUsersHint"></div>
         </div>
 
         <div class="table-responsive">
@@ -729,78 +1162,7 @@ body { background: #f5f5f5; }
           </table>
         </div>
 
-      
-          </div>
-          <div class="tab-pane fade" id="admPaneAudit" role="tabpanel">
-
-        <div class="row g-2 align-items-end mb-2">
-          <div class="col-md-2 col-6">
-            <label class="form-label">Desde</label>
-            <input type="date" id="admAuditDesde" class="form-control">
-          </div>
-          <div class="col-md-2 col-6">
-            <label class="form-label">Hasta</label>
-            <input type="date" id="admAuditHasta" class="form-control">
-          </div>
-          <div class="col-md-3">
-            <label class="form-label">Actor (correo)</label>
-            <input type="text" id="admAuditActor" class="form-control" placeholder="usuario@midis.gob.pe">
-          </div>
-          <div class="col-md-3">
-            <label class="form-label">Acción</label>
-            <select id="admAuditAction" class="form-control">
-              <option value="">Todas</option>
-              <option value="LOGIN">LOGIN</option>
-              <option value="LOGOUT">LOGOUT</option>
-              <option value="CHANGE_PASSWORD">CHANGE_PASSWORD</option>
-              <option value="BOOTSTRAP">BOOTSTRAP</option>
-              <option value="USER_CREATE">USER_CREATE</option>
-              <option value="USER_RESET_PASSWORD">USER_RESET_PASSWORD</option>
-              <option value="USER_ACTIVATE">USER_ACTIVATE</option>
-              <option value="USER_DEACTIVATE">USER_DEACTIVATE</option>
-              <option value="SYNC_PUSH">SYNC_PUSH</option>
-              <option value="SYNC_PULL">SYNC_PULL</option>
-              <option value="SYNC_UPSERT">SYNC_UPSERT</option>
-            </select>
-          </div>
-          <div class="col-md-1 d-grid">
-            <button id="btnAdmAuditRefresh" class="btn btn-outline-primary">Ver</button>
-          </div>
-          <div class="col-md-1 d-grid">
-            <button id="btnAdmAuditClear" class="btn btn-outline-secondary">Limpiar</button>
-          </div>
-        </div>
-
-        <div class="d-flex justify-content-between align-items-center mb-2">
-          <div class="small text-muted" id="admAuditHint">Consulta disponible solo con internet.</div>
-          <div class="small text-muted">Máx. 1000 registros</div>
-        </div>
-
-        <div class="table-responsive">
-          <table class="table table-sm table-striped align-middle">
-            <thead>
-              <tr>
-                <th>Fecha/Hora</th>
-                <th>Actor</th>
-                <th>Rol</th>
-                <th>Acción</th>
-                <th>Entidad</th>
-                <th>ID</th>
-                <th>Detalle</th>
-                <th style="width:90px">Acción</th>
-              </tr>
-            </thead>
-            <tbody id="admAuditTbody"></tbody>
-          </table>
-        </div>
-
-        <div class="alert alert-info small mb-0">
-          <strong>Tip:</strong> Usa “Desde/Hasta” para acotar. El detalle se puede copiar en JSON.
-        </div>
-
-          </div>
-        </div>
-</div>
+      </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
       </div>
@@ -852,6 +1214,8 @@ body { background: #f5f5f5; }
 <!-- archivo generado desde el Excel -->
 <script src="ubigeoData.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 
 <script>
 
@@ -1252,14 +1616,18 @@ if(isReg){
   const linkRP = document.querySelector('a[href="#rpTab"]')?.closest("li");
   const linkRC = document.querySelector('a[href="#rcTab"]')?.closest("li");
   const linkDash = document.querySelector('a[href="#dashTab"]')?.closest("li");
+  const linkSeg = document.querySelector('a[href="#segReportesTab"]')?.closest("li");
 
-  const isConsulta = currentUser?.role === __ROLES.CONS;
+    const linkGest = document.querySelector('a[href="#gestReportesTab"]')?.closest("li");
+const isConsulta = currentUser?.role === __ROLES.CONS;
 
   if(linkRP) linkRP.classList.toggle("d-none", isConsulta);
   if(linkRC) linkRC.classList.toggle("d-none", isConsulta);
   if(linkDash) linkDash.classList.remove("d-none");
+  if(linkSeg) linkSeg.classList.toggle("d-none", !isAdmin);
 
-  // Bloqueos de edición
+    if(linkGest) linkGest.classList.toggle("d-none", !isAdmin);
+// Bloqueos de edición
   const disableIdsConsulta = [
     "btnGuardarRP","btnGuardarEnviarRP","btnWordRP","btnNuevoRP","btnAddAccionRP","btnEnviarAprobRP",
     "btnGuardarRC","btnGuardarEnviarRC","btnWordRC","btnCerrarEmergencia","btnRetornarRC","btnAddAccionRC","btnEnviarAprobRC"
@@ -1435,195 +1803,6 @@ function __roleTag(role){
   return '<span class="badge text-bg-secondary">Consulta</span>';
 }
 
-// Cache local para filtro en el modal
-let __admUsersCache = [];
-
-async function __admLoadUsers(){
-  const hint = document.getElementById("admUsersHint");
-  const canServer = __isApiConfigured && __isApiConfigured() && navigator.onLine && __tokenGet();
-  if(hint) hint.textContent = canServer ? "Servidor: conectado" : "Servidor: sin conexión";
-  if(!canServer){
-    __admUsersCache = [];
-    __renderUsersTable([]);
-    return [];
-  }
-  const users = await __adminFetchUsers();
-  __admUsersCache = Array.isArray(users) ? users : [];
-  __renderUsersTable(__admUsersCache);
-  return __admUsersCache;
-}
-
-function __admApplyUsersFilter(){
-  __renderUsersTable(__admUsersCache);
-}
-
-function __pad2(n){ return String(n).padStart(2,"0"); }
-function __formatLocalIso(iso){
-  try{
-    const d = new Date(iso);
-    if(isNaN(d)) return String(iso||"");
-    const y = d.getFullYear();
-    const m = __pad2(d.getMonth()+1);
-    const da = __pad2(d.getDate());
-    const hh = __pad2(d.getHours());
-    const mm = __pad2(d.getMinutes());
-    const ss = __pad2(d.getSeconds());
-    return `${y}-${m}-${da} ${hh}:${mm}:${ss}`;
-  }catch(e){
-    return String(iso||"");
-  }
-}
-
-function __dateStartIso(dateStr){
-  try{
-    if(!dateStr) return "";
-    const parts = String(dateStr).split("-");
-    if(parts.length!==3) return "";
-    const d = new Date(Number(parts[0]), Number(parts[1])-1, Number(parts[2]), 0,0,0);
-    return d.toISOString();
-  }catch(e){ return ""; }
-}
-function __dateEndIso(dateStr){
-  try{
-    if(!dateStr) return "";
-    const parts = String(dateStr).split("-");
-    if(parts.length!==3) return "";
-    const d = new Date(Number(parts[0]), Number(parts[1])-1, Number(parts[2]), 23,59,59);
-    return d.toISOString();
-  }catch(e){ return ""; }
-}
-
-function __truncateText(s, n){
-  const t = String(s||"");
-  if(t.length <= n) return t;
-  return t.slice(0, n-1) + "…";
-}
-
-// ---- AUDITORÍA (server) ----
-let __admAuditCache = [];
-
-async function __adminFetchAudit(params){
-  const token = __tokenGet();
-  if(!token) return null;
-  if(!navigator.onLine) return null;
-  if(!__isApiConfigured || !__isApiConfigured()) return null;
-
-  const qs = new URLSearchParams(params || {});
-  if(!qs.has("limit")) qs.set("limit", "1000");
-
-  const out = await __api("/admin/audit?" + qs.toString(), { method:"GET", token: token });
-  if(!out.res || !out.res.ok || !out.data) return null;
-  return Array.isArray(out.data.logs) ? out.data.logs : [];
-}
-
-function __renderAuditTable(logs){
-  const tbody = document.getElementById("admAuditTbody");
-  if(!tbody) return;
-
-  const arr = Array.isArray(logs) ? logs : [];
-  tbody.innerHTML = "";
-  if(arr.length === 0){
-    tbody.innerHTML = '<tr><td colspan="8" class="text-muted">Sin registros para el filtro seleccionado.</td></tr>';
-    return;
-  }
-
-  for(const l of arr){
-    const at = __formatLocalIso(l.at || "");
-    const actor = l.actor_email || "";
-    const role = l.actor_role || "";
-    const action = l.action || "";
-    const ent = l.entity || "";
-    const entId = l.entity_id || "";
-    let detailStr = "";
-    try{
-      detailStr = (l.detail === null || l.detail === undefined) ? "" : JSON.stringify(l.detail);
-    }catch(e){
-      detailStr = String(l.detail || "");
-    }
-    const short = __truncateText(detailStr, 140);
-    const enc = encodeURIComponent(detailStr || "");
-
-    tbody.innerHTML += `
-      <tr>
-        <td class="small">${at}</td>
-        <td class="small">${actor}</td>
-        <td class="small">${role}</td>
-        <td class="small fw-semibold">${action}</td>
-        <td class="small">${ent}</td>
-        <td class="small">${entId}</td>
-        <td class="small"><code>${short.replace(/</g,"&lt;")}</code></td>
-        <td><button class="btn btn-sm btn-outline-secondary" data-copy="${enc}">Copiar</button></td>
-      </tr>
-    `;
-  }
-
-  tbody.querySelectorAll("[data-copy]").forEach(btn=>{
-    btn.addEventListener("click", async ()=>{
-      const enc = btn.getAttribute("data-copy") || "";
-      const txt = decodeURIComponent(enc);
-      try{
-        await navigator.clipboard.writeText(txt);
-        btn.textContent = "Listo";
-        setTimeout(()=>{ btn.textContent = "Copiar"; }, 800);
-      }catch(e){
-        prompt("Copia el JSON:", txt);
-      }
-    });
-  });
-}
-
-function __admInitAuditDefaults(){
-  const desde = document.getElementById("admAuditDesde");
-  const hasta = document.getElementById("admAuditHasta");
-  if(!desde || !hasta) return;
-
-  const today = new Date();
-  const dTo = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-  const dFrom = new Date(dTo.getTime() - 7*24*60*60*1000);
-
-  const toStr = `${dTo.getFullYear()}-${__pad2(dTo.getMonth()+1)}-${__pad2(dTo.getDate())}`;
-  const fromStr = `${dFrom.getFullYear()}-${__pad2(dFrom.getMonth()+1)}-${__pad2(dFrom.getDate())}`;
-
-  if(!desde.value) desde.value = fromStr;
-  if(!hasta.value) hasta.value = toStr;
-}
-
-async function __admLoadAudit(){
-  const hint = document.getElementById("admAuditHint");
-  const tbody = document.getElementById("admAuditTbody");
-
-  const canServer = __isApiConfigured && __isApiConfigured() && navigator.onLine && __tokenGet();
-  if(hint) hint.textContent = canServer ? "Servidor: conectado" : "Servidor: sin conexión";
-  if(!canServer){
-    if(tbody) tbody.innerHTML = '<tr><td colspan="8" class="text-muted">Conéctate a internet para ver auditoría.</td></tr>';
-    return;
-  }
-
-  if(tbody) tbody.innerHTML = '<tr><td colspan="8" class="text-muted">Cargando...</td></tr>';
-
-  const desde = document.getElementById("admAuditDesde")?.value || "";
-  const hasta = document.getElementById("admAuditHasta")?.value || "";
-  const actor = (document.getElementById("admAuditActor")?.value || "").trim();
-  const action = document.getElementById("admAuditAction")?.value || "";
-
-  const params = {};
-  if(desde) params.since = __dateStartIso(desde);
-  if(hasta) params.until = __dateEndIso(hasta);
-  if(actor) params.actor_email = actor;
-  if(action) params.action = action;
-
-  const logs = await __adminFetchAudit(params);
-  if(logs === null){
-    if(tbody) tbody.innerHTML = '<tr><td colspan="8" class="text-danger">No se pudo cargar auditoría.</td></tr>';
-    return;
-  }
-
-  __admAuditCache = logs;
-  __renderAuditTable(__admAuditCache);
-}
-
-
-
 function __renderUsersTable(){
   const tbody = document.getElementById("admUsersTbody");
   if(!tbody) return;
@@ -1751,6 +1930,130 @@ function __fmtDate(d){
     return x.toLocaleString();
   }catch(e){ return String(d); }
 }
+
+function __escapeHtml(s){
+  return String(s ?? "")
+    .replaceAll("&","&amp;")
+    .replaceAll("<","&lt;")
+    .replaceAll(">","&gt;")
+    .replaceAll('"',"&quot;")
+    .replaceAll("'","&#039;");
+}
+
+function __getEmergByCodigo(codigo){
+  try{ return (Array.isArray(emergencias)?emergencias:[]).find(e=>e.codigo===codigo) || null; }
+  catch(e){ return null; }
+}
+
+function __getLastRC(em){
+  try{
+    if(!em || !Array.isArray(em.rcReportes) || em.rcReportes.length===0) return {rc:null, idx:-1};
+    const idx = em.rcReportes.length-1;
+    return {rc: em.rcReportes[idx], idx};
+  }catch(e){ return {rc:null, idx:-1}; }
+}
+
+function __renderRPObsBanner(em){
+  const box = document.getElementById("rpObsBanner");
+  if(!box) return;
+  const show = !!(em && String(em.rpAprobEstado||"") === "Observado" && (em.rpObs||"").toString().trim());
+  if(!show){
+    box.classList.add("d-none");
+    box.classList.remove("obs-read");
+    box.innerHTML = "";
+    return;
+  }
+
+  const por = em.rpObsPor || "Administrador";
+  const cuando = __fmtDate(em.rpObsAt || "");
+  const leido = !!em.rpObsLeido;
+
+  box.classList.remove("d-none");
+  box.classList.toggle("obs-read", leido);
+
+  const texto = __escapeHtml(em.rpObs || "");
+  box.innerHTML = `
+    <div class="d-flex justify-content-between align-items-start gap-2">
+      <div>
+        <div class="fw-semibold">
+          <span class="badge text-bg-warning obs-badge me-2">OBSERVADO</span>
+          REPORTE PRELIMINAR (RP)
+        </div>
+        <div class="text-muted obs-meta">Observado por: <span class="fw-semibold">${__escapeHtml(por)}</span>${cuando ? ` · ${__escapeHtml(cuando)}` : ""}</div>
+      </div>
+      <div class="d-flex gap-2">
+        <button class="btn btn-sm btn-outline-dark" type="button" data-obs-read="rp">${leido ? "Visto" : "Marcar como leído"}</button>
+      </div>
+    </div>
+    <hr class="my-2">
+    <div class="obs-text">${texto}</div>
+    <div class="small text-muted mt-2">Acción requerida: corregir y reenviar para aprobación.</div>
+  `;
+
+  box.querySelector('[data-obs-read="rp"]')?.addEventListener("click", ()=>{
+    const real = __getEmergByCodigo(em.codigo);
+    if(!real) return;
+    real.rpObsLeido = true;
+    __saveEmergencias?.();
+    cargarTablaEmergencias?.();
+    // re-render con estado leído
+    __renderRPObsBanner(real);
+  }, {once:true});
+}
+
+function __renderRCObsBanner(em){
+  const box = document.getElementById("rcObsBanner");
+  if(!box) return;
+
+  const last = __getLastRC(em);
+  const rc = last.rc;
+  const show = !!(rc && String(rc.aprobEstado||"") === "Observado" && (rc.obs||"").toString().trim());
+  if(!show){
+    box.classList.add("d-none");
+    box.classList.remove("obs-read");
+    box.innerHTML = "";
+    return;
+  }
+
+  const por = rc.obsPor || "Administrador";
+  const cuando = __fmtDate(rc.obsAt || "");
+  const leido = !!rc.obsLeido;
+  const nro = rc.numeroGlobal || rc.numeroReporteRC || (last.idx>=0 ? (last.idx+1) : "");
+
+  box.classList.remove("d-none");
+  box.classList.toggle("obs-read", leido);
+
+  const texto = __escapeHtml(rc.obs || "");
+  box.innerHTML = `
+    <div class="d-flex justify-content-between align-items-start gap-2">
+      <div>
+        <div class="fw-semibold">
+          <span class="badge text-bg-warning obs-badge me-2">OBSERVADO</span>
+          REPORTE COMPLEMENTARIO (RC) ${nro ? `N° ${__escapeHtml(nro)}` : ""}
+        </div>
+        <div class="text-muted obs-meta">Observado por: <span class="fw-semibold">${__escapeHtml(por)}</span>${cuando ? ` · ${__escapeHtml(cuando)}` : ""}</div>
+      </div>
+      <div class="d-flex gap-2">
+        <button class="btn btn-sm btn-outline-dark" type="button" data-obs-read="rc">${leido ? "Visto" : "Marcar como leído"}</button>
+      </div>
+    </div>
+    <hr class="my-2">
+    <div class="obs-text">${texto}</div>
+    <div class="small text-muted mt-2">Acción requerida: corregir/adjuntar sustento y reenviar para aprobación.</div>
+  `;
+
+  box.querySelector('[data-obs-read="rc"]')?.addEventListener("click", ()=>{
+    const real = __getEmergByCodigo(em.codigo);
+    if(!real) return;
+    const last2 = __getLastRC(real);
+    if(!last2.rc) return;
+    last2.rc.obsLeido = true;
+    __saveEmergencias?.();
+    cargarTablaEmergencias?.();
+    __renderRCObsBanner(real);
+  }, {once:true});
+}
+
 
 function __lastRCAprobEstado(em){
   try{
@@ -2021,6 +2324,9 @@ function __observar(ref, obs){
   if(ref.kind === "rp"){
     em.rpAprobEstado = "Observado";
     em.rpObs = obs;
+    em.rpObsPor = __getCurrentUserName();
+    em.rpObsAt = __nowIso();
+    em.rpObsLeido = false;
     __audit("OBSERVAR_RP", "emergencia", em.codigo, {obs});
   }
   if(ref.kind === "rc"){
@@ -2028,6 +2334,9 @@ function __observar(ref, obs){
     if(rc){
       rc.aprobEstado = "Observado";
       rc.obs = obs;
+      rc.obsPor = __getCurrentUserName();
+      rc.obsAt = __nowIso();
+      rc.obsLeido = false;
       __audit("OBSERVAR_RC", "emergencia", em.codigo, {idx: ref.idx, obs});
     }
   }
@@ -2161,36 +2470,14 @@ document.addEventListener("DOMContentLoaded", ()=>{
   // Logout
   document.getElementById("btnLogout")?.addEventListener("click", __logout);
 
-  // Admin modal (Usuarios + Bitácora)
-  document.getElementById("btnAdmin")?.addEventListener("click", async ()=>{
-    // por defecto: pestaña Usuarios
-    try{ document.getElementById("admTabUsuarios")?.click(); }catch(e){}
-    __admInitAuditDefaults();
-    await __admLoadUsers();
-
+  // Admin modal
+  document.getElementById("btnAdmin")?.addEventListener("click", ()=>{
+    __renderUsersTable();
     const modal = new bootstrap.Modal(document.getElementById("modalAdmin"));
     modal.show();
   });
-
-  document.getElementById("btnAdmCreate")?.addEventListener("click", async ()=>{
-    await __createUserFromAdmin();
-    await __admLoadUsers();
-  });
+  document.getElementById("btnAdmCreate")?.addEventListener("click", __createUserFromAdmin);
   document.getElementById("btnAdmCopy")?.addEventListener("click", __copyTempPass);
-
-  document.getElementById("btnAdmUsersRefresh")?.addEventListener("click", __admLoadUsers);
-  document.getElementById("admUserSearch")?.addEventListener("input", __admApplyUsersFilter);
-
-  document.getElementById("btnAdmAuditRefresh")?.addEventListener("click", __admLoadAudit);
-  document.getElementById("btnAdmAuditClear")?.addEventListener("click", ()=>{
-    const a = document.getElementById("admAuditActor"); if(a) a.value = "";
-    const s = document.getElementById("admAuditAction"); if(s) s.value = "";
-    __admInitAuditDefaults();
-    __admLoadAudit();
-  });
-
-  // Cargar auditoría al abrir la pestaña
-  document.getElementById("admTabAudit")?.addEventListener("shown.bs.tab", __admLoadAudit);
 
   // Aprobaciones modal
   document.getElementById("btnAprob")?.addEventListener("click", ()=>{
@@ -2844,6 +3131,9 @@ function __saveRP(opts){
     rpAprobadoPor: null,
     rpAprobadoEn: null,
     rpObs: null,
+    rpObsPor: null,
+    rpObsAt: null,
+    rpObsLeido: false,
     // Cierre
     cierreEstado: null,
     cierreSolicitadoPor: null,
@@ -2881,6 +3171,9 @@ function __saveRP(opts){
       base.rpEnviadoPor  = __getCurrentUserName();
       base.rpEnviadoEn   = __nowIso();
       base.rpObs         = null;
+      base.rpObsPor      = null;
+      base.rpObsAt       = null;
+      base.rpObsLeido    = false;
       __audit("GUARDAR_Y_ENVIAR_RP", "emergencia", base.codigo, null);
     }
   }else{
@@ -3089,8 +3382,8 @@ function cargarTablaEmergencias() {
 <td>${e.fechaPeligro}</td>
 <td>${e.cerrada ? "Cerrada" : "Abierta"}</td>
 <td>${__rpEstadoEtiqueta(e)}</td>
-<td><button class="btn btn-sm btn-outline-primary btnRP" ${(__isRegistrador() && e.cerrada) ? "disabled" : ""}>RP</button></td>
-<td><button class="btn btn-sm btn-primary btnRC" ${ (e.cerrada || (__isRegistrador() && String(e.rpAprobEstado||"Borrador")!=="Aprobado")) ? "disabled" : ""}>RC</button></td>
+<td><button class="btn btn-sm btn-outline-primary btnRP" ${(__isRegistrador() && e.cerrada && String(e.rpAprobEstado||"Borrador")==="Aprobado") ? "disabled" : ""}>RP</button></td>
+<td><button class="btn btn-sm btn-primary btnRC" ${ (e.cerrada ? "disabled" : "")}>RC</button></td>
 <td><button class="btn btn-sm btn-outline-secondary btnVer" title="Ver detalle">👁</button></td>
 `;
     // Restricción por rol (Consulta: solo Lista y Dashboard)
@@ -3130,9 +3423,10 @@ function cargarTablaEmergencias() {
           bRP.title = "Abrir Reporte Preliminar";
         }
 
-        // Registrador: si la emergencia está Cerrada, desactivar RP y RC en el listado
+        // Registrador: si la emergencia está Cerrada, desactivar RP en el listado SOLO si el RP está Aprobado; RC siempre se bloquea.
         if(__isRegistrador() && e.cerrada){
-          if(bRP){
+          const rpOkClose = (e && String(e.rpAprobEstado||"Borrador")==="Aprobado");
+          if(bRP && rpOkClose){
             bRP.disabled = true;
             bRP.classList.add("btn-outline-secondary");
             bRP.classList.remove("btn-outline-primary");
@@ -3191,10 +3485,12 @@ function cargarTablaEmergencias() {
 
     const btnRP = tr.querySelector(".btnRP");
     if (btnRP && btnRP.style.display !== "none") {
-      // Enforce: Registrador no puede abrir RP si la emergencia está Cerrada
+      // Enforce: Registrador no puede abrir RP cuando la emergencia está Cerrada
+      // y el RP ya está Grabado/Aprobado (estado = "Aprobado").
       const isReg = __isRegistrador();
       const isClosed = !!e.cerrada;
-      if (isReg && isClosed) {
+      const isRpApproved = (String(e?.rpAprobEstado || "Borrador") === "Aprobado");
+      if (isReg && isClosed && isRpApproved) {
         btnRP.disabled = true;
         btnRP.classList.add("btn-outline-secondary");
         btnRP.classList.remove("btn-outline-primary");
@@ -3467,6 +3763,9 @@ try{
     }
   }catch(e){}
 
+    // Banner de observación del último RC (si corresponde)
+  try{ __renderRCObsBanner(obj); }catch(e){}
+
   document.getElementById("datosBasicosRC").innerHTML = `
 <b>Código:</b> ${obj.codigo}<br>
 <b>N° Global:</b> ${numeroGlobalMostrar}<br>
@@ -3564,7 +3863,10 @@ function __guardarRCCore(opts={}){
     enviadoEn: null,
     aprobadoPor: null,
     aprobadoEn: null,
-    obs: null
+    obs: null,
+    obsPor: null,
+    obsAt: null,
+    obsLeido: false
   });
 
   em.accionesRCGlobal = [...accionesRCTemp];
@@ -3574,6 +3876,9 @@ function __guardarRCCore(opts={}){
   cargarTablaEmergencias();
 
   // Actualizar cabecera RC con el N° Global del RC que acabo de crear
+    // Banner de observación del último RC (si corresponde)
+  try{ __renderRCObsBanner(em); }catch(e){}
+
   document.getElementById("datosBasicosRC").innerHTML = `
 <b>Código:</b> ${em.codigo}<br>
 <b>N° Global:</b> ${numRC}<br>
@@ -3643,6 +3948,7 @@ document.getElementById("btnRetornarRC").onclick = () => {
   emergenciaSeleccionada = null;
   accionesRCTemp = [];
   cargarAccionesRC();
+  try{ const b=document.getElementById("rcObsBanner"); if(b){b.classList.add("d-none"); b.innerHTML="";} }catch(e){}
   document.getElementById("datosBasicosRC").innerHTML = "";
   document.getElementById("tablaDaniosRC").innerHTML = "";
   document.getElementById("fechaAccionRC").value = "";
@@ -3657,6 +3963,7 @@ document.getElementById("btnRetornarRP").onclick = () => {
     if(__isRegistrador && __isRegistrador()){
       __setRPViewActive(false);
     }
+    try{ const b=document.getElementById("rpObsBanner"); if(b){b.classList.add("d-none"); b.innerHTML="";} }catch(e){}
   }catch(e){}
 
   const tabLink = document.querySelector('a[href="#listaTab"]');
@@ -3699,17 +4006,9 @@ document.getElementById("btnWordRP").onclick = () => {
   em.peligro = document.getElementById("peligroRP").value || em.peligro;
   em.accionesPreliminar = [...(accionesRPTemp.length ? accionesRPTemp : em.accionesPreliminar)];
 
-  // --- Word (seguro): si hay sesión+internet+Worker, usa /doc/rp; si no, intenta servicio local ---
-  const __useRemoteDoc = (__apiConfigured && __apiConfigured()) && (__tokenGet && __tokenGet()) && (navigator.onLine);
-  const __baseUrl = (__API_CFG && __API_CFG.baseUrl) ? String(__API_CFG.baseUrl) : "";
-  const __baseTrim = __baseUrl.endsWith("/") ? __baseUrl.slice(0, -1) : __baseUrl;
-  const __docUrlRP = __useRemoteDoc ? (__baseTrim + "/doc/rp") : "http://127.0.0.1:5000/api/generar-word-rp";
-  const __docHeadersRP = {"Content-Type": "application/json"};
-  if(__useRemoteDoc) __docHeadersRP["Authorization"] = "Bearer " + __tokenGet();
-
-  fetch(__docUrlRP, {
+  fetch("http://127.0.0.1:5000/api/generar-word-rp", {
     method: "POST",
-    headers: __docHeadersRP,
+    headers: {"Content-Type": "application/json"},
     body: JSON.stringify(em)
   })
   .then(r => {
@@ -3759,17 +4058,9 @@ document.getElementById("btnWordRC").onclick = () => {
   em.accionesRC = rc.acciones;
   em.daniosMIDIS = rc.daniosMIDIS;
 
-  // --- Word (seguro): si hay sesión+internet+Worker, usa /doc/rc; si no, intenta servicio local ---
-  const __useRemoteDoc2 = (__apiConfigured && __apiConfigured()) && (__tokenGet && __tokenGet()) && (navigator.onLine);
-  const __baseUrl2 = (__API_CFG && __API_CFG.baseUrl) ? String(__API_CFG.baseUrl) : "";
-  const __baseTrim2 = __baseUrl2.endsWith("/") ? __baseUrl2.slice(0, -1) : __baseUrl2;
-  const __docUrlRC = __useRemoteDoc2 ? (__baseTrim2 + "/doc/rc") : "http://127.0.0.1:5000/api/generar-word-rc";
-  const __docHeadersRC = {"Content-Type": "application/json"};
-  if(__useRemoteDoc2) __docHeadersRC["Authorization"] = "Bearer " + __tokenGet();
-
-  fetch(__docUrlRC, {
+  fetch("http://127.0.0.1:5000/api/generar-word-rc", {
     method: "POST",
-    headers: __docHeadersRC,
+    headers: {"Content-Type": "application/json"},
     body: JSON.stringify(em)
   })
   .then(r => {
@@ -4172,6 +4463,22 @@ function __dashRenderImpacto(data, groupBy){
   }
 }
 
+// Dashboard: ver RP/RC desde la tabla "Relación de emergencias que afectan al MIDIS"
+function __dashVerByCodigo(codigo){
+  try{
+    const cod = String(codigo || "");
+    const em = (Array.isArray(emergencias) ? emergencias : []).find(x => String(x?.codigo || "") === cod);
+    if(!em){
+      alert("No se encontró la emergencia para visualizar el RP/RC.");
+      return;
+    }
+    verEmergencia(em);
+  }catch(err){
+    console.error(err);
+    alert("No se pudo abrir el detalle del RP/RC.");
+  }
+}
+
 function __dashRenderAfectaMidisTable(data){
   const tbody = document.getElementById("dashAfectaMidisTbody");
   tbody.innerHTML = "";
@@ -4179,6 +4486,8 @@ function __dashRenderAfectaMidisTable(data){
   data.filter(__dashAfectaMidis).forEach(e=>{
     const st = __dashGetStatus(e);
     const badge = `<span class="badge" style="background:${st.color}"> </span>`;
+
+    const codeSafe = String(e.codigo || "").replace(/'/g, "\\'");
 
     const t = __dashTotalesMidis(e.daniosMIDIS);
     tbody.innerHTML += `
@@ -4192,6 +4501,7 @@ function __dashRenderAfectaMidisTable(data){
         <td>${e.fechaPeligro||""}</td>
         <td>${t.usuarios}</td>
         <td>${t.servicios}</td>
+        <td class="text-center"><button class="btn btn-sm btn-outline-secondary" title="Ver RP/RC" onclick="__dashVerByCodigo('${codeSafe}')">👁</button></td>
       </tr>`;
   });
 }
@@ -4247,791 +4557,670 @@ document.addEventListener("DOMContentLoaded", ()=>{
   document.getElementById("dashPillEvento")?.addEventListener("shown.bs.tab", dashboardRefresh);
   document.getElementById("dashPillRegion")?.addEventListener("shown.bs.tab", dashboardRefresh);
 });
-</script>
 
-<script>
-// =====================================================================
-//  COE MIDIS – AUTH + SYNC (Cloudflare Worker + D1)
-//  IMPORTANTE:
-//  1) Edita __API_CFG.baseUrl con tu Worker (ej.: https://tu-worker.tu-subdominio.workers.dev)
-//  2) En el Worker configura ALLOWED_ORIGINS para permitir tu GitHub Pages.
-//  3) Esto mantiene la lógica localStorage y agrega sincronización manual + auto-pull al login.
-// =====================================================================
 
-// === CONFIGURACIÓN ===
-const __API_CFG = {
-  // Toma el Worker desde patch_cf_sync.js (window.__API_CFG.baseUrl) o usa el default
-  baseUrl: (window.__API_CFG && window.__API_CFG.baseUrl) ? String(window.__API_CFG.baseUrl) : "https://coe-midis-api.coemidis2.workers.dev",
-  // timeout de red (ms)
-  timeoutMs: 15000
-};
+/* ===================== GESTIÓN DE REPORTES (ADMIN) ===================== */
+let __gestCharts = { funnelRP:null, funnelRC:null, aging:null, obsMotivos:null };
 
-// Keys extra para Sync
-const __SYNC_KEYS = {
-  lastPull: "midis_sync_lastpull_v1",
-  hashMap: "midis_sync_hashmap_v1",
-  conflicts: "midis_sync_conflicts_v1",
-  deviceId: "midis_sync_deviceid_v1"
-};
-
-function __isApiConfigured(){
-  return !!(__API_CFG.baseUrl && __API_CFG.baseUrl.indexOf("TU-WORKER") === -1);
-}
-
-function __getDeviceId(){
-  let v = null;
-  try{ v = __lsGet(__SYNC_KEYS.deviceId); }catch(e){}
-  if(v) return v;
-  v = "dev_" + Math.random().toString(36).slice(2) + "_" + Date.now().toString(36);
-  try{ __lsSet(__SYNC_KEYS.deviceId, v); }catch(e){}
-  return v;
-}
-
-function __getLastPull(){
-  return __lsGet(__SYNC_KEYS.lastPull) || "1970-01-01T00:00:00.000Z";
-}
-function __setLastPull(v){
-  try{ __lsSet(__SYNC_KEYS.lastPull, v || __nowIso()); }catch(e){}
-}
-
-function __getHashMap(){
-  try{ return JSON.parse(__lsGet(__SYNC_KEYS.hashMap) || "{}"); }catch(e){ return {}; }
-}
-function __setHashMap(m){
-  try{ __lsSet(__SYNC_KEYS.hashMap, JSON.stringify(m || {})); }catch(e){}
-}
-
-// ---- Session/token helpers ----
-function __sessionLoad(){
-  try{ return JSON.parse(__lsGet(__AUTH_KEYS.session) || "null"); }catch(e){ return null; }
-}
-function __sessionSave(sess){
-  try{ __lsSet(__AUTH_KEYS.session, JSON.stringify(sess)); }catch(e){}
-}
-function __sessionClear(){
-  try{ __lsRemove(__AUTH_KEYS.session); }catch(e){}
-}
-
-function __tokenGet(){
-  const s = __sessionLoad();
-  return s && s.token ? String(s.token) : null;
-}
-
-function __jwtPayload(token){
+function __gest_parseDateAny(str){
+  if(!str) return null;
   try{
-    const parts = String(token || "").split(".");
-    if(parts.length !== 3) return null;
-    const p = parts[1].replace(/-/g,"+").replace(/_/g,"/");
-    const pad = p.length % 4 ? "=".repeat(4 - (p.length % 4)) : "";
-    const json = atob(p + pad);
-    return JSON.parse(json);
-  }catch(e){ return null; }
-}
-
-function __isJwtUsableOffline(token){
-  const p = __jwtPayload(token);
-  if(!p || !p.exp) return false;
-  const now = Math.floor(Date.now()/1000);
-  // margen 60s
-  return (now + 60) < Number(p.exp);
-}
-
-async function __api(path, opt){
-  const url = __API_CFG.baseUrl.replace(/\/+$/g, "") + path;
-  const method = (opt && opt.method) ? opt.method : "GET";
-  const token = opt && opt.token ? opt.token : null;
-  const bodyObj = opt && Object.prototype.hasOwnProperty.call(opt, "body") ? opt.body : undefined;
-
-  const headers = { "Content-Type": "application/json" };
-  if(token) headers["Authorization"] = "Bearer " + token;
-
-  const ctrl = new AbortController();
-  const t = setTimeout(function(){ try{ ctrl.abort(); }catch(e){} }, __API_CFG.timeoutMs);
-
-  let res = null;
-  let data = null;
+    const d = new Date(str);
+    if(!isNaN(d.getTime())) return d;
+  }catch(e){}
+  // Si viene YYYY-MM-DD
   try{
-    res = await fetch(url, {
-      method: method,
-      headers: headers,
-      body: bodyObj === undefined ? undefined : JSON.stringify(bodyObj),
-      signal: ctrl.signal
+    if(/^\d{4}-\d{2}-\d{2}$/.test(String(str))){
+      const d = new Date(str + "T00:00:00");
+      if(!isNaN(d.getTime())) return d;
+    }
+  }catch(e){}
+  return null;
+}
+function __gest_dateOnly(d){
+  if(!d || isNaN(d.getTime())) return null;
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+}
+function __gest_daysBetween(a,b){
+  const da = __gest_dateOnly(a);
+  const db = __gest_dateOnly(b);
+  if(!da || !db) return null;
+  const ms = db.getTime() - da.getTime();
+  return Math.floor(ms / (1000*60*60*24));
+}
+function __gest_median(nums){
+  const arr = (Array.isArray(nums)?nums:[]).filter(x=>typeof x==="number" && isFinite(x)).sort((a,b)=>a-b);
+  if(arr.length===0) return 0;
+  const mid = Math.floor(arr.length/2);
+  return (arr.length%2===1) ? arr[mid] : (arr[mid-1]+arr[mid])/2;
+}
+function __gest_fmt(n){
+  if(n==null || !isFinite(n)) return "—";
+  return String(Math.round(n*10)/10);
+}
+function __gest_safeText(x){
+  return (x==null) ? "" : String(x);
+}
+
+function __gest_getAuditLogs(){
+  try{
+    const raw = __lsGet(__AUTH_KEYS.audit) || "[]";
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? arr : [];
+  }catch(e){ return []; }
+}
+function __gest_lastActivityMap(){
+  const logs = __gest_getAuditLogs();
+  const map = {}; // codigo -> Date
+  logs.forEach(l=>{
+    const id = l?.entityId;
+    const at = __gest_parseDateAny(l?.at);
+    if(!id || !at) return;
+    const prev = map[id];
+    if(!prev || at > prev) map[id] = at;
+  });
+  return map;
+}
+
+function __gest_getBaseDate(em, baseField){
+  if(!em) return null;
+  if(baseField === "fechaHora") return __gest_parseDateAny(em.fechaHora);
+  if(baseField === "rpEnviadoEn") return __gest_parseDateAny(em.rpEnviadoEn);
+  // default fechaPeligro
+  return __gest_parseDateAny(em.fechaPeligro);
+}
+
+function __gest_getOpenStartDate(em){
+  // Para aging: preferimos registro RP (fechaHora). Si no hay, fechaPeligro, luego rpEnviadoEn.
+  return __gest_parseDateAny(em?.fechaHora) || __gest_parseDateAny(em?.fechaPeligro) || __gest_parseDateAny(em?.rpEnviadoEn);
+}
+
+function __gest_totalesMidis(danios){
+  // Reusar la lógica del dashboard si existe; fallback simple.
+  try{ return __dashTotalesMidis(danios); }catch(e){}
+  let usuarios=0, servicios=0;
+  try{
+    Object.keys(danios||{}).forEach(k=>{
+      const d = danios[k]||{};
+      usuarios += Number(d.usuariosAfectados||0);
+      servicios += Number(d.serviciosAfectados||0);
     });
-    try{ data = await res.json(); }catch(e){ data = null; }
-  } finally {
-    clearTimeout(t);
-  }
-  return { res: res, data: data };
+  }catch(e){}
+  return {usuarios, servicios};
 }
 
-// ---- UI inserts: net badge + sync button ----
-function __ensureSyncControls(){
-  const nameEl = document.getElementById("userNameTop");
-  if(!nameEl) return;
-  const bar = nameEl.parentElement;
-  if(!bar) return;
-
-  if(!document.getElementById("netBadge")){
-    const net = document.createElement("span");
-    net.id = "netBadge";
-    net.className = "badge text-bg-light border";
-    net.textContent = "Offline";
-    bar.appendChild(net);
-  }
-
-  if(!document.getElementById("syncPendBadge")){
-    const pend = document.createElement("span");
-    pend.id = "syncPendBadge";
-    pend.className = "badge text-bg-warning d-none";
-    pend.textContent = "Pendientes: 0";
-    bar.appendChild(pend);
-  }
-
-  if(!document.getElementById("btnSync")){
-    const btn = document.createElement("button");
-    btn.id = "btnSync";
-    btn.type = "button";
-    btn.className = "btn btn-sm btn-outline-primary";
-    btn.textContent = "Sincronizar";
-    bar.appendChild(btn);
-  }
+function __gest_classifyObs(text){
+  const t = (__gest_safeText(text)).toLowerCase();
+  if(!t.trim()) return "Sin texto";
+  if(t.includes("foto") || t.includes("eviden") || t.includes("adjunt") || t.includes("archivo")) return "Evidencia";
+  if(t.includes("ubigeo") || t.includes("distrit") || t.includes("provinc") || t.includes("departa") || t.includes("ubic")) return "Ubicación";
+  if(t.includes("dato") || t.includes("cifra") || t.includes("número") || t.includes("numero") || t.includes("cantidad") || t.includes("usuarios") || t.includes("servicios")) return "Datos";
+  if(t.includes("inconsist") || t.includes("coheren") || t.includes("no coincide") || t.includes("difiere")) return "Inconsistencia";
+  if(t.includes("redacc") || t.includes("ortograf") || t.includes("formato") || t.includes("estilo")) return "Redacción";
+  return "Otro";
 }
 
-function __setNetBadge(){
-  const net = document.getElementById("netBadge");
-  if(!net) return;
-  const online = !!navigator.onLine;
-  net.textContent = online ? "Online" : "Offline";
-  net.classList.remove("text-bg-light","text-bg-success","text-bg-danger");
-  net.classList.add(online ? "text-bg-success" : "text-bg-danger");
-}
-
-function __updateSyncUI(pending){
-  __setNetBadge();
-  const b = document.getElementById("syncPendBadge");
-  const btn = document.getElementById("btnSync");
-
-  const configured = __isApiConfigured();
-  const logged = !!currentUser;
-  const isCons = currentUser && currentUser.role === __ROLES.CONS;
-
-  if(btn){
-    btn.disabled = !(configured && logged);
-    btn.textContent = isCons ? "Actualizar" : "Sincronizar";
-  }
-
-  if(!b) return;
-  const n = Number(pending || 0);
-  b.textContent = "Pendientes: " + n;
-  b.classList.toggle("d-none", n <= 0);
-}
-
-async function __calcPending(){
-  try{
-    const map = __getHashMap();
-    const arr = Array.isArray(emergencias) ? emergencias : __loadEmergencias();
-    let pending = 0;
-    for(const e of arr){
-      const codigo = String(e && e.codigo ? e.codigo : "").trim();
-      if(!codigo) continue;
-      const h = await __sha256(JSON.stringify(e));
-      if(map[codigo] !== h) pending++;
+function __gest_rpCompleteness(em){
+  const req = [
+    {k:"fechaHora", label:"Fecha registro"},
+    {k:"fechaPeligro", label:"Fecha peligro"},
+    {k:"departamento", label:"Departamento"},
+    {k:"provincia", label:"Provincia"},
+    {k:"distrito", label:"Distrito"},
+    {k:"peligro", label:"Peligro"},
+    {k:"hechos", label:"Hechos"},
+    {k:"daniosMIDIS", label:"Daños MIDIS"}
+  ];
+  const missing = [];
+  req.forEach(r=>{
+    const v = em ? em[r.k] : null;
+    if(r.k==="daniosMIDIS"){
+      const ok = v && typeof v==="object" && Object.keys(v).length>0;
+      if(!ok) missing.push(r.label);
+      return;
     }
-    __updateSyncUI(pending);
-    return pending;
-  }catch(e){
-    __updateSyncUI(0);
-    return 0;
-  }
+    if(!__gest_safeText(v).trim()) missing.push(r.label);
+  });
+  const pct = (req.length - missing.length) / req.length;
+  return {pct, missing};
 }
 
-// ---- AUTH: override ----
-async function __login(email, password){
-  if(!__isApiConfigured()){
-    return { ok:false, msg:"Servidor no configurado. Edita __API_CFG.baseUrl (patch_cf_sync.js)." };
+function __gest_rcCompleteness(rc){
+  if(!rc) return {pct:0, missing:["Sin RC"]};
+  const req = [
+    {k:"acciones", label:"Acciones"},
+    {k:"daniosMIDIS", label:"Daños MIDIS"},
+    {k:"elaboradoPor", label:"Elaborado por"}
+  ];
+  const missing=[];
+  req.forEach(r=>{
+    const v = rc[r.k];
+    if(r.k==="acciones"){
+      const ok = Array.isArray(v) && v.length>0;
+      if(!ok) missing.push(r.label);
+      return;
+    }
+    if(r.k==="daniosMIDIS"){
+      const ok = v && typeof v==="object" && Object.keys(v).length>0;
+      if(!ok) missing.push(r.label);
+      return;
+    }
+    if(!__gest_safeText(v).trim()) missing.push(r.label);
+  });
+  const pct = (req.length - missing.length) / req.length;
+  return {pct, missing};
+}
+
+function __gest_buildSelectOptions(selectEl, options, allLabel="(Todos)"){
+  if(!selectEl) return;
+  const cur = selectEl.value;
+  selectEl.innerHTML = "";
+  const optAll = document.createElement("option");
+  optAll.value = "";
+  optAll.textContent = allLabel;
+  selectEl.appendChild(optAll);
+  (options||[]).forEach(v=>{
+    const o = document.createElement("option");
+    o.value = v;
+    o.textContent = v;
+    selectEl.appendChild(o);
+  });
+  // restore if possible
+  if(cur && [...selectEl.options].some(o=>o.value===cur)) selectEl.value = cur;
+}
+
+function __gest_populateFilters(){
+  // Registradores desde usuarios + emergencias
+  const users = __loadUsers ? __loadUsers() : [];
+  const regsFromUsers = users.filter(u=>u?.role===__ROLES.REG).map(u=>u.fullName).filter(Boolean);
+  const regsFromData = (Array.isArray(emergencias)?emergencias:[]).map(e=>e?.elaboradoPor).filter(Boolean);
+  const regs = Array.from(new Set([...regsFromUsers, ...regsFromData])).sort((a,b)=>a.localeCompare(b));
+  __gest_buildSelectOptions(document.getElementById("gestRegistrador"), regs, "(Todos)");
+
+  // Regiones
+  const regions = Array.from(new Set((Array.isArray(emergencias)?emergencias:[]).map(e=>e?.departamento).filter(Boolean))).sort((a,b)=>a.localeCompare(b));
+  __gest_buildSelectOptions(document.getElementById("gestRegion"), regions, "(Todas)");
+}
+
+function __gest_destroyChart(ch){
+  try{ ch && ch.destroy && ch.destroy(); }catch(e){}
+}
+function __gest_renderBarChart(canvasId, labels, dsLabel, dataArr, existingRefKey){
+  const el = document.getElementById(canvasId);
+  if(!el || typeof Chart==="undefined") return;
+
+  __gest_destroyChart(__gestCharts[existingRefKey]);
+  __gestCharts[existingRefKey] = new Chart(el, {
+    type: "bar",
+    data: {
+      labels: labels,
+      datasets: [{ label: dsLabel, data: dataArr }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: { y: { beginAtZero: true } }
+    }
+  });
+}
+
+function __gest_renderGestionReportes(){
+  try{ if(!(__isAdmin && __isAdmin())) return; }catch(e){}
+
+  __gest_populateFilters();
+
+  const desde = __gest_parseDateAny(document.getElementById("gestDesde")?.value);
+  const hasta = __gest_parseDateAny(document.getElementById("gestHasta")?.value);
+  const reg = document.getElementById("gestRegistrador")?.value || "";
+  const region = document.getElementById("gestRegion")?.value || "";
+  const baseField = document.getElementById("gestBaseFecha")?.value || "fechaPeligro";
+  const soloNoCerrados = !!document.getElementById("gestSoloNoCerrados")?.checked;
+  const inactDias = Math.max(1, parseInt(document.getElementById("gestInactDias")?.value || "3",10) || 3);
+
+  const now = new Date();
+  const lastMap = __gest_lastActivityMap();
+
+  // Filtrado base
+  const all = Array.isArray(emergencias) ? emergencias.slice() : [];
+  let list = all.filter(em=>{
+    if(!em) return false;
+    if(soloNoCerrados && em.cerrada) return false;
+    if(reg && __gest_safeText(em.elaboradoPor) !== reg) return false;
+    if(region && __gest_safeText(em.departamento) !== region) return false;
+
+    // filtro fechas
+    const bd = __gest_getBaseDate(em, baseField);
+    if(desde && (!bd || bd < __gest_dateOnly(desde))) return false;
+    if(hasta && (!bd || bd > new Date(__gest_dateOnly(hasta).getTime() + 24*60*60*1000 - 1))) return false;
+    return true;
+  });
+
+  // KPI
+  const total = list.length;
+  const abiertas = list.filter(e=>!e.cerrada).length;
+  const cerradas = list.filter(e=>!!e.cerrada).length;
+
+  const rpPend = list.filter(e=>e.rpAprobEstado==="Pendiente").length;
+  const rpObs  = list.filter(e=>e.rpAprobEstado==="Observado").length;
+
+  // RC abiertos: contar RC no aprobados en el conjunto filtrado
+  let rcAbiertos = 0;
+  list.forEach(e=>{
+    if(!Array.isArray(e.rcReportes)) return;
+    e.rcReportes.forEach(rc=>{
+      if(rc && (rc.aprobEstado==="Borrador" || rc.aprobEstado==="Pendiente" || rc.aprobEstado==="Observado")) rcAbiertos++;
+    });
+  });
+
+  // Inactividad
+  const inactivas = list.filter(e=>{
+    if(e.cerrada) return false;
+    const last = lastMap[e.codigo] || __gest_parseDateAny(e.cierreSolicitadoEn) || __gest_parseDateAny(e.rpEnviadoEn) || __gest_parseDateAny(e.fechaHora) || __gest_parseDateAny(e.fechaPeligro);
+    if(!last) return false;
+    const d = __gest_daysBetween(last, now);
+    return (d!=null && d>=inactDias);
+  }).length;
+
+  // Promedio días abierto
+  const diasAbiertosArr = list.filter(e=>!e.cerrada).map(e=>{
+    const start = __gest_getOpenStartDate(e);
+    const d = start ? __gest_daysBetween(start, now) : null;
+    return (d==null?null:d);
+  }).filter(x=>x!=null);
+  const promDias = diasAbiertosArr.length ? (diasAbiertosArr.reduce((a,b)=>a+b,0)/diasAbiertosArr.length) : 0;
+
+  const setText = (id,val)=>{ const el=document.getElementById(id); if(el) el.textContent = String(val); };
+  setText("gestKpiTotal", total);
+  setText("gestKpiAbiertas", abiertas);
+  setText("gestKpiCerradas", cerradas);
+  setText("gestKpiInactivas", inactivas);
+  setText("gestKpiRpPendiente", rpPend);
+  setText("gestKpiRpObservado", rpObs);
+  setText("gestKpiRcAbiertos", rcAbiertos);
+  setText("gestKpiPromDias", __gest_fmt(promDias));
+
+  // Embudo RP
+  const rpStates = ["Borrador","Pendiente","Observado","Aprobado"];
+  const rpCounts = rpStates.map(st=>list.filter(e=>(e.rpAprobEstado||"Borrador")===st).length);
+  __gest_renderBarChart("gestChartFunnelRP", rpStates.map(s=>({Borrador:"Borrador",Pendiente:"Por aprobar",Observado:"Observado",Aprobado:"Aprobado"}[s])), "RP", rpCounts, "funnelRP");
+
+  // Embudo RC (último)
+  const rcStates = ["Sin RC","Borrador","Pendiente","Observado","Aprobado"];
+  const rcCounts = rcStates.map(st=>{
+    return list.filter(e=>{
+      const last = Array.isArray(e.rcReportes) && e.rcReportes.length ? e.rcReportes[e.rcReportes.length-1] : null;
+      if(!last) return st==="Sin RC";
+      return (last.aprobEstado||"Borrador")===st;
+    }).length;
+  });
+  __gest_renderBarChart("gestChartFunnelRC", rcStates.map(s=>({ "Sin RC":"Sin RC", Borrador:"Borrador",Pendiente:"Por aprobar",Observado:"Observado",Aprobado:"Aprobado"}[s])), "RC", rcCounts, "funnelRC");
+
+  // Aging histogram
+  const openList = list.filter(e=>!e.cerrada);
+  const agingBuckets = [
+    {k:"0-2", a:0, b:2},
+    {k:"3-7", a:3, b:7},
+    {k:"8-15", a:8, b:15},
+    {k:"16+", a:16, b:99999}
+  ];
+  const agingCounts = agingBuckets.map(b=>{
+    return openList.filter(e=>{
+      const start = __gest_getOpenStartDate(e);
+      const d = start ? __gest_daysBetween(start, now) : null;
+      if(d==null) return false;
+      return d>=b.a && d<=b.b;
+    }).length;
+  });
+  __gest_renderBarChart("gestChartAging", agingBuckets.map(x=>x.k), "Casos", agingCounts, "aging");
+
+  // Ranking tabla
+  const tbody = document.getElementById("gestAgingTbody");
+  if(tbody){
+    const rows = openList.map(e=>{
+      const start = __gest_getOpenStartDate(e);
+      const diasOpen = start ? (__gest_daysBetween(start, now) ?? 0) : 0;
+      const last = lastMap[e.codigo] || __gest_parseDateAny(e.cierreSolicitadoEn) || __gest_parseDateAny(e.rpEnviadoEn) || __gest_parseDateAny(e.fechaHora) || __gest_parseDateAny(e.fechaPeligro);
+      const diasInact = last ? (__gest_daysBetween(last, now) ?? 0) : 0;
+      const lastRC = (Array.isArray(e.rcReportes) && e.rcReportes.length) ? (e.rcReportes[e.rcReportes.length-1]?.aprobEstado || "Borrador") : "Sin RC";
+      return {e, diasOpen, diasInact, lastRC};
+    }).sort((a,b)=> (b.diasOpen-a.diasOpen) || (b.diasInact-a.diasInact));
+
+    tbody.innerHTML = rows.slice(0, 200).map(r=>{
+      const warn = (r.diasInact>=inactDias) ? ' <span class="badge text-bg-warning">sin mov.</span>' : '';
+      const cierre = (r.e.cierreEstado||"") || (r.e.cerrada ? "Aprobado" : "");
+      const cierreTxt = r.e.cerrada ? "Cerrada" : (cierre || "—");
+      return `<tr>
+        <td>${__gest_safeText(r.e.codigo)}</td>
+        <td>${__gest_safeText(r.e.departamento)}</td>
+        <td>${__gest_safeText(r.e.elaboradoPor)}</td>
+        <td class="text-end">${r.diasOpen}</td>
+        <td class="text-end">${r.diasInact}${warn}</td>
+        <td>${__gest_safeText(r.e.rpAprobEstado||"Borrador")}</td>
+        <td>${__gest_safeText(r.lastRC)}</td>
+        <td>${__gest_safeText(cierreTxt)}</td>
+      </tr>`;
+    }).join("");
   }
 
-  if(!navigator.onLine){
-    // offline: solo si ya hay sesión válida en cache
-    const sess = __sessionLoad();
-    if(sess && sess.token && sess.user && String(sess.user.email).toLowerCase() === String(email).toLowerCase() && __isJwtUsableOffline(sess.token)){
-      currentUser = sess.user;
-      return { ok:true, user: currentUser, token: sess.token, offline:true };
-    }
-    return { ok:false, msg:"Sin conexión. Conéctate a internet para iniciar sesión." };
-  }
-
-  try{
-    const out = await __api("/auth/login", { method:"POST", body:{ email: email, password: password } });
-    const res = out.res;
-    const data = out.data;
-
-    if(!res || !res.ok || !data || !data.token){
-      const err = data && data.error ? data.error : "login_failed";
-      if(err === "invalid_credentials") return { ok:false, msg:"Usuario o password incorrecto." };
-      return { ok:false, msg:"No se pudo iniciar sesión (" + err + ")." };
-    }
-
-    const u = data.user || {};
-    const user = {
-      id: u.email,
-      fullName: u.full_name || u.email,
-      email: u.email,
-      role: u.role,
-      active: true,
-      forceChangePassword: !!u.must_change
+  // Backlog por registrador
+  const backlogBody = document.getElementById("gestBacklogTbody");
+  if(backlogBody){
+    const map = {}; // name -> stats
+    const touch = (name)=>{
+      const key = name || "(Sin asignar)";
+      if(!map[key]) map[key] = {name:key, open:0, rpPend:0, rpObs:0, rcOpen:0, cierrePend:0, inact:0};
+      return map[key];
     };
 
-    currentUser = user;
-    __sessionSave({ token: data.token, user: user, at: __nowIso() });
-    try{ __audit("LOGIN", "session", user.email, { remote:true }); }catch(e){}
+    openList.forEach(e=>{
+      const s = touch(e.elaboradoPor);
+      s.open++;
+      if(e.rpAprobEstado==="Pendiente") s.rpPend++;
+      if(e.rpAprobEstado==="Observado") s.rpObs++;
+      if(e.cierreEstado==="Pendiente"){
+        const who = e.cierreSolicitadoPor || e.elaboradoPor;
+        touch(who).cierrePend++;
+      }
+      const last = lastMap[e.codigo] || __gest_parseDateAny(e.cierreSolicitadoEn) || __gest_parseDateAny(e.rpEnviadoEn) || __gest_parseDateAny(e.fechaHora) || __gest_parseDateAny(e.fechaPeligro);
+      const diasInact = last ? (__gest_daysBetween(last, now) ?? 0) : 0;
+      if(diasInact>=inactDias) s.inact++;
 
-    return { ok:true, user: user, token: data.token };
-  }catch(e){
-    return { ok:false, msg:"Error de red al iniciar sesión." };
-  }
-}
-
-async function __bootstrapAuth(){
-  __ensureSyncControls();
-  __setNetBadge();
-
-  const sess = __sessionLoad();
-  if(sess && sess.token && sess.user){
-    // Validar token online si se puede
-    if(navigator.onLine && __isApiConfigured()){
-      try{
-        const out = await __api("/auth/me", { method:"GET", token: sess.token });
-        if(!out.res || !out.res.ok){
-          __sessionClear();
-          currentUser = null;
-          __setScreens("login");
-          return;
+      // RC abiertos por autor del RC
+      (e.rcReportes||[]).forEach(rc=>{
+        if(!rc) return;
+        if(rc.aprobEstado==="Borrador" || rc.aprobEstado==="Pendiente" || rc.aprobEstado==="Observado"){
+          touch(rc.elaboradoPor || e.elaboradoPor).rcOpen++;
         }
-        // refresca rol/nombre por si cambió
-        const me = out.data && out.data.user ? out.data.user : null;
-        if(me){
-          sess.user.role = me.role || sess.user.role;
-          sess.user.fullName = me.name || sess.user.fullName;
-          __sessionSave(sess);
-        }
-      }catch(e){
-        // si falla por red, seguimos con cache solo si token no expira pronto
-        if(!__isJwtUsableOffline(sess.token)){
-          __sessionClear();
-          currentUser = null;
-          __setScreens("login");
-          return;
-        }
-      }
-    } else {
-      if(!__isJwtUsableOffline(sess.token)){
-        __sessionClear();
-        currentUser = null;
-        __setScreens("login");
-        return;
-      }
-    }
-
-    currentUser = sess.user;
-
-    if(currentUser && currentUser.forceChangePassword){
-      __setScreens("pw");
-      return;
-    }
-
-    __setScreens("app");
-    __applyRoleAccess();
-    try{ __initAppData(); }catch(e){}
-
-    // Auto pull al iniciar (opción A)
-    setTimeout(function(){
-      __syncPullAuto();
-    }, 250);
-
-    return;
-  }
-
-  __setScreens("login");
-}
-
-async function __handleLogin(){
-  __setLoginMsg("");
-  const email = (document.getElementById("loginUser") && document.getElementById("loginUser").value ? document.getElementById("loginUser").value : "").trim();
-  const pass = (document.getElementById("loginPass") && document.getElementById("loginPass").value ? document.getElementById("loginPass").value : "");
-  if(!email || !pass){
-    __setLoginMsg("Ingrese usuario y password.");
-    return;
-  }
-
-  const r = await __login(email, pass);
-  if(!r.ok){
-    __setLoginMsg(r.msg);
-    return;
-  }
-
-  if(r.user && r.user.forceChangePassword){
-    __setScreens("pw");
-  }else{
-    __setScreens("app");
-    __applyRoleAccess();
-    try{ __initAppData(); }catch(e){}
-
-    // Auto pull post-login
-    setTimeout(function(){
-      __syncPullAuto();
-    }, 250);
-  }
-}
-
-async function __handleChangePassword(){
-  __setPwMsg("");
-  const p1 = (document.getElementById("pwNew") && document.getElementById("pwNew").value) ? document.getElementById("pwNew").value : "";
-  const p2 = (document.getElementById("pwNew2") && document.getElementById("pwNew2").value) ? document.getElementById("pwNew2").value : "";
-
-  if(p1.length < 10){
-    __setPwMsg("El password debe tener mínimo 10 caracteres.");
-    return;
-  }
-  if(p1 !== p2){
-    __setPwMsg("Los passwords no coinciden.");
-    return;
-  }
-
-  const token = __tokenGet();
-  if(!token){
-    __setPwMsg("Sesión inválida.");
-    __sessionClear();
-    currentUser = null;
-    __setScreens("login");
-    return;
-  }
-
-  if(!navigator.onLine){
-    __setPwMsg("Para cambiar clave necesitas internet.");
-    return;
-  }
-
-  try{
-    const out = await __api("/auth/change_password", { method:"POST", token: token, body:{ new_password: p1 } });
-    if(!out.res || !out.res.ok){
-      const err = out.data && out.data.error ? out.data.error : "change_failed";
-      __setPwMsg("No se pudo cambiar clave (" + err + ").");
-      return;
-    }
-
-    // actualizar cache
-    const sess = __sessionLoad() || {};
-    if(sess.user) sess.user.forceChangePassword = false;
-    __sessionSave(sess);
-    if(currentUser) currentUser.forceChangePassword = false;
-
-    try{ __audit("CHANGE_PASSWORD", "user", currentUser ? currentUser.email : null, { remote:true }); }catch(e){}
-
-    __setScreens("app");
-    __applyRoleAccess();
-
-  }catch(e){
-    __setPwMsg("Error de red al cambiar clave.");
-  }
-}
-
-function __logout(){
-  try{ __audit("LOGOUT", "session", currentUser ? currentUser.email : null, { remote:true }); }catch(e){}
-  currentUser = null;
-  __sessionClear();
-  __setScreens("login");
-  __updateSyncUI(0);
-}
-
-// ---- ADMIN: override usuarios (server) ----
-function __roleTagRemote(role){
-  if(role === __ROLES.ADMIN) return '<span class="badge text-bg-dark">Administrador</span>';
-  if(role === __ROLES.REG) return '<span class="badge text-bg-primary">Registrador</span>';
-  return '<span class="badge text-bg-secondary">Consulta</span>';
-}
-
-async function __adminFetchUsers(){
-  const token = __tokenGet();
-  if(!token) return [];
-  if(!navigator.onLine) return [];
-  const out = await __api("/admin/users", { method:"GET", token: token });
-  if(!out.res || !out.res.ok || !out.data) return [];
-  return Array.isArray(out.data.users) ? out.data.users : [];
-}
-
-function __renderUsersTable(users){
-  const tbody = document.getElementById("admUsersTbody");
-  if(!tbody) return;
-  tbody.innerHTML = "";
-
-  const all = Array.isArray(users) ? users : [];
-  const q = (document.getElementById("admUserSearch")?.value || "").trim().toLowerCase();
-  const arr = !q ? all : all.filter(u=>{
-    const a = String(u.full_name || "").toLowerCase();
-    const b = String(u.email || "").toLowerCase();
-    return a.includes(q) || b.includes(q);
-  });
-
-  const hint = document.getElementById("admUsersHint");
-  if(hint){
-    hint.textContent = all.length ? ("Mostrando " + arr.length + " de " + all.length) : "";
-  }
-
-  if(arr.length === 0){
-    tbody.innerHTML = '<tr><td colspan="5" class="text-muted">Sin resultados.</td></tr>';
-    return;
-  }
-
-  for(const u of arr){
-    const active = (Number(u.active) === 1) || (u.active === true);
-    const estado = active ? '<span class="badge text-bg-success">Activo</span>' : '<span class="badge text-bg-danger">Inactivo</span>';
-    const btnToggle = '<button class="btn btn-sm btn-outline-' + (active ? 'danger' : 'success') + '" data-email-toggle="' + (u.email||'') + '" data-active="' + (active ? '1' : '0') + '">' + (active ? 'Desactivar' : 'Activar') + '</button>';
-    const btnReset = '<button class="btn btn-sm btn-outline-secondary" data-email-reset="' + (u.email||'') + '">Reset clave</button>';
-
-    tbody.innerHTML += (
-      '<tr>' +
-        '<td>' + (u.full_name||'') + '</td>' +
-        '<td>' + (u.email||'') + '</td>' +
-        '<td>' + __roleTagRemote(u.role) + '</td>' +
-        '<td>' + estado + '</td>' +
-        '<td class="d-flex gap-1">' + btnToggle + btnReset + '</td>' +
-      '</tr>'
-    );
-  }
-
-  // listeners
-  tbody.querySelectorAll('[data-email-toggle]').forEach(function(b){
-    b.addEventListener('click', async function(){
-      const email = b.getAttribute('data-email-toggle');
-      const cur = b.getAttribute('data-active') === '1';
-      const token = __tokenGet();
-      if(!token) return;
-      if(!navigator.onLine){ alert('Sin internet.'); return; }
-      const out = await __api('/admin/users/toggle', { method:'POST', token: token, body:{ email: email, active: !cur } });
-      if(!out.res || !out.res.ok){
-        alert('No se pudo actualizar usuario.');
-        return;
-      }
-      const users = await __adminFetchUsers();
-      __renderUsersTable(users);
-    });
-  });
-
-  tbody.querySelectorAll('[data-email-reset]').forEach(function(b){
-    b.addEventListener('click', async function(){
-      const email = b.getAttribute('data-email-reset');
-      const token = __tokenGet();
-      if(!token) return;
-      if(!navigator.onLine){ alert('Sin internet.'); return; }
-      const out = await __api('/admin/users/reset', { method:'POST', token: token, body:{ email: email } });
-      if(!out.res || !out.res.ok || !out.data){
-        alert('No se pudo resetear la clave.');
-        return;
-      }
-
-      const box = document.getElementById('admCreatedBox');
-      const pass = document.getElementById('admTempPass');
-      const usr  = document.getElementById('admTempUser');
-      if(box && pass && usr){
-        box.classList.remove('d-none');
-        pass.textContent = out.data.temp_password || '';
-        usr.textContent = email;
-      }
-
-      const users = await __adminFetchUsers();
-      __renderUsersTable(users);
-    });
-  });
-}
-
-async function __createUserFromAdmin(){
-  const fullName = (document.getElementById('admFullName') && document.getElementById('admFullName').value ? document.getElementById('admFullName').value : '').trim();
-  const email = (document.getElementById('admEmail') && document.getElementById('admEmail').value ? document.getElementById('admEmail').value : '').trim().toLowerCase();
-  const role  = (document.getElementById('admRole') && document.getElementById('admRole').value) ? document.getElementById('admRole').value : __ROLES.REG;
-
-  if(!fullName || !email){
-    alert('Complete nombre y correo.');
-    return;
-  }
-
-  const token = __tokenGet();
-  if(!token){ alert('Sesión inválida.'); return; }
-  if(!navigator.onLine){ alert('Sin internet.'); return; }
-
-  const out = await __api('/admin/users', { method:'POST', token: token, body:{ email: email, full_name: fullName, role: role } });
-  if(!out.res || !out.res.ok || !out.data){
-    const err = out.data && out.data.error ? out.data.error : 'create_failed';
-    alert('No se pudo crear usuario (' + err + ').');
-    return;
-  }
-
-  const box = document.getElementById('admCreatedBox');
-  const pass = document.getElementById('admTempPass');
-  const usr  = document.getElementById('admTempUser');
-  if(box && pass && usr){
-    box.classList.remove('d-none');
-    pass.textContent = out.data.temp_password || '';
-    usr.textContent = email;
-  }
-
-  if(document.getElementById('admFullName')) document.getElementById('admFullName').value = '';
-  if(document.getElementById('admEmail')) document.getElementById('admEmail').value = '';
-  if(document.getElementById('admRole')) document.getElementById('admRole').value = __ROLES.REG;
-
-  const users = await __adminFetchUsers();
-  __renderUsersTable(users);
-}
-
-// ---- SYNC ----
-async function __syncPush(){
-  if(!__isApiConfigured()) throw new Error('server_not_configured');
-  if(!navigator.onLine) throw new Error('offline');
-
-  const token = __tokenGet();
-  if(!token) throw new Error('no_token');
-
-  if(currentUser && currentUser.role === __ROLES.CONS){
-    return { ok:true, acked:[], skipped:true };
-  }
-
-  const map = __getHashMap();
-  const arr = Array.isArray(emergencias) ? emergencias : __loadEmergencias();
-  const deviceId = __getDeviceId();
-
-  const toSend = [];
-  for(const e of arr){
-    const codigo = String(e && e.codigo ? e.codigo : '').trim();
-    if(!codigo) continue;
-    const h = await __sha256(JSON.stringify(e));
-    if(map[codigo] !== h){
-      try{ e.estado_sync = 'Pendiente'; }catch(_e){}
-      const now = __nowIso();
-      toSend.push({
-        codigo: codigo,
-        payload: e,
-        hash: h,
-        created_at: e.createdAt || e.fechaRegistro || now,
-        updated_at: now,
-        device_id: deviceId
       });
-    }
+    });
+
+    const rows = Object.values(map).sort((a,b)=> (b.open-a.open) || a.name.localeCompare(b.name));
+    backlogBody.innerHTML = rows.map(r=>`<tr>
+      <td>${__gest_safeText(r.name)}</td>
+      <td class="text-end">${r.open}</td>
+      <td class="text-end">${r.rpPend}</td>
+      <td class="text-end">${r.rpObs}</td>
+      <td class="text-end">${r.rcOpen}</td>
+      <td class="text-end">${r.cierrePend}</td>
+      <td class="text-end">${r.inact}</td>
+    </tr>`).join("");
   }
 
-  if(toSend.length === 0) return { ok:true, acked:[], empty:true };
+  // SLA
+  const slaBody = document.getElementById("gestSlaTbody");
+  if(slaBody){
+    const measures = [];
 
-  const batchSize = 150;
-  const allAcked = [];
-  const allConf = [];
-  const allDen = [];
+    const addMeasure = (name, vals)=>{
+      const v = vals.filter(x=>typeof x==="number" && isFinite(x));
+      const avg = v.length ? v.reduce((a,b)=>a+b,0)/v.length : 0;
+      measures.push({name, avg, n:v.length});
+    };
 
-  for(let i=0;i<toSend.length;i+=batchSize){
-    const batch = toSend.slice(i, i+batchSize);
-    const out = await __api('/sync/push', { method:'POST', token: token, body:{ records: batch } });
-    if(!out.res || !out.res.ok){
-      const err = out.data && out.data.error ? out.data.error : 'push_failed';
-      throw new Error(err);
-    }
+    const rpRegToEnv = [];
+    const rpEnvToDec = [];
+    const cierreSolToApr = [];
+    const rcRegToEnv = [];
+    const rcEnvToDec = [];
 
-    const acked = out.data && Array.isArray(out.data.acked) ? out.data.acked : [];
-    const conf  = out.data && Array.isArray(out.data.conflicts) ? out.data.conflicts : [];
-    const den   = out.data && Array.isArray(out.data.denied) ? out.data.denied : [];
+    list.forEach(e=>{
+      const fReg = __gest_parseDateAny(e.fechaHora) || __gest_parseDateAny(e.fechaPeligro);
+      const fEnv = __gest_parseDateAny(e.rpEnviadoEn);
+      const fDec = __gest_parseDateAny(e.rpAprobadoEn) || __gest_parseDateAny(e.rpObsAt);
+      if(fReg && fEnv){
+        const d = __gest_daysBetween(fReg, fEnv);
+        if(d!=null && d>=0) rpRegToEnv.push(d);
+      }
+      if(fEnv && fDec){
+        const d = __gest_daysBetween(fEnv, fDec);
+        if(d!=null && d>=0) rpEnvToDec.push(d);
+      }
 
-    for(const c of acked){
-      allAcked.push(c);
-      // actualizar mapa local con hash del batch
-      for(const r of batch){
-        if(r.codigo === c){
-          map[c] = r.hash;
-          break;
+      const cSol = __gest_parseDateAny(e.cierreSolicitadoEn);
+      const cApr = __gest_parseDateAny(e.cierreAprobadoEn);
+      if(cSol && cApr){
+        const d = __gest_daysBetween(cSol, cApr);
+        if(d!=null && d>=0) cierreSolToApr.push(d);
+      }
+
+      (e.rcReportes||[]).forEach(rc=>{
+        const rReg = __gest_parseDateAny(rc.fechaRegistro);
+        const rEnv = __gest_parseDateAny(rc.enviadoEn);
+        const rDec = __gest_parseDateAny(rc.aprobadoEn) || __gest_parseDateAny(rc.obsAt);
+        if(rReg && rEnv){
+          const d = __gest_daysBetween(rReg, rEnv);
+          if(d!=null && d>=0) rcRegToEnv.push(d);
         }
-      }
-      // marcar como sincronizado en la data local
-      for(const e of arr){
-        if(e && String(e.codigo||'').trim() === c){
-          try{ e.estado_sync = 'Sincronizado'; }catch(_e){}
-          break;
+        if(rEnv && rDec){
+          const d = __gest_daysBetween(rEnv, rDec);
+          if(d!=null && d>=0) rcEnvToDec.push(d);
         }
+      });
+    });
+
+    addMeasure("RP: Registro → Envío a aprobación", rpRegToEnv);
+    addMeasure("RP: Envío → Decisión (Aprobado/Observado)", rpEnvToDec);
+    addMeasure("RC: Registro → Envío a aprobación", rcRegToEnv);
+    addMeasure("RC: Envío → Decisión (Aprobado/Observado)", rcEnvToDec);
+    addMeasure("Cierre: Solicitud → Aprobación", cierreSolToApr);
+
+    slaBody.innerHTML = measures.map(m=>`<tr>
+      <td>${m.name}</td>
+      <td class="text-end">${__gest_fmt(m.avg)}</td>
+      <td class="text-end">${m.n}</td>
+    </tr>`).join("");
+  }
+
+  // Observaciones motivos
+  const motivoCounts = {};
+  const inc = (k)=>{ motivoCounts[k]=(motivoCounts[k]||0)+1; };
+  list.forEach(e=>{
+    if(e.rpAprobEstado==="Observado" && e.rpObs) inc(__gest_classifyObs(e.rpObs));
+    (e.rcReportes||[]).forEach(rc=>{
+      if(rc && rc.aprobEstado==="Observado" && rc.obs) inc(__gest_classifyObs(rc.obs));
+    });
+  });
+  const motivoLabels = Object.keys(motivoCounts).sort((a,b)=>motivoCounts[b]-motivoCounts[a]).slice(0,8);
+  const motivoData = motivoLabels.map(k=>motivoCounts[k]);
+  __gest_renderBarChart("gestChartObsMotivos", motivoLabels, "Observaciones", motivoData, "obsMotivos");
+
+  // Checklist incompletos
+  const incBody = document.getElementById("gestIncompletosTbody");
+  if(incBody){
+    const rows = openList.map(e=>{
+      const rp = __gest_rpCompleteness(e);
+      const last = (Array.isArray(e.rcReportes) && e.rcReportes.length) ? e.rcReportes[e.rcReportes.length-1] : null;
+      const rc = __gest_rcCompleteness(last);
+      const missing = [...(rp.missing||[]).slice(0,4), ...(rc.missing||[]).slice(0,3)].filter(Boolean);
+      return {e, rpPct: rp.pct, rcPct: rc.pct, missing};
+    }).filter(r=> (r.rpPct<1 || r.rcPct<1))
+      .sort((a,b)=> (a.rpPct+a.rcPct)-(b.rpPct+b.rcPct));
+
+    incBody.innerHTML = rows.slice(0, 80).map(r=>`<tr>
+      <td>${__gest_safeText(r.e.codigo)}</td>
+      <td>${__gest_safeText(r.e.departamento)}</td>
+      <td>${__gest_safeText(r.e.elaboradoPor)}</td>
+      <td class="text-end">${Math.round(r.rpPct*100)}%</td>
+      <td class="text-end">${Math.round(r.rcPct*100)}%</td>
+      <td>${__gest_safeText(r.missing.join(", "))}</td>
+    </tr>`).join("");
+    if(rows.length===0) incBody.innerHTML = `<tr><td colspan="6" class="text-center text-muted">Sin faltantes relevantes en el filtro.</td></tr>`;
+  }
+
+  // Priorización y matriz
+  const priBody = document.getElementById("gestPrioridadTbody");
+  const quad00 = document.getElementById("gestQuad00");
+  const quad01 = document.getElementById("gestQuad01");
+  const quad10 = document.getElementById("gestQuad10");
+  const quad11 = document.getElementById("gestQuad11");
+  if(priBody){
+    const rows = openList.map(e=>{
+      const t = __gest_totalesMidis(e.daniosMIDIS);
+      const start = __gest_getOpenStartDate(e);
+      const dOpen = start ? (__gest_daysBetween(start, now) ?? 0) : 0;
+      return {e, usuarios:t.usuarios||0, servicios:t.servicios||0, dias:dOpen};
+    });
+
+    const medU = __gest_median(rows.map(x=>x.usuarios));
+    const medD = __gest_median(rows.map(x=>x.dias));
+
+    let q00=0,q01=0,q10=0,q11=0;
+    rows.forEach(r=>{
+      const impactHigh = r.usuarios >= medU;
+      const urgHigh = r.dias >= medD;
+      if(impactHigh && urgHigh) q11++;
+      else if(impactHigh && !urgHigh) q10++;
+      else if(!impactHigh && urgHigh) q01++;
+      else q00++;
+    });
+    if(quad00) quad00.textContent = String(q00);
+    if(quad01) quad01.textContent = String(q01);
+    if(quad10) quad10.textContent = String(q10);
+    if(quad11) quad11.textContent = String(q11);
+
+    rows.sort((a,b)=> (b.usuarios-a.usuarios) || (b.dias-a.dias));
+    priBody.innerHTML = rows.slice(0, 50).map(r=>`<tr>
+      <td>${__gest_safeText(r.e.codigo)}</td>
+      <td>${__gest_safeText(r.e.departamento)}</td>
+      <td>${__gest_safeText(r.e.elaboradoPor)}</td>
+      <td class="text-end">${r.usuarios}</td>
+      <td class="text-end">${r.servicios}</td>
+      <td class="text-end">${r.dias}</td>
+    </tr>`).join("");
+    if(rows.length===0) priBody.innerHTML = `<tr><td colspan="6" class="text-center text-muted">Sin datos.</td></tr>`;
+  }
+
+  // Casos en riesgo
+  const riesgoBody = document.getElementById("gestRiesgoTbody");
+  if(riesgoBody){
+    const riskRows = [];
+    openList.forEach(e=>{
+      const start = __gest_getOpenStartDate(e);
+      const diasOpen = start ? (__gest_daysBetween(start, now) ?? 0) : 0;
+
+      // RP aprobado sin RC
+      if(e.rpAprobEstado==="Aprobado" && (!Array.isArray(e.rcReportes) || e.rcReportes.length===0)){
+        const ref = __gest_parseDateAny(e.rpAprobadoEn) || __gest_parseDateAny(e.rpEnviadoEn);
+        const d = ref ? (__gest_daysBetween(ref, now) ?? 0) : diasOpen;
+        if(d>=3) riskRows.push({e, regla:"RP aprobado sin RC", dias:d});
       }
-    }
 
-    for(const x of conf) allConf.push(x);
-    for(const x of den) allDen.push(x);
+      // Último RC observado
+      const last = (Array.isArray(e.rcReportes) && e.rcReportes.length) ? e.rcReportes[e.rcReportes.length-1] : null;
+      if(last && last.aprobEstado==="Observado"){
+        const ref = __gest_parseDateAny(last.obsAt);
+        const d = ref ? (__gest_daysBetween(ref, now) ?? 0) : diasOpen;
+        if(d>=3) riskRows.push({e, regla:"RC observado sin atención", dias:d});
+      }
+
+      // Cierre pendiente
+      if(e.cierreEstado==="Pendiente"){
+        const ref = __gest_parseDateAny(e.cierreSolicitadoEn);
+        const d = ref ? (__gest_daysBetween(ref, now) ?? 0) : diasOpen;
+        if(d>=2) riskRows.push({e, regla:"Cierre pendiente", dias:d});
+      }
+
+      // Abierto > 15
+      if(diasOpen>15){
+        riskRows.push({e, regla:"Caso abierto > 15 días", dias:diasOpen});
+      }
+    });
+
+    riskRows.sort((a,b)=>b.dias-a.dias);
+    riesgoBody.innerHTML = riskRows.slice(0, 120).map(r=>`<tr>
+      <td>${__gest_safeText(r.e.codigo)}</td>
+      <td>${__gest_safeText(r.e.departamento)}</td>
+      <td>${__gest_safeText(r.e.elaboradoPor)}</td>
+      <td>${__gest_safeText(r.regla)}</td>
+      <td class="text-end">${r.dias}</td>
+    </tr>`).join("");
+    if(riskRows.length===0) riesgoBody.innerHTML = `<tr><td colspan="5" class="text-center text-muted">Sin alertas en el filtro.</td></tr>`;
   }
-
-  __setHashMap(map);
-
-  if(allConf.length || allDen.length){
-    let old = [];
-    try{ old = JSON.parse(__lsGet(__SYNC_KEYS.conflicts) || '[]'); }catch(e){ old = []; }
-    old.push({ at: __nowIso(), conflicts: allConf, denied: allDen });
-    try{ __lsSet(__SYNC_KEYS.conflicts, JSON.stringify(old)); }catch(e){}
-  }
-
-  return { ok:true, acked: allAcked, conflicts: allConf, denied: allDen };
 }
 
-async function __syncPull(since){
-  if(!__isApiConfigured()) throw new Error('server_not_configured');
-  if(!navigator.onLine) throw new Error('offline');
+async function __gest_exportPdf(){
+  if(!(__isAdmin && __isAdmin())) return;
+  const root = document.getElementById("gestReportesContent");
+  if(!root) return;
 
-  const token = __tokenGet();
-  if(!token) throw new Error('no_token');
-
-  const s = since || __getLastPull();
-  const out = await __api('/sync/pull?since=' + encodeURIComponent(s) + '&limit=5000', { method:'GET', token: token });
-  if(!out.res || !out.res.ok){
-    const err = out.data && out.data.error ? out.data.error : 'pull_failed';
-    throw new Error(err);
-  }
-
-  const pulled = out.data && Array.isArray(out.data.records) ? out.data.records : [];
-  if(pulled.length === 0){
-    return { ok:true, records: [], newSince: s };
-  }
-
-  const map = __getHashMap();
-  let local = Array.isArray(emergencias) ? emergencias : __loadEmergencias();
-  const idx = {};
-  for(let i=0;i<local.length;i++){
-    const c = String(local[i] && local[i].codigo ? local[i].codigo : '').trim();
-    if(c) idx[c] = i;
-  }
-
-  let maxUpdated = s;
-  const conflicts = [];
-
-  for(const r of pulled){
-    const codigo = String(r && r.codigo ? r.codigo : '').trim();
-    if(!codigo) continue;
-
-    const serverPayload = r.payload;
-    const serverHash = String(r.hash || '');
-    const serverUpdated = String(r.updated_at || s);
-    if(serverUpdated > maxUpdated) maxUpdated = serverUpdated;
-
-    const i = idx[codigo];
-    if(i !== undefined){
-      const localHash = await __sha256(JSON.stringify(local[i]));
-      const lastSynced = map[codigo];
-      const localDirty = (lastSynced && localHash !== lastSynced);
-
-      if(localDirty && lastSynced && serverHash && serverHash !== lastSynced){
-        conflicts.push({ codigo: codigo, reason: 'both_modified', server_updated_at: serverUpdated });
-        continue;
-      }
-
-      try{ serverPayload.estado_sync = 'Sincronizado'; }catch(_e){}
-      local[i] = serverPayload;
-    }else{
-      try{ serverPayload.estado_sync = 'Sincronizado'; }catch(_e){}
-      local.push(serverPayload);
-      idx[codigo] = local.length - 1;
-    }
-
-    if(serverHash) map[codigo] = serverHash;
-  }
-
-  emergencias = local;
-  __saveEmergencias();
-  __setHashMap(map);
-  __setLastPull(maxUpdated);
-
-  if(conflicts.length){
-    let old = [];
-    try{ old = JSON.parse(__lsGet(__SYNC_KEYS.conflicts) || '[]'); }catch(e){ old = []; }
-    old.push({ at: __nowIso(), conflicts: conflicts, denied: [] });
-    try{ __lsSet(__SYNC_KEYS.conflicts, JSON.stringify(old)); }catch(e){}
-  }
-
-  try{ __recalcularCorrelativos(); }catch(e){}
-  try{ cargarTablaEmergencias(); }catch(e){}
-
-  return { ok:true, records: pulled, newSince: maxUpdated, conflicts: conflicts };
-}
-
-async function __syncAll(){
-  const btn = document.getElementById('btnSync');
-  if(btn) btn.disabled = true;
+  document.body.classList.add("exporting");
   try{
-    if(!__isApiConfigured()){
-      alert('Servidor no configurado. Edita __API_CFG.baseUrl (patch_cf_sync.js).');
-      return;
+    const scale = 2;
+    const canvas = await html2canvas(root, {scale, useCORS:true});
+    const imgData = canvas.toDataURL("image/png");
+    const { jsPDF } = window.jspdf;
+
+    const pdf = new jsPDF("p","mm","a4");
+    const pageWidth = pdf.internal.pageSize.getWidth();
+    const pageHeight = pdf.internal.pageSize.getHeight();
+
+    const imgWidth = pageWidth;
+    const imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+    let heightLeft = imgHeight;
+    let position = 0;
+
+    pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight);
+    heightLeft -= pageHeight;
+
+    while(heightLeft > 5){
+      position = heightLeft - imgHeight;
+      pdf.addPage();
+      pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight);
+      heightLeft -= pageHeight;
     }
 
-    if(!navigator.onLine){
-      alert('Sin internet: se mantiene en local.');
-      return;
-    }
-
-    const isCons = currentUser && currentUser.role === __ROLES.CONS;
-
-    // push (si corresponde)
-    if(!isCons){
-      const push = await __syncPush();
-      if(push.conflicts && push.conflicts.length){
-        alert('Sync: hubo conflictos de edición. Se registró en el log de conflictos.');
-      }
-      if(push.denied && push.denied.length){
-        alert('Sync: algunos registros fueron rechazados (no propietario o inválidos).');
-      }
-    }
-
-    // pull siempre
-    const pull = await __syncPull(__getLastPull());
-
-    // recalcular pendientes
-    await __calcPending();
-
-    if(pull.conflicts && pull.conflicts.length){
-      alert('Pull: se detectaron conflictos (local vs servidor). No se sobreescribió tu edición local.');
-    }
-
+    const stamp = new Date().toISOString().slice(0,10);
+    pdf.save(`Gestion_Reportes_${stamp}.pdf`);
   }catch(e){
-    const msg = (e && e.message) ? e.message : String(e);
-    if(msg === 'offline') alert('Sin internet.');
-    else alert('Error Sync: ' + msg);
-  } finally {
-    if(btn) btn.disabled = false;
+    console.error(e);
+    alert("No se pudo exportar a PDF. Revise la consola.");
+  }finally{
+    document.body.classList.remove("exporting");
   }
 }
 
-async function __syncPullAuto(){
-  try{
-    if(!__isApiConfigured()){
-      __updateSyncUI(0);
-      return;
-    }
-    // No forzar si no hay internet
-    if(!navigator.onLine){
-      __updateSyncUI(0);
-      return;
-    }
-
-    await __syncPull(__getLastPull());
-    await __calcPending();
-
-  }catch(e){
-    // silencioso
-    __updateSyncUI(0);
+function __gest_renderBitacora(){
+  if(!(__isAdmin && __isAdmin())) return;
+  const codigo = (document.getElementById("gestCodigoBit")?.value || "").trim();
+  const tbody = document.getElementById("gestBitacoraTbody");
+  if(!tbody) return;
+  if(!codigo){
+    tbody.innerHTML = `<tr><td colspan="4" class="text-center text-muted">Ingrese un código.</td></tr>`;
+    return;
   }
+  const logs = __gest_getAuditLogs().filter(l=>l?.entityId===codigo).sort((a,b)=>{
+    const da = __gest_parseDateAny(a.at); const db = __gest_parseDateAny(b.at);
+    return (db?db.getTime():0) - (da?da.getTime():0);
+  }).slice(0, 80);
+
+  tbody.innerHTML = logs.map(l=>{
+    const at = __gest_parseDateAny(l.at);
+    const who = l?.user?.name || l?.user?.email || "—";
+    const det = (l?.detail!=null) ? JSON.stringify(l.detail) : "";
+    return `<tr>
+      <td>${at ? at.toLocaleString() : ""}</td>
+      <td>${__gest_safeText(who)}</td>
+      <td>${__gest_safeText(l.action)}</td>
+      <td><small class="text-muted">${__gest_safeText(det)}</small></td>
+    </tr>`;
+  }).join("");
+  if(logs.length===0) tbody.innerHTML = `<tr><td colspan="4" class="text-center text-muted">Sin movimientos registrados para ese código.</td></tr>`;
 }
 
-// ---- Hook DOMContentLoaded (extra) ----
-document.addEventListener('DOMContentLoaded', async function(){
-  __ensureSyncControls();
-  __setNetBadge();
+document.addEventListener("DOMContentLoaded", ()=>{
+  // Mostrar/actualizar al abrir la pestaña
+  document.querySelector('a[href="#gestReportesTab"]')?.addEventListener("shown.bs.tab", ()=>{
+    __gest_renderGestionReportes();
+  });
 
-  window.addEventListener('online', function(){ __setNetBadge(); __calcPending(); });
-  window.addEventListener('offline', function(){ __setNetBadge(); __updateSyncUI(0); });
+  document.getElementById("btnGestConsultar")?.addEventListener("click", __gest_renderGestionReportes);
+  document.getElementById("btnGestExportPdf")?.addEventListener("click", __gest_exportPdf);
+  document.getElementById("btnGestVerBitacora")?.addEventListener("click", __gest_renderBitacora);
 
-  const btn = document.getElementById('btnSync');
-  if(btn) btn.addEventListener('click', __syncAll);
-
-  // Admin modal: manejado en el bloque de INIT AUTH UI (arriba)
-
-  // estado inicial
-  __updateSyncUI(0);
+  // Refrescar combos cuando cambia login/role (al menos una vez al cargar)
+  try{ __gest_populateFilters(); }catch(e){}
 });
 
 </script>
