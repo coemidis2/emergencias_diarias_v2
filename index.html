@@ -37,6 +37,9 @@ body { background: #f5f5f5; }
   border-bottom: 1px solid #e6e6e6;
 }
 
+
+.badge-orange{ background:#fd7e14 !important; color:#fff !important; }
+
 </style>
 
  <script src="./patch_cf_sync.js"></script>
@@ -147,6 +150,9 @@ body { background: #f5f5f5; }
 
   <li class="nav-item">
     <a class="nav-link" data-bs-toggle="tab" href="#dashTab">Dashboard</a>
+  </li>
+  <li class="nav-item d-none" id="segTabLi">
+    <a class="nav-link" data-bs-toggle="tab" href="#segTab">Seguimiento Reportes</a>
   </li>
 </ul>
 
@@ -630,6 +636,216 @@ body { background: #f5f5f5; }
 </div>
 
 
+
+<!-- ====================== SEGUIMIENTO REPORTES (ADMIN) ======================= -->
+<div class="tab-pane fade" id="segTab">
+  <div class="card mt-3">
+    <div class="card-body">
+      <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+        <div>
+          <h4 class="text-primary mb-0">Seguimiento Reportes</h4>
+          <div class="text-muted small">Vista de control para “no cerrados”, embudo, SLA, inactividad y trazabilidad (D1/Workers).</div>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+          <span class="badge text-bg-light border" id="segFuente">Fuente: —</span>
+          <button class="btn btn-sm btn-outline-primary" id="btnSegActualizar" type="button">Actualizar desde D1</button>
+        </div>
+      </div>
+
+      <hr class="my-3">
+
+      <!-- Filtros -->
+      <div class="row g-2 align-items-end mb-3">
+        <div class="col-md-3">
+          <label class="form-label">Registrador</label>
+          <select id="segFiltroReg" class="form-control">
+            <option value="">(Todos)</option>
+          </select>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Departamento</label>
+          <select id="segFiltroDep" class="form-control">
+            <option value="">(Todos)</option>
+          </select>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Inactividad</label>
+          <select id="segFiltroInac" class="form-control">
+            <option value="48">48h</option>
+            <option value="72" selected>72h</option>
+          </select>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Regla “RP aprobado sin RC”</label>
+          <select id="segReglaSinRC" class="form-control">
+            <option value="2">+2 días</option>
+            <option value="3" selected>+3 días</option>
+            <option value="5">+5 días</option>
+            <option value="7">+7 días</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Resumen -->
+      <div class="row g-2 mb-3">
+        <div class="col-md-3"><div class="card shadow-sm"><div class="card-body p-2">
+          <div class="small text-muted">No cerrados</div>
+          <div class="h4 mb-0" id="segKpiNoCerrados">0</div>
+        </div></div></div>
+        <div class="col-md-3"><div class="card shadow-sm"><div class="card-body p-2">
+          <div class="small text-muted">16+ días abiertos</div>
+          <div class="h4 mb-0" id="segKpi16">0</div>
+        </div></div></div>
+        <div class="col-md-3"><div class="card shadow-sm"><div class="card-body p-2">
+          <div class="small text-muted">En “Observado”</div>
+          <div class="h4 mb-0" id="segKpiObs">0</div>
+        </div></div></div>
+        <div class="col-md-3"><div class="card shadow-sm"><div class="card-body p-2">
+          <div class="small text-muted">Sin movimiento (umbral)</div>
+          <div class="h4 mb-0" id="segKpiInac">0</div>
+        </div></div></div>
+      </div>
+
+      <!-- 1) Aging -->
+      <div class="mb-3">
+        <div class="d-flex justify-content-between align-items-center">
+          <h5 class="text-primary mb-0">1) Antigüedad del caso (Aging) – Top 10</h5>
+          <span class="small text-muted">Semáforo: 0–2 / 3–7 / 8–15 / 16+ días</span>
+        </div>
+        <div class="table-responsive mt-2">
+          <table class="table table-sm table-striped align-middle">
+            <thead>
+              <tr>
+                <th>#</th><th>Código</th><th>Estado flujo</th><th>Días abierta</th><th>Último movimiento</th><th>Registrador</th><th>Ubicación</th><th></th>
+              </tr>
+            </thead>
+            <tbody id="segAgingTbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- 2) Funnel -->
+      <div class="mb-3">
+        <h5 class="text-primary">2) Embudo del flujo (Funnel)</h5>
+        <div id="segFunnelBox" class="mt-2"></div>
+      </div>
+
+      <!-- 3) SLA -->
+      <div class="mb-3">
+        <h5 class="text-primary">3) SLA por etapa (promedios)</h5>
+        <div class="table-responsive mt-2">
+          <table class="table table-sm table-bordered align-middle">
+            <thead>
+              <tr><th>Etapa</th><th>Promedio</th><th>Casos con dato</th></tr>
+            </thead>
+            <tbody id="segSlaTbody"></tbody>
+          </table>
+        </div>
+        <div class="small text-muted">Nota: si faltan fechas históricas en casos antiguos, el cálculo salta ese caso (no inventa).</div>
+      </div>
+
+      <!-- 4) Inactividad -->
+      <div class="mb-3">
+        <h5 class="text-primary">4) Alertas de inactividad</h5>
+        <div class="table-responsive mt-2">
+          <table class="table table-sm table-striped align-middle">
+            <thead>
+              <tr><th>Código</th><th>Estado flujo</th><th>Horas sin movimiento</th><th>Último movimiento</th><th>Registrador</th><th>Departamento</th></tr>
+            </thead>
+            <tbody id="segInacTbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- 5) Backlog por registrador -->
+      <div class="mb-3">
+        <h5 class="text-primary">5) Carga de trabajo (Backlog) por Registrador</h5>
+        <div class="table-responsive mt-2">
+          <table class="table table-sm table-bordered align-middle">
+            <thead>
+              <tr><th>Registrador</th><th>Abiertas</th><th>Por aprobar</th><th>Observado</th><th>Solicitud cierre</th></tr>
+            </thead>
+            <tbody id="segBacklogTbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- 6-7) Productividad -->
+      <div class="mb-3">
+        <h5 class="text-primary">6) Productividad con calidad / 7) Tiempos de respuesta</h5>
+        <div class="table-responsive mt-2">
+          <table class="table table-sm table-bordered align-middle">
+            <thead>
+              <tr>
+                <th>Registrador</th><th>Enviados (RP/RC)</th><th>Observados</th><th>Tasa obs.</th><th>Re-trabajo prom.</th><th>Resp. a obs. (h) prom.</th>
+              </tr>
+            </thead>
+            <tbody id="segProdTbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- 8) Checklist completitud -->
+      <div class="mb-3">
+        <h5 class="text-primary">8) Checklist de completitud (Top 10 más incompletos)</h5>
+        <div class="table-responsive mt-2">
+          <table class="table table-sm table-striped align-middle">
+            <thead>
+              <tr><th>#</th><th>Código</th><th>% completitud</th><th>Faltantes</th><th>Registrador</th><th>Departamento</th></tr>
+            </thead>
+            <tbody id="segCheckTbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- 9) Motivos observación -->
+      <div class="mb-3">
+        <h5 class="text-primary">9) Motivos de observación (Top)</h5>
+        <div id="segMotivosBox" class="mt-2"></div>
+      </div>
+
+      <!-- 10-11) Priorización y riesgo -->
+      <div class="mb-3">
+        <h5 class="text-primary">10) Priorización por severidad / 11) Casos en riesgo</h5>
+        <div class="row g-2">
+          <div class="col-lg-6">
+            <div class="border rounded p-2">
+              <div class="fw-semibold mb-1">Cola “Críticos” (impacto + días abiertos)</div>
+              <div class="table-responsive">
+                <table class="table table-sm table-striped align-middle mb-0">
+                  <thead><tr><th>#</th><th>Código</th><th>Impacto</th><th>Días</th><th>Estado</th></tr></thead>
+                  <tbody id="segCriticosTbody"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+          <div class="col-lg-6">
+            <div class="border rounded p-2">
+              <div class="fw-semibold mb-1">Casos en riesgo (reglas)</div>
+              <div class="table-responsive">
+                <table class="table table-sm table-striped align-middle mb-0">
+                  <thead><tr><th>Código</th><th>Riesgo</th><th>Detalle</th></tr></thead>
+                  <tbody id="segRiesgoTbody"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 12) Bitácora -->
+      <div class="mb-0">
+        <h5 class="text-primary">12) Bitácora / Libro de Novedades</h5>
+        <div class="text-muted small">Usa el botón “Bitácora” en la tabla de Aging para ver el historial por emergencia.</div>
+      </div>
+
+      <div id="segMsg" class="small text-danger mt-2"></div>
+
+    </div>
+  </div>
+</div>
+
+
 </div><!-- tab-content -->
 
 <!-- MODAL PARA VER EMERGENCIA CERRADA -->
@@ -650,6 +866,26 @@ body { background: #f5f5f5; }
   </div>
 </div>
 
+
+
+<!-- MODAL BITÁCORA (SEGUIMIENTO) -->
+<div class="modal fade" id="modalSegBitacora" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Bitácora / Libro de Novedades</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      </div>
+      <div class="modal-body">
+        <div class="small text-muted mb-2" id="segBitHead">—</div>
+        <div id="segBitBody"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+      </div>
+    </div>
+  </div>
+</div>
 
 <!-- ===================== MODAL ADMINISTRACIÓN ===================== -->
 <div class="modal fade" id="modalAdmin" tabindex="-1" aria-hidden="true">
@@ -899,6 +1135,49 @@ function __audit(action, entity, entityId, detail){
     });
     __lsSet(__AUTH_KEYS.audit, JSON.stringify(logs));
   }catch(e){}
+}
+
+// Historial (se sincroniza a D1 dentro del payload de la emergencia)
+function __histPush(em, action, detail){
+  try{
+    if(!em) return;
+    if(!Array.isArray(em.historial)) em.historial = [];
+    em.historial.push({
+      at: __nowIso(),
+      actor: currentUser ? { email: currentUser.email, name: currentUser.fullName, role: currentUser.role } : null,
+      action: String(action || ""),
+      detail: (detail === undefined) ? null : detail
+    });
+  }catch(e){}
+}
+
+function __ensureMeta(em){
+  try{
+    if(!em) return;
+    const now = __nowIso();
+    if(!em.createdAt) em.createdAt = now;
+    if(!em.createdByEmail && currentUser) em.createdByEmail = currentUser.email;
+    if(!em.ownerEmail && currentUser) em.ownerEmail = currentUser.email;
+    em.updatedAt = now;
+    if(currentUser) em.updatedByEmail = currentUser.email;
+  }catch(e){}
+}
+
+function __touch(em){
+  try{
+    if(!em) return;
+    em.updatedAt = __nowIso();
+    if(currentUser) em.updatedByEmail = currentUser.email;
+  }catch(e){}
+}
+
+function __safeParseDate(x){
+  try{
+    if(!x) return null;
+    const d = new Date(x);
+    if(isNaN(d.getTime())) return null;
+    return d;
+  }catch(e){ return null; }
 }
 
 function __hex(buf){
@@ -1253,12 +1532,14 @@ if(isReg){
   const linkRC = document.querySelector('a[href="#rcTab"]')?.closest("li");
   const linkDash = document.querySelector('a[href="#dashTab"]')?.closest("li");
 
+  const linkSeg = document.querySelector('a[href=\"#segTab\"]')?.closest(\"li\");
   const isConsulta = currentUser?.role === __ROLES.CONS;
 
   if(linkRP) linkRP.classList.toggle("d-none", isConsulta);
   if(linkRC) linkRC.classList.toggle("d-none", isConsulta);
   if(linkDash) linkDash.classList.remove("d-none");
 
+  if(linkSeg) linkSeg.classList.toggle(\"d-none\", !isAdmin);
   // Bloqueos de edición
   const disableIdsConsulta = [
     "btnGuardarRP","btnGuardarEnviarRP","btnWordRP","btnNuevoRP","btnAddAccionRP","btnEnviarAprobRP",
@@ -1996,27 +2277,36 @@ function __aprobar(ref){
   if(ref.kind === "rp"){
     em.rpAprobEstado = "Aprobado";
     em.rpAprobadoPor = __getCurrentUserName();
+    em.rpAprobadoPorEmail = currentUser ? currentUser.email : null;
     em.rpAprobadoEn = __nowIso();
     em.rpObs = null;
     __audit("APROBAR_RP", "emergencia", em.codigo, null);
+    __histPush(em, "RP_APROBADO", null);
   }
   if(ref.kind === "rc"){
     const rc = em.rcReportes?.[ref.idx];
     if(rc){
       rc.aprobEstado = "Aprobado";
       rc.aprobadoPor = __getCurrentUserName();
+      rc.aprobadoPorEmail = currentUser ? currentUser.email : null;
       rc.aprobadoEn = __nowIso();
       rc.obs = null;
       __audit("APROBAR_RC", "emergencia", em.codigo, {idx: ref.idx});
+      __histPush(em, "RC_APROBADO", {idx: ref.idx});
     }
   }
   if(ref.kind === "cierre"){
     em.cerrada = true;
     em.cierreEstado = "Aprobado";
     em.cierreAprobadoPor = __getCurrentUserName();
+    em.cierreAprobadoPorEmail = currentUser ? currentUser.email : null;
+    em.cierreAprobadoPorEmail = currentUser ? currentUser.email : null;
     em.cierreAprobadoEn = __nowIso();
     __audit("APROBAR_CIERRE", "emergencia", em.codigo, null);
+    __histPush(em, "CIERRE_APROBADO", null);
   }
+
+  try{ __touch(em); }catch(e){}
 }
 
 function __observar(ref, obs){
@@ -2026,21 +2316,32 @@ function __observar(ref, obs){
   if(ref.kind === "rp"){
     em.rpAprobEstado = "Observado";
     em.rpObs = obs;
+    em.rpObservadoPor = __getCurrentUserName();
+    em.rpObservadoEn = __nowIso();
     __audit("OBSERVAR_RP", "emergencia", em.codigo, {obs});
+    __histPush(em, "RP_OBSERVADO", {obs});
   }
   if(ref.kind === "rc"){
     const rc = em.rcReportes?.[ref.idx];
     if(rc){
       rc.aprobEstado = "Observado";
       rc.obs = obs;
+      rc.observadoPor = __getCurrentUserName();
+      rc.observadoEn = __nowIso();
       __audit("OBSERVAR_RC", "emergencia", em.codigo, {idx: ref.idx, obs});
+      __histPush(em, "RC_OBSERVADO", {idx: ref.idx, obs});
     }
   }
   if(ref.kind === "cierre"){
     em.cierreEstado = "Observado";
     em.cierreObs = obs;
+    em.cierreObservadoPor = __getCurrentUserName();
+    em.cierreObservadoEn = __nowIso();
     __audit("OBSERVAR_CIERRE", "emergencia", em.codigo, {obs});
+    __histPush(em, "CIERRE_OBSERVADO", {obs});
   }
+
+  try{ __touch(em); }catch(e){}
 }
 
 // ===================== ENVÍOS A APROBACIÓN (REGISTRADOR) =====================
@@ -2096,6 +2397,9 @@ function __enviarRC(opts={}){
   rc.aprobEstado = "Pendiente";
   rc.enviadoPor = __getCurrentUserName();
   rc.enviadoEn = new Date().toISOString();
+  rc.enviadoPorEmail = currentUser ? currentUser.email : null;
+  __histPush(em, "RC_ENVIADO_APROBACION", {idx: idx});
+  __touch(em);
 
   // Guardar estado en emergencia (para reportes/lista)
   __saveEmergencias();
@@ -2119,6 +2423,8 @@ function __solicitarCierre(){
     em.cierreAprobadoPor = __getCurrentUserName();
     em.cierreAprobadoEn = __nowIso();
     __audit("CIERRE_DIRECTO_ADMIN", "emergencia", em.codigo, null);
+    __histPush(em, "CIERRE_DIRECTO_ADMIN", null);
+    __touch(em);
     __saveEmergencias();
     cargarTablaEmergencias();
     alert("Emergencia cerrada.");
@@ -2134,6 +2440,8 @@ function __solicitarCierre(){
   em.cierreSolicitadoPor = __getCurrentUserName();
   em.cierreSolicitadoEn = __nowIso();
   __audit("SOLICITAR_CIERRE", "emergencia", em.codigo, null);
+  __histPush(em, "CIERRE_SOLICITADO", null);
+  __touch(em);
   __saveEmergencias();
   cargarTablaEmergencias();
 
@@ -2863,6 +3171,8 @@ function __saveRP(opts){
     cerrada: false
   };
 
+  __ensureMeta(base);
+
   // Campos RP
   base.codigo       = codigoActual;
   base.numeroReporte= numReporte;
@@ -2888,12 +3198,15 @@ function __saveRP(opts){
     if(base.rpAprobEstado !== "Pendiente"){
       base.rpAprobEstado = "Pendiente";
       base.rpEnviadoPor  = __getCurrentUserName();
+      base.rpEnviadoPorEmail = currentUser ? currentUser.email : null;
       base.rpEnviadoEn   = __nowIso();
       base.rpObs         = null;
       __audit("GUARDAR_Y_ENVIAR_RP", "emergencia", base.codigo, null);
+      __histPush(base, "RP_ENVIADO_APROBACION", null);
     }
   }else{
     __audit(existing ? "ACTUALIZAR_RP" : "CREAR_RP", "emergencia", base.codigo, null);
+    __histPush(base, existing ? "RP_GUARDADO" : "RP_CREADO", null);
   }
 
   // Upsert
@@ -3573,8 +3886,17 @@ function __guardarRCCore(opts={}){
     enviadoEn: null,
     aprobadoPor: null,
     aprobadoEn: null,
-    obs: null
+    obs: null,
+    createdAt: __nowIso(),
+    updatedAt: __nowIso(),
+    createdByEmail: currentUser ? currentUser.email : null,
+    updatedByEmail: currentUser ? currentUser.email : null,
+    observadoPor: null,
+    observadoEn: null
   });
+
+  __histPush(em, "RC_GUARDADO", { idx: em.rcReportes.length - 1, numeroGlobal: numRC });
+  __touch(em);
 
   em.accionesRCGlobal = [...accionesRCTemp];
   rcGrabado = true;
@@ -4610,6 +4932,7 @@ async function __login(email, password){
 async function __bootstrapAuth(){
   __ensureSyncControls();
   __setNetBadge();
+  try{ __segInit(); }catch(e){}
 
   // Insertar un indicador simple de estado API en el login (sin tocar el HTML)
   try{
@@ -5134,6 +5457,873 @@ async function __syncPullAuto(){
     __updateSyncUI(0);
   }
 }
+
+
+// ===================== SEGUIMIENTO REPORTES (ADMIN) =====================
+let __SEG_CACHE = { records: [], loadedAt: null };
+
+function __segGetToken(){
+  try{ return __tokenGet(); }catch(e){ return null; }
+}
+function __segSetMsg(msg){
+  const el = document.getElementById("segMsg");
+  if(el) el.textContent = msg || "";
+}
+function __segSetFuente(txt){
+  const el = document.getElementById("segFuente");
+  if(el) el.textContent = txt || "Fuente: —";
+}
+
+function __segParse(x){
+  return __safeParseDate(x);
+}
+
+function __segDiffHours(a, b){
+  try{
+    const da = (a instanceof Date) ? a : __segParse(a);
+    const db = (b instanceof Date) ? b : __segParse(b);
+    if(!da || !db) return null;
+    return (db.getTime() - da.getTime()) / 36e5;
+  }catch(e){ return null; }
+}
+function __segDiffDays(a, b){
+  const h = __segDiffHours(a, b);
+  if(h === null) return null;
+  return Math.floor(h / 24);
+}
+
+function __segFmtHours(h){
+  if(h === null || h === undefined || isNaN(h)) return "—";
+  if(h < 0) return "—";
+  if(h < 1) return (Math.round(h*60)) + " min";
+  if(h < 24) return (Math.round(h*10)/10) + " h";
+  const d = Math.floor(h/24);
+  const r = Math.round((h - d*24)*10)/10;
+  return d + " d " + r + " h";
+}
+
+function __segSemaforo(days){
+  if(days === null || days === undefined) return {cls:"text-bg-secondary", label:"—"};
+  if(days <= 2) return {cls:"text-bg-success", label:String(days)};
+  if(days <= 7) return {cls:"text-bg-warning", label:String(days)};
+  if(days <= 15) return {cls:"badge-orange", label:String(days)};
+  return {cls:"text-bg-danger", label:String(days)};
+}
+
+function __segRegistrar(em){
+  return (em && (em.ownerEmail || em.createdByEmail || em.rpEnviadoPorEmail || em.updatedByEmail || em.rpEnviadoPor || em.elaboradoPor)) ? String(em.ownerEmail || em.createdByEmail || em.rpEnviadoPorEmail || em.updatedByEmail || em.rpEnviadoPor || em.elaboradoPor) : "";
+}
+
+function __segDep(em){
+  return (em && em.departamento) ? String(em.departamento) : "";
+}
+
+function __segStage(em){
+  try{
+    if(!em) return "Borrador";
+    if(em.cerrada || String(em.cierreEstado||"") === "Aprobado") return "Cerrado";
+    if(String(em.cierreEstado||"") === "Pendiente") return "Solicitud de cierre";
+
+    // Dominancia RC
+    let rcSt = null;
+    try{
+      if(Array.isArray(em.rcReportes) && em.rcReportes.length>0){
+        const last = em.rcReportes[em.rcReportes.length-1];
+        rcSt = last ? String(last.aprobEstado||"") : null;
+      }
+    }catch(e){ rcSt = null; }
+
+    const rpSt = String(em.rpAprobEstado || "Borrador");
+
+    if(rcSt === "Pendiente") return "Por aprobar";
+    if(rcSt === "Observado") return "Observado";
+    if(rpSt === "Pendiente") return "Por aprobar";
+    if(rpSt === "Observado") return "Observado";
+    if(rpSt === "Aprobado") return "Aprobado";
+    return "Borrador";
+  }catch(e){ return "Borrador"; }
+}
+
+function __segOpenAt(em){
+  // Inicio de “días abierta”
+  return (em && (em.createdAt || em.__serverCreatedAt || em.rpEnviadoEn || em.fechaHora || em.fechaRegistro)) ? (em.createdAt || em.__serverCreatedAt || em.rpEnviadoEn || em.fechaHora || em.fechaRegistro) : null;
+}
+
+function __segLastMoveAt(em){
+  try{
+    let best = null;
+    const consider = (x)=>{
+      const d = __segParse(x);
+      if(!d) return;
+      if(!best || d.getTime() > best.getTime()) best = d;
+    };
+
+    if(em){
+      consider(em.updatedAt);
+      consider(em.__serverUpdatedAt);
+      consider(em.rpEnviadoEn);
+      consider(em.rpAprobadoEn);
+      consider(em.rpObservadoEn);
+      consider(em.cierreSolicitadoEn);
+      consider(em.cierreAprobadoEn);
+      consider(em.cierreObservadoEn);
+
+      if(Array.isArray(em.rcReportes)){
+        for(const rc of em.rcReportes){
+          consider(rc?.createdAt);
+          consider(rc?.updatedAt);
+          consider(rc?.enviadoEn);
+          consider(rc?.aprobadoEn);
+          consider(rc?.observadoEn);
+        }
+      }
+      if(Array.isArray(em.historial)){
+        const last = em.historial[em.historial.length-1];
+        consider(last?.at);
+      }
+    }
+    return best;
+  }catch(e){ return null; }
+}
+
+function __segTotalImpacto(em){
+  try{
+    let usuarios = 0;
+    let servicios = 0;
+    const dm = em && em.daniosMIDIS ? em.daniosMIDIS : null;
+    if(dm && typeof dm === "object"){
+      for(const k of Object.keys(dm)){
+        const o = dm[k] || {};
+        usuarios += Number(o.usuariosAfectados||0) + Number(o.usuariosPorServicios||0) + Number(o.usuariosFallecidos||0);
+        servicios += Number(o.serviciosAfectados||0);
+      }
+    }
+    return {usuarios, servicios};
+  }catch(e){ return {usuarios:0, servicios:0}; }
+}
+
+function __segImpactLevel(imp){
+  const u = Number(imp?.usuarios||0);
+  const s = Number(imp?.servicios||0);
+  if(u >= 200 || s >= 20) return {lvl:"Alto", w:3};
+  if(u >= 50 || s >= 5) return {lvl:"Medio", w:2};
+  return {lvl:"Bajo", w:1};
+}
+
+function __segCompleteness(em){
+  // checklist clásico (sin inventar; sólo mira campos existentes)
+  const missing = [];
+  const ok = (v)=> String(v||"").trim().length>0;
+
+  if(!(ok(em?.departamento) && ok(em?.provincia) && ok(em?.distrito))) missing.push("Ubigeo");
+  if(!(ok(em?.fechaHora) || ok(em?.fechaPeligro))) missing.push("Fecha/Hora");
+  if(!ok(em?.peligro)) missing.push("Tipo evento");
+
+  // Afectación (usuarios/servicios)
+  const imp = __segTotalImpacto(em);
+  if((imp.usuarios + imp.servicios) <= 0) missing.push("Afectación");
+
+  // Evidencia / fuente (muy básico)
+  const txt = (em?.hechos || "") + " " + (em?.daniosOtros || "") + " " + (em?.fuenteInfo || "");
+  const hasLink = /https?:\/\//i.test(txt);
+  if(!hasLink) missing.push("Evidencia/Fuente");
+
+  // Acciones
+  const accionesRp = Array.isArray(em?.accionesPreliminar) ? em.accionesPreliminar.length : 0;
+  let accionesRc = 0;
+  try{
+    if(Array.isArray(em?.rcReportes) && em.rcReportes.length>0){
+      const last = em.rcReportes[em.rcReportes.length-1];
+      accionesRc = Array.isArray(last?.acciones) ? last.acciones.length : 0;
+    }
+  }catch(e){}
+  if((accionesRp + accionesRc) <= 0) missing.push("Acciones");
+
+  const totalChecks = 6;
+  const score = Math.round(((totalChecks - missing.length) / totalChecks) * 100);
+  return {score, missing};
+}
+
+function __segMotivoObs(em){
+  // Clasificación simple (texto de observación)
+  let obs = "";
+  try{
+    if(em?.rpObs) obs = String(em.rpObs);
+    else if(Array.isArray(em?.rcReportes) && em.rcReportes.length>0){
+      const last = em.rcReportes[em.rcReportes.length-1];
+      if(last?.obs) obs = String(last.obs);
+    }else if(em?.cierreObs) obs = String(em.cierreObs);
+  }catch(e){}
+  const t = obs.toLowerCase();
+  if(!t) return null;
+
+  const map = [
+    ["Falta evidencia", /(evidenc|foto|imagen|archivo|sustento|fuente)/i],
+    ["Datos críticos faltantes", /(falta|incomplet|no consign|omisi|sin )/i],
+    ["Inconsistencia de datos", /(inconsist|no coincide|difer|contradic)/i],
+    ["Redacción", /(redacci|ortograf|clar|mejorar|precisar)/i],
+    ["Contenido incompleto", /(incomplet|ampliar|detalle|mayor inform)/i]
+  ];
+  for(const [k, rx] of map){
+    if(rx.test(t)) return k;
+  }
+  return "Otros";
+}
+
+function __segTimeline(em){
+  // Preferir historial; si no existe, derivar a partir de campos
+  const out = [];
+  try{
+    if(Array.isArray(em?.historial) && em.historial.length){
+      for(const h of em.historial){
+        out.push({ at: h.at, who: h.actor?.email || h.actor?.name || "", action: h.action || "", detail: h.detail });
+      }
+      return out;
+    }
+
+    // Derivado (mínimo)
+    if(em?.createdAt) out.push({at: em.createdAt, who: em.createdByEmail || "", action:"RP_CREADO", detail:null});
+    if(em?.rpEnviadoEn) out.push({at: em.rpEnviadoEn, who: em.rpEnviadoPorEmail || em.rpEnviadoPor || "", action:"RP_ENVIADO_APROBACION", detail:null});
+    if(em?.rpObservadoEn) out.push({at: em.rpObservadoEn, who: em.rpObservadoPor || "", action:"RP_OBSERVADO", detail: em.rpObs || null});
+    if(em?.rpAprobadoEn) out.push({at: em.rpAprobadoEn, who: em.rpAprobadoPorEmail || em.rpAprobadoPor || "", action:"RP_APROBADO", detail:null});
+    if(Array.isArray(em?.rcReportes)){
+      em.rcReportes.forEach((rc, idx)=>{
+        if(rc?.createdAt) out.push({at: rc.createdAt, who: rc.createdByEmail || "", action:"RC_GUARDADO", detail:{idx}});
+        if(rc?.enviadoEn) out.push({at: rc.enviadoEn, who: rc.enviadoPorEmail || rc.enviadoPor || "", action:"RC_ENVIADO_APROBACION", detail:{idx}});
+        if(rc?.observadoEn) out.push({at: rc.observadoEn, who: rc.observadoPor || "", action:"RC_OBSERVADO", detail:{idx, obs: rc.obs || null}});
+        if(rc?.aprobadoEn) out.push({at: rc.aprobadoEn, who: rc.aprobadoPorEmail || rc.aprobadoPor || "", action:"RC_APROBADO", detail:{idx}});
+      });
+    }
+    if(em?.cierreSolicitadoEn) out.push({at: em.cierreSolicitadoEn, who: em.cierreSolicitadoPor || "", action:"CIERRE_SOLICITADO", detail:null});
+    if(em?.cierreObservadoEn) out.push({at: em.cierreObservadoEn, who: em.cierreObservadoPor || "", action:"CIERRE_OBSERVADO", detail: em.cierreObs || null});
+    if(em?.cierreAprobadoEn) out.push({at: em.cierreAprobadoEn, who: em.cierreAprobadoPorEmail || em.cierreAprobadoPor || "", action:"CIERRE_APROBADO", detail:null});
+    // Ordenar
+    out.sort((a,b)=> (new Date(a.at)).getTime() - (new Date(b.at)).getTime());
+  }catch(e){}
+  return out;
+}
+
+async function __segPullSnapshotFromD1(){
+  const token = __segGetToken();
+  if(!token) throw new Error("unauthorized");
+  if(!__isApiConfigured()) throw new Error("server_not_configured");
+  if(!navigator.onLine) throw new Error("offline");
+
+  const limit = 5000;
+  let since = "1970-01-01T00:00:00.000Z";
+  const byCodigo = {};
+  let guard = 0;
+
+  while(guard < 6){
+    const out = await __api("/sync/pull?since=" + encodeURIComponent(since) + "&limit=" + limit, { method:"GET", token: token });
+    if(out.res && out.res.status === 401) throw new Error("unauthorized");
+    if(!out.res || !out.res.ok) throw new Error((out.data && out.data.error) ? out.data.error : "pull_failed");
+
+    const recs = (out.data && Array.isArray(out.data.records)) ? out.data.records : [];
+    if(recs.length === 0) break;
+
+    let maxUpdated = since;
+    for(const r of recs){
+      const codigo = String(r?.codigo || "").trim();
+      if(!codigo) continue;
+      const upd = String(r?.updated_at || "");
+      if(upd && upd > maxUpdated) maxUpdated = upd;
+
+      const payload = r?.payload || {};
+      payload.__serverUpdatedAt = r?.updated_at || null;
+      payload.__serverCreatedAt = r?.created_at || null;
+
+      const prev = byCodigo[codigo];
+      if(!prev || String(payload.__serverUpdatedAt||"") >= String(prev.__serverUpdatedAt||"")){
+        byCodigo[codigo] = payload;
+      }
+    }
+
+    if(recs.length < limit) break;
+    if(maxUpdated === since) break;
+    since = maxUpdated;
+    guard++;
+  }
+
+  return Object.values(byCodigo);
+}
+
+function __segFillSelect(selId, values){
+  const sel = document.getElementById(selId);
+  if(!sel) return;
+  const cur = sel.value;
+  // limpiar (mantener primer option)
+  const keep = sel.querySelector("option[value=\"\"]") ? sel.querySelector("option[value=\"\"]").outerHTML : '<option value="">(Todos)</option>';
+  sel.innerHTML = keep;
+  const uniq = Array.from(new Set(values.filter(v=>v && String(v).trim()!=="").map(v=>String(v).trim()))).sort((a,b)=>a.localeCompare(b));
+  for(const v of uniq){
+    const opt = document.createElement("option");
+    opt.value = v;
+    opt.textContent = v;
+    sel.appendChild(opt);
+  }
+  // restaurar si existe
+  if(cur && uniq.includes(cur)) sel.value = cur;
+}
+
+function __segRender(){
+  try{
+    const all = Array.isArray(__SEG_CACHE.records) ? __SEG_CACHE.records : [];
+    const now = new Date();
+
+    const fReg = (document.getElementById("segFiltroReg")?.value || "").trim();
+    const fDep = (document.getElementById("segFiltroDep")?.value || "").trim();
+    const inacH = Number(document.getElementById("segFiltroInac")?.value || 72);
+    const reglaSinRc = Number(document.getElementById("segReglaSinRC")?.value || 3);
+
+    const filtered = all.filter(em=>{
+      if(!em) return false;
+      const reg = __segRegistrar(em);
+      const dep = __segDep(em);
+      if(fReg && reg !== fReg) return false;
+      if(fDep && dep !== fDep) return false;
+      return true;
+    });
+
+    const abiertos = filtered.filter(em => __segStage(em) !== "Cerrado");
+
+    // KPI
+    const kNo = document.getElementById("segKpiNoCerrados");
+    const k16 = document.getElementById("segKpi16");
+    const kObs = document.getElementById("segKpiObs");
+    const kIn = document.getElementById("segKpiInac");
+    if(kNo) kNo.textContent = String(abiertos.length);
+
+    let cnt16 = 0, cntObs = 0, cntIn = 0;
+
+    // Aging ranking
+    const rowsAging = [];
+    for(const em of abiertos){
+      const openAt = __segOpenAt(em);
+      const days = __segDiffDays(openAt, now);
+      if(days !== null && days >= 16) cnt16++;
+      const stage = __segStage(em);
+      if(stage === "Observado") cntObs++;
+
+      const lastMove = __segLastMoveAt(em);
+      const hNoMove = __segDiffHours(lastMove, now);
+      if(hNoMove !== null && hNoMove >= inacH) cntIn++;
+
+      rowsAging.push({
+        codigo: em.codigo || "",
+        stage,
+        days,
+        lastMove,
+        reg: __segRegistrar(em),
+        dep: __segDep(em),
+        prov: em.provincia || "",
+        dist: em.distrito || "",
+        em
+      });
+    }
+    if(k16) k16.textContent = String(cnt16);
+    if(kObs) kObs.textContent = String(cntObs);
+    if(kIn) kIn.textContent = String(cntIn);
+
+    rowsAging.sort((a,b)=>{
+      const da = (a.days===null)?-1:a.days;
+      const db = (b.days===null)?-1:b.days;
+      return db - da;
+    });
+
+    const top10 = rowsAging.slice(0, 10);
+    const agingT = document.getElementById("segAgingTbody");
+    if(agingT){
+      agingT.innerHTML = "";
+      if(top10.length === 0){
+        agingT.innerHTML = '<tr><td colspan="8" class="text-muted">Sin casos (con los filtros actuales).</td></tr>';
+      }else{
+        top10.forEach((r, idx)=>{
+          const sem = __segSemaforo(r.days);
+          const lastTxt = r.lastMove ? __formatLocalIso(r.lastMove.toISOString()) : "—";
+          const btn = `<button class="btn btn-sm btn-outline-secondary" data-bit="${encodeURIComponent(String(r.codigo||''))}">Bitácora</button>`;
+          agingT.innerHTML += `
+            <tr>
+              <td>${idx+1}</td>
+              <td class="fw-semibold">${r.codigo}</td>
+              <td><span class="badge text-bg-light border">${r.stage}</span></td>
+              <td><span class="badge ${sem.cls}">${sem.label}</span></td>
+              <td class="small">${lastTxt}</td>
+              <td class="small">${(r.reg||"")}</td>
+              <td class="small">${[r.dep,r.prov,r.dist].filter(Boolean).join(" / ")}</td>
+              <td>${btn}</td>
+            </tr>`;
+        });
+
+        agingT.querySelectorAll("[data-bit]").forEach(b=>{
+          b.addEventListener("click", ()=>{
+            const cod = decodeURIComponent(b.getAttribute("data-bit") || "");
+            const em = all.find(x=>String(x?.codigo||"")===cod);
+            __segShowBitacora(em);
+          });
+        });
+      }
+    }
+
+    // Funnel
+    const funnelCounts = { "Borrador":0, "Por aprobar":0, "Observado":0, "Aprobado":0, "Solicitud de cierre":0, "Cerrado":0 };
+    filtered.forEach(em=>{
+      const st = __segStage(em);
+      if(funnelCounts[st] === undefined) funnelCounts[st] = 0;
+      funnelCounts[st]++;
+    });
+    const totalF = filtered.length || 1;
+    const funnelBox = document.getElementById("segFunnelBox");
+    if(funnelBox){
+      const order = ["Borrador","Por aprobar","Observado","Aprobado","Solicitud de cierre","Cerrado"];
+      funnelBox.innerHTML = order.map(k=>{
+        const n = funnelCounts[k] || 0;
+        const pct = Math.round((n/totalF)*100);
+        return `
+          <div class="mb-1">
+            <div class="d-flex justify-content-between">
+              <div class="small">${k}</div>
+              <div class="small text-muted">${n} (${pct}%)</div>
+            </div>
+            <div class="progress" style="height:10px">
+              <div class="progress-bar" role="progressbar" style="width:${pct}%"></div>
+            </div>
+          </div>`;
+      }).join("");
+    }
+
+    // SLA (promedios)
+    const buckets = {
+      "Creación RP → Por aprobar": [],
+      "Por aprobar → Decisión Admin": [],
+      "RP aprobado → 1er RC": [],
+      "Solicitud cierre → Cerrado": []
+    };
+
+    for(const em of filtered){
+      const t0 = __segOpenAt(em);
+      const tPend = em?.rpEnviadoEn || null;
+      const tDec = em?.rpAprobadoEn || em?.rpObservadoEn || null;
+
+      // 1
+      const h1 = __segDiffHours(t0, tPend);
+      if(h1 !== null && h1 >= 0) buckets["Creación RP → Por aprobar"].push(h1);
+
+      // 2
+      const h2 = __segDiffHours(tPend, tDec);
+      if(h2 !== null && h2 >= 0) buckets["Por aprobar → Decisión Admin"].push(h2);
+
+      // 3
+      let tRc1 = null;
+      try{
+        if(Array.isArray(em?.rcReportes) && em.rcReportes.length>0){
+          const first = em.rcReportes[0];
+          tRc1 = first?.createdAt || first?.fechaRegistro || null;
+        }
+      }catch(e){}
+      const h3 = __segDiffHours(em?.rpAprobadoEn || null, tRc1);
+      if(h3 !== null && h3 >= 0) buckets["RP aprobado → 1er RC"].push(h3);
+
+      // 4
+      const h4 = __segDiffHours(em?.cierreSolicitadoEn || null, (em?.cierreAprobadoEn || (em?.cerrada ? em?.cierreAprobadoEn : null)));
+      if(h4 !== null && h4 >= 0) buckets["Solicitud cierre → Cerrado"].push(h4);
+    }
+
+    const slaT = document.getElementById("segSlaTbody");
+    if(slaT){
+      slaT.innerHTML = "";
+      for(const k of Object.keys(buckets)){
+        const arr = buckets[k];
+        const n = arr.length;
+        const avg = (n>0) ? (arr.reduce((a,b)=>a+b,0)/n) : null;
+        slaT.innerHTML += `<tr><td>${k}</td><td>${__segFmtHours(avg)}</td><td>${n}</td></tr>`;
+      }
+    }
+
+    // Inactividad
+    const inacT = document.getElementById("segInacTbody");
+    if(inacT){
+      inacT.innerHTML = "";
+      const list = [];
+      for(const em of abiertos){
+        const last = __segLastMoveAt(em);
+        const h = __segDiffHours(last, now);
+        if(h !== null && h >= inacH){
+          list.push({codigo: em.codigo||"", stage: __segStage(em), hours:h, last, reg:__segRegistrar(em), dep:__segDep(em)});
+        }
+      }
+      list.sort((a,b)=>b.hours-a.hours);
+      if(list.length===0){
+        inacT.innerHTML = '<tr><td colspan="6" class="text-muted">Sin alertas (con el umbral actual).</td></tr>';
+      }else{
+        list.slice(0, 50).forEach(r=>{
+          inacT.innerHTML += `<tr>
+            <td class="fw-semibold">${r.codigo}</td>
+            <td><span class="badge text-bg-light border">${r.stage}</span></td>
+            <td>${Math.round(r.hours)}</td>
+            <td class="small">${r.last ? __formatLocalIso(r.last.toISOString()) : "—"}</td>
+            <td class="small">${r.reg||""}</td>
+            <td class="small">${r.dep||""}</td>
+          </tr>`;
+        });
+      }
+    }
+
+    // Backlog por registrador
+    const byReg = {};
+    for(const em of abiertos){
+      const reg = __segRegistrar(em) || "(Sin registrador)";
+      if(!byReg[reg]) byReg[reg] = { abiertas:0, porAprobar:0, observado:0, solCierre:0, enviados:0, obs:0, rework:[], respH:[] };
+      const st = __segStage(em);
+      byReg[reg].abiertas++;
+      if(st === "Por aprobar") byReg[reg].porAprobar++;
+      if(st === "Observado") byReg[reg].observado++;
+      if(st === "Solicitud de cierre") byReg[reg].solCierre++;
+    }
+    const backlogT = document.getElementById("segBacklogTbody");
+    if(backlogT){
+      backlogT.innerHTML = "";
+      const regs = Object.keys(byReg).sort((a,b)=>a.localeCompare(b));
+      if(regs.length===0){
+        backlogT.innerHTML = '<tr><td colspan="5" class="text-muted">Sin datos.</td></tr>';
+      }else{
+        regs.forEach(r=>{
+          const o = byReg[r];
+          backlogT.innerHTML += `<tr>
+            <td>${r}</td>
+            <td>${o.abiertas}</td>
+            <td>${o.porAprobar}</td>
+            <td>${o.observado}</td>
+            <td>${o.solCierre}</td>
+          </tr>`;
+        });
+      }
+    }
+
+    // Productividad/Calidad + tiempos
+    // Calcular por registrador usando envíos y observaciones
+    const regAgg = {};
+    const pushAgg = (reg)=>{
+      const k = reg || "(Sin registrador)";
+      if(!regAgg[k]) regAgg[k] = { enviados:0, observados:0, reworkSum:0, reworkN:0, respSumH:0, respN:0 };
+      return regAgg[k];
+    };
+
+    for(const em of filtered){
+      const reg = __segRegistrar(em);
+      const agg = pushAgg(reg);
+
+      // envíos
+      if(em?.rpEnviadoEn) agg.enviados += 1;
+      if(Array.isArray(em?.rcReportes)){
+        em.rcReportes.forEach(rc=>{
+          if(rc?.enviadoEn) agg.enviados += 1;
+        });
+      }
+
+      // observados (estado final observado, o texto de obs)
+      if(String(em?.rpAprobEstado||"") === "Observado" || em?.rpObs) agg.observados += 1;
+      if(Array.isArray(em?.rcReportes)){
+        em.rcReportes.forEach(rc=>{
+          if(String(rc?.aprobEstado||"") === "Observado" || rc?.obs) agg.observados += 1;
+        });
+      }
+
+      // re-trabajo: cuántas veces observado (historial si existe)
+      let cntObs = 0;
+      if(Array.isArray(em?.historial)){
+        cntObs = em.historial.filter(h=> String(h?.action||"").includes("OBSERV")).length;
+      }else{
+        if(em?.rpObs) cntObs += 1;
+        if(Array.isArray(em?.rcReportes)) cntObs += em.rcReportes.filter(rc=>!!rc?.obs).length;
+      }
+      agg.reworkSum += cntObs;
+      agg.reworkN += 1;
+
+      // tiempo respuesta a observación (si hay historial)
+      if(Array.isArray(em?.historial) && em.historial.length){
+        const hist = em.historial.slice().sort((a,b)=> new Date(a.at).getTime() - new Date(b.at).getTime());
+        for(let i=0;i<hist.length;i++){
+          const h = hist[i];
+          const act = String(h?.action||"");
+          if(act === "RP_OBSERVADO" || act === "RC_OBSERVADO" || act === "CIERRE_OBSERVADO"){
+            const tObs = h.at;
+            // buscar siguiente “enviado”
+            let tNext = null;
+            for(let j=i+1;j<hist.length;j++){
+              const a2 = String(hist[j]?.action||"");
+              if(a2.includes("ENVIADO") || a2.includes("SOLICITADO")){
+                tNext = hist[j].at;
+                break;
+              }
+            }
+            const hh = __segDiffHours(tObs, tNext);
+            if(hh !== null && hh >= 0){
+              agg.respSumH += hh;
+              agg.respN += 1;
+            }
+          }
+        }
+      }
+    }
+
+    const prodT = document.getElementById("segProdTbody");
+    if(prodT){
+      prodT.innerHTML = "";
+      const regs = Object.keys(regAgg).sort((a,b)=>a.localeCompare(b));
+      if(regs.length===0){
+        prodT.innerHTML = '<tr><td colspan="6" class="text-muted">Sin datos.</td></tr>';
+      }else{
+        regs.forEach(r=>{
+          const o = regAgg[r];
+          const tasa = (o.enviados>0) ? Math.round((o.observados/o.enviados)*100) : 0;
+          const rework = (o.reworkN>0) ? (Math.round((o.reworkSum/o.reworkN)*10)/10) : null;
+          const resp = (o.respN>0) ? (o.respSumH/o.respN) : null;
+          prodT.innerHTML += `<tr>
+            <td>${r}</td>
+            <td>${o.enviados}</td>
+            <td>${o.observados}</td>
+            <td>${tasa}%</td>
+            <td>${(rework===null)?"—":rework}</td>
+            <td>${__segFmtHours(resp)}</td>
+          </tr>`;
+        });
+      }
+    }
+
+    // Checklist top incompletos
+    const checkRows = abiertos.map(em=>{
+      const c = __segCompleteness(em);
+      return { codigo: em.codigo||"", score: c.score, missing: c.missing, reg: __segRegistrar(em), dep: __segDep(em) };
+    }).sort((a,b)=>a.score-b.score);
+    const checkT = document.getElementById("segCheckTbody");
+    if(checkT){
+      checkT.innerHTML = "";
+      const top = checkRows.slice(0, 10);
+      if(top.length===0){
+        checkT.innerHTML = '<tr><td colspan="6" class="text-muted">Sin datos.</td></tr>';
+      }else{
+        top.forEach((r, idx)=>{
+          checkT.innerHTML += `<tr>
+            <td>${idx+1}</td>
+            <td class="fw-semibold">${r.codigo}</td>
+            <td><span class="badge text-bg-light border">${r.score}%</span></td>
+            <td class="small">${r.missing.join(", ")}</td>
+            <td class="small">${r.reg||""}</td>
+            <td class="small">${r.dep||""}</td>
+          </tr>`;
+        });
+      }
+    }
+
+    // Motivos observación
+    const motivos = {};
+    for(const em of abiertos){
+      const m = __segMotivoObs(em);
+      if(!m) continue;
+      motivos[m] = (motivos[m]||0) + 1;
+    }
+    const motBox = document.getElementById("segMotivosBox");
+    if(motBox){
+      const items = Object.entries(motivos).sort((a,b)=>b[1]-a[1]).slice(0, 6);
+      if(items.length===0){
+        motBox.innerHTML = '<div class="text-muted small">Sin observaciones registradas (con los filtros actuales).</div>';
+      }else{
+        const max = items[0][1] || 1;
+        motBox.innerHTML = items.map(([k,n])=>{
+          const pct = Math.round((n/max)*100);
+          return `
+            <div class="mb-1">
+              <div class="d-flex justify-content-between">
+                <div class="small">${k}</div>
+                <div class="small text-muted">${n}</div>
+              </div>
+              <div class="progress" style="height:10px">
+                <div class="progress-bar" role="progressbar" style="width:${pct}%"></div>
+              </div>
+            </div>`;
+        }).join("");
+      }
+    }
+
+    // Críticos (top 10)
+    const crit = [];
+    for(const em of abiertos){
+      const imp = __segTotalImpacto(em);
+      const lvl = __segImpactLevel(imp);
+      const days = __segDiffDays(__segOpenAt(em), now) || 0;
+      const score = lvl.w * 1000 + days;
+      crit.push({ codigo: em.codigo||"", lvl: lvl.lvl, days, stage: __segStage(em), score });
+    }
+    crit.sort((a,b)=>b.score-a.score);
+    const critT = document.getElementById("segCriticosTbody");
+    if(critT){
+      critT.innerHTML = "";
+      crit.slice(0,10).forEach((r, idx)=>{
+        critT.innerHTML += `<tr>
+          <td>${idx+1}</td>
+          <td class="fw-semibold">${r.codigo}</td>
+          <td><span class="badge text-bg-light border">${r.lvl}</span></td>
+          <td>${r.days}</td>
+          <td><span class="badge text-bg-light border">${r.stage}</span></td>
+        </tr>`;
+      });
+      if(crit.length===0) critT.innerHTML = '<tr><td colspan="5" class="text-muted">Sin datos.</td></tr>';
+    }
+
+    // Casos en riesgo
+    const riesgo = [];
+    for(const em of abiertos){
+      const stage = __segStage(em);
+      const codigo = em.codigo || "";
+      const days = __segDiffDays(__segOpenAt(em), now) || 0;
+
+      // Regla 1: RP aprobado sin RC
+      if(String(em?.rpAprobEstado||"") === "Aprobado"){
+        const hasRC = Array.isArray(em?.rcReportes) && em.rcReportes.length>0;
+        const d = __segDiffDays(em?.rpAprobadoEn || null, now);
+        if(!hasRC && d !== null && d >= reglaSinRc){
+          riesgo.push({codigo, tipo:"Sin RC", detalle:`RP aprobado hace ${d} días (umbral ${reglaSinRc}).`});
+        }
+      }
+
+      // Regla 2: Solicitud cierre pendiente
+      if(String(em?.cierreEstado||"") === "Pendiente"){
+        riesgo.push({codigo, tipo:"Cierre pendiente", detalle:"Solicitud de cierre en espera."});
+      }
+
+      // Regla 3: Observado eterno (8+ días abierto y en observado)
+      if(stage === "Observado" && days >= 8){
+        riesgo.push({codigo, tipo:"Observado eterno", detalle:`${days} días abierto en estado Observado.`});
+      }
+
+      // Regla 4: Alto impacto + inactividad
+      const imp = __segTotalImpacto(em);
+      const lvl = __segImpactLevel(imp);
+      const last = __segLastMoveAt(em);
+      const h = __segDiffHours(last, now);
+      if(lvl.lvl === "Alto" && h !== null && h >= inacH){
+        riesgo.push({codigo, tipo:"Alto + inactivo", detalle:`Impacto alto y ${Math.round(h)}h sin movimiento.`});
+      }
+    }
+    const riesgoT = document.getElementById("segRiesgoTbody");
+    if(riesgoT){
+      riesgoT.innerHTML = "";
+      if(riesgo.length===0){
+        riesgoT.innerHTML = '<tr><td colspan="3" class="text-muted">Sin casos en riesgo (con las reglas actuales).</td></tr>';
+      }else{
+        riesgo.slice(0, 50).forEach(r=>{
+          riesgoT.innerHTML += `<tr>
+            <td class="fw-semibold">${r.codigo}</td>
+            <td><span class="badge text-bg-warning">${r.tipo}</span></td>
+            <td class="small">${r.detalle}</td>
+          </tr>`;
+        });
+      }
+    }
+
+  }catch(e){
+    __segSetMsg("Error render: " + (e?.message || String(e)));
+  }
+}
+
+function __segShowBitacora(em){
+  try{
+    if(!em){
+      __segSetMsg("No se encontró la emergencia para bitácora.");
+      return;
+    }
+    const head = document.getElementById("segBitHead");
+    const body = document.getElementById("segBitBody");
+
+    if(head){
+      head.textContent = `Código: ${em.codigo || "—"} | Estado: ${__segStage(em)} | Registrador: ${__segRegistrar(em) || "—"}`;
+    }
+    if(body){
+      const tl = __segTimeline(em);
+      if(!tl.length){
+        body.innerHTML = '<div class="text-muted">Sin historial disponible.</div>';
+      }else{
+        body.innerHTML = '<ul class="list-group list-group-flush">' + tl.map(x=>{
+          let det = "";
+          try{
+            if(x.detail !== null && x.detail !== undefined){
+              det = `<div class="text-muted small"><code>${String(JSON.stringify(x.detail)).replace(/</g,"&lt;")}</code></div>`;
+            }
+          }catch(e){}
+          return `<li class="list-group-item">
+            <div class="d-flex justify-content-between">
+              <div class="fw-semibold">${x.action || ""}</div>
+              <div class="small text-muted">${x.at ? __formatLocalIso(x.at) : "—"}</div>
+            </div>
+            <div class="small">${x.who || ""}</div>
+            ${det}
+          </li>`;
+        }).join("") + "</ul>";
+      }
+    }
+
+    const modalEl = document.getElementById("modalSegBitacora");
+    if(modalEl){
+      const m = bootstrap.Modal.getOrCreateInstance(modalEl);
+      m.show();
+    }
+  }catch(e){
+    __segSetMsg("Error bitácora: " + (e?.message || String(e)));
+  }
+}
+
+async function __segRefresh(){
+  if(!(__isAdmin && __isAdmin())) return;
+
+  __segSetMsg("");
+  __segSetFuente("Fuente: cargando…");
+
+  try{
+    const records = await __segPullSnapshotFromD1();
+    __SEG_CACHE.records = records;
+    __SEG_CACHE.loadedAt = __nowIso();
+
+    __segSetFuente("Fuente: D1 (Workers) | " + __formatLocalIso(__SEG_CACHE.loadedAt));
+
+    // llenar filtros dinámicos
+    __segFillSelect("segFiltroReg", records.map(__segRegistrar));
+    __segFillSelect("segFiltroDep", records.map(__segDep));
+
+    __segRender();
+
+  }catch(e){
+    const msg = (e && e.message) ? e.message : String(e);
+    if(msg === "offline") __segSetMsg("Sin internet: no puedo leer D1. Conéctate y vuelve a actualizar.");
+    else if(msg === "server_not_configured") __segSetMsg("Servidor no configurado. Edita __API_CFG.baseUrl (patch_cf_sync.js).");
+    else if(msg === "unauthorized") __segSetMsg("Sesión inválida/no autorizada. Vuelve a iniciar sesión.");
+    else __segSetMsg("Error al cargar Seguimiento: " + msg);
+    __segSetFuente("Fuente: —");
+  }
+}
+
+function __segInit(){
+  const btn = document.getElementById("btnSegActualizar");
+  if(btn) btn.addEventListener("click", __segRefresh);
+
+  ["segFiltroReg","segFiltroDep","segFiltroInac","segReglaSinRC"].forEach(id=>{
+    const el = document.getElementById(id);
+    if(el) el.addEventListener("change", __segRender);
+  });
+
+  const link = document.querySelector('a[href="#segTab"]');
+  if(link){
+    link.addEventListener("shown.bs.tab", ()=>{
+      // Solo refrescar si aún no cargó o si pasó un rato
+      const last = __SEG_CACHE.loadedAt ? __safeParseDate(__SEG_CACHE.loadedAt) : null;
+      const now = new Date();
+      const minutes = last ? ((now.getTime()-last.getTime())/60000) : 999;
+      if(minutes >= 2) __segRefresh();
+      else __segRender();
+    });
+  }
+}
+
 
 // ---- Hook DOMContentLoaded (extra) ----
 document.addEventListener('DOMContentLoaded', async function(){
