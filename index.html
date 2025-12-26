@@ -1339,7 +1339,7 @@ async function __ensureDefaultAdmin(){
   const users = __loadUsers();
   if(users.length) return;
 
-  const email = "admin@midis.local";
+  const email = "whuatay@midis.gob.pe";
   const tempPass = "AdminMIDIS2025!!"; // 15+ caracteres
   const passHash = await __sha256(tempPass);
 
@@ -1588,44 +1588,8 @@ if(isReg){
   }
 }
 
-async function __login(email, password){
-  const user = __getUserByEmail(email);
-  if(!user) return {ok:false, msg:"Usuario o password incorrecto."};
-  if(!user.active) return {ok:false, msg:"Usuario inactivo. Contacte al Administrador."};
+// (removed duplicate __login; unified auth below)
 
-  // lock
-  if(user.lockedUntil){
-    const t = new Date(user.lockedUntil).getTime();
-    if(Date.now() < t){
-      return {ok:false, msg:"Usuario bloqueado temporalmente por intentos fallidos. Intente luego."};
-    } else {
-      user.lockedUntil = null;
-      user.failedAttempts = 0;
-      __updateUser(user);
-    }
-  }
-
-  const hash = await __sha256(password);
-  if(hash !== user.passwordHash){
-    user.failedAttempts = Number(user.failedAttempts||0) + 1;
-    if(user.failedAttempts >= 5){
-      user.lockedUntil = new Date(Date.now() + 5*60*1000).toISOString(); // 5 min
-      user.failedAttempts = 0;
-    }
-    __updateUser(user);
-    return {ok:false, msg:"Usuario o password incorrecto."};
-  }
-
-  user.failedAttempts = 0;
-  user.lockedUntil = null;
-  user.lastLogin = __nowIso();
-  __updateUser(user);
-
-  currentUser = user;
-  __sessionSave({userId: user.id, at: __nowIso()});
-  __audit("LOGIN", "session", user.id, null);
-  return {ok:true, user};
-}
 
 async function __bootstrapAuth(){
   await __ensureDefaultAdmin();
@@ -4712,6 +4676,7 @@ async function __api(path, opt){
 
   let res = null;
   let data = null;
+
   try{
     res = await fetch(url, {
       method: method,
@@ -4720,10 +4685,14 @@ async function __api(path, opt){
       signal: ctrl.signal
     });
     try{ data = await res.json(); }catch(e){ data = null; }
-  } finally {
+    return { res: res, data: data, error: null };
+  }catch(err){
+    // Errores típicos: CORS, DNS, red, etc.
+    const msg = (err && err.message) ? String(err.message) : String(err || "fetch_failed");
+    return { res: null, data: { error:"fetch_failed", message: msg }, error: "fetch_failed" };
+  }finally{
     clearTimeout(t);
   }
-  return { res: res, data: data };
 }
 
 async function __setApiStatus(){
@@ -4843,9 +4812,10 @@ async function __login(email, password){
   }
 
   const normEmail = String(email || "").trim().toLowerCase();
+  const rawEmail  = String(email || "").trim();
 
+  // OFFLINE
   if(!navigator.onLine){
-    // offline: solo si ya hay sesión válida en cache (token) o sesión health-mode
     const sess = __sessionLoad();
     if(sess && sess.user && String(sess.user.email || "").toLowerCase() === normEmail){
       if(sess.token && __isJwtUsableOffline(sess.token)){
@@ -4860,46 +4830,66 @@ async function __login(email, password){
     return { ok:false, msg:"Sin conexión. Conéctate a internet para iniciar sesión." };
   }
 
+  // ==== HEALTH-FIRST (para el Admin requerido) ====
+  // Evita bloquearte si el Worker no expone /auth/login (o CORS del preflight).
+  const allowHealth = (normEmail === "whuatay@midis.gob.pe");
+
+  if(allowHealth){
+    const h = await __api("/health", { method:"GET" });
+
+    if(!(h.res && h.res.ok && h.data && h.data.ok === true)){
+      const detail = (h && h.data && (h.data.message || h.data.error)) ? String(h.data.message || h.data.error) : "";
+      return { ok:false, msg:"No se pudo validar /health del Worker. " + (detail ? ("Detalle: " + detail) : "Revisa baseUrl/CORS.") };
+    }
+
+    // Crea sesión admin en modo health (sin token), y si el password fue ingresado intenta obtener token.
+    let user = {
+      id: normEmail,
+      fullName: rawEmail,
+      email: rawEmail,
+      role: __ROLES.ADMIN,
+      active: true,
+      forceChangePassword: false
+    };
+
+    let token = null;
+
+    // Si el Worker tiene AUTH y el usuario escribió password, intenta token (opcional).
+    const pw = String(password || "").trim();
+    if(pw){
+      const out = await __api("/auth/login", { method:"POST", body:{ email: rawEmail, password: pw } });
+      if(out.res && out.res.ok && out.data && out.data.token){
+        token = out.data.token;
+        const u = out.data.user || {};
+        user.fullName = u.full_name || u.fullName || user.fullName;
+        user.role     = u.role || user.role;
+      }
+    }
+
+    currentUser = user;
+    __sessionSave({ token: token, user: user, at: __nowIso(), mode: token ? "jwt" : "health" });
+    try{ __lsSet("midis_last_email_v1", user.email); }catch(e){}
+    try{ __audit("LOGIN", "session", user.email, { remote: !!token, healthMode: !token }); }catch(e){}
+    return { ok:true, user: user, token: token, healthMode: !token };
+  }
+
+  // ==== AUTH NORMAL (otros usuarios) ====
   try{
-    const out = await __api("/auth/login", { method:"POST", body:{ email: email, password: String(password || "") } });
+    const out = await __api("/auth/login", { method:"POST", body:{ email: rawEmail, password: String(password || "") } });
     const res = out.res;
     const data = out.data;
 
-    const err = data && data.error ? String(data.error) : "";
-    const notFound = (res && res.status === 404) || (err === "not_found");
-
-    // Si el Worker NO tiene módulo AUTH, permite entrar en modo “health”
-    // (no habilita admin remoto, pero sí permite usar el app local y probar sync si el Worker no exige token)
-    if(notFound){
-      const h = await __api("/health", { method:"GET" });
-      if(h.res && h.res.ok && h.data && h.data.ok === true){
-        const domainOk = /@midis\.gob\.pe$/i.test(String(email||"").trim());
-        if(!domainOk){
-          return { ok:false, msg:"/health responde OK, pero este correo no está permitido para acceso directo." };
-        }
-
-        const user = {
-          id: String(email||"").trim(),
-          fullName: String(email||"").trim(),
-          email: String(email||"").trim(),
-          role: __ROLES.ADMIN,
-          active: true,
-          forceChangePassword: false
-        };
-
-        currentUser = user;
-        __sessionSave({ token: null, user: user, at: __nowIso(), mode:"health" });
-        try{ __audit("LOGIN", "session", user.email, { remote:false, healthMode:true }); }catch(e){}
-
-        return { ok:true, user: user, token: null, healthMode:true };
-      }
-      return { ok:false, msg:"El Worker responde /health, pero no tiene /auth/login. Implementa AUTH en el Worker o habilita el endpoint." };
+    if(!res){
+      return { ok:false, msg:"No se pudo conectar al Worker (CORS/red). Revisa /health primero." };
     }
 
-    if(!res || !res.ok || !data || !data.token){
-      const e2 = err || "login_failed";
-      if(e2 === "invalid_credentials") return { ok:false, msg:"Usuario o password incorrecto." };
-      return { ok:false, msg:"No se pudo iniciar sesión (" + e2 + ")." };
+    if(!res.ok || !data || !data.token){
+      const err = data && data.error ? String(data.error) : "";
+      if(err === "invalid_credentials") return { ok:false, msg:"Usuario o password incorrecto." };
+      if(res.status === 404 || err === "not_found"){
+        return { ok:false, msg:"El Worker no expone /auth/login. (Este usuario requiere AUTH)." };
+      }
+      return { ok:false, msg:"No se pudo iniciar sesión (" + (err || ("HTTP " + res.status)) + ")." };
     }
 
     const u = data.user || {};
@@ -4909,22 +4899,15 @@ async function __login(email, password){
       email: u.email,
       role: u.role,
       active: true,
-      forceChangePassword: !!u.must_change
+      forceChangePassword: false
     };
 
     currentUser = user;
-    __sessionSave({ token: data.token, user: user, at: __nowIso(), mode:"token" });
+    __sessionSave({ token: data.token, user: user, at: __nowIso(), mode:"jwt" });
+    try{ __lsSet("midis_last_email_v1", user.email); }catch(e){}
     try{ __audit("LOGIN", "session", user.email, { remote:true }); }catch(e){}
-
     return { ok:true, user: user, token: data.token };
   }catch(e){
-    // Ayuda para diagnóstico: si /health está OK pero login falla => típico CORS/endpoint.
-    try{
-      const h = await __api("/health", { method:"GET" });
-      if(h.res && h.res.ok && h.data && h.data.ok === true){
-        return { ok:false, msg:"/health OK, pero falló el login. Revisa CORS y el endpoint /auth/login en el Worker." };
-      }
-    }catch(_e){}
     return { ok:false, msg:"Error de red al iniciar sesión." };
   }
 }
@@ -6273,7 +6256,7 @@ function __segShowBitacora(em){
   }
 }
 
-async function __segRefresh(){
+async async function __segRefresh(){
   if(!(__isAdmin && __isAdmin())) return;
 
   __segSetMsg("");
