@@ -42,7 +42,7 @@ body { background: #f5f5f5; }
 
 </style>
 
- <script src="./patch_cf_sync.js"></script>
+ <script src="./patch_cf_sync.js?v=20251225a"></script>
 <script>
   window.__API_CFG = window.__API_CFG || {};
   // Fallback: si no existe patch_cf_sync.js o no define baseUrl, usa este valor
@@ -1086,7 +1086,7 @@ body { background: #f5f5f5; }
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <!-- archivo generado desde el Excel -->
-<script src="ubigeoData.js"></script>
+<script src="ubigeoData.js?v=20251225a"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 
 <script>
@@ -1532,14 +1532,14 @@ if(isReg){
   const linkRC = document.querySelector('a[href="#rcTab"]')?.closest("li");
   const linkDash = document.querySelector('a[href="#dashTab"]')?.closest("li");
 
-  const linkSeg = document.querySelector('a[href=\"#segTab\"]')?.closest(\"li\");
+  const linkSeg = document.querySelector('a[href=\"#segTab\"]')?.closest("li");
   const isConsulta = currentUser?.role === __ROLES.CONS;
 
   if(linkRP) linkRP.classList.toggle("d-none", isConsulta);
   if(linkRC) linkRC.classList.toggle("d-none", isConsulta);
   if(linkDash) linkDash.classList.remove("d-none");
 
-  if(linkSeg) linkSeg.classList.toggle(\"d-none\", !isAdmin);
+  if(linkSeg) linkSeg.classList.toggle("d-none", !isAdmin);
   // Bloqueos de edición
   const disableIdsConsulta = [
     "btnGuardarRP","btnGuardarEnviarRP","btnWordRP","btnNuevoRP","btnAddAccionRP","btnEnviarAprobRP",
@@ -4822,9 +4822,9 @@ async function __login(email, password){
         currentUser = sess.user;
         return { ok:true, user: currentUser, token: sess.token, offline:true };
       }
-      if(!sess.token && sess.mode === "health"){
+      if(!sess.token && (sess.mode === "health" || sess.mode === "health_diag")){
         currentUser = sess.user;
-        return { ok:true, user: currentUser, token: null, offline:true, healthMode:true };
+        return { ok:true, user: currentUser, token: null, offline:true, healthMode:true, healthDiag: (sess.mode === "health_diag") };
       }
     }
     return { ok:false, msg:"Sin conexión. Conéctate a internet para iniciar sesión." };
@@ -4837,9 +4837,14 @@ async function __login(email, password){
   if(allowHealth){
     const h = await __api("/health", { method:"GET" });
 
-    if(!(h.res && h.res.ok && h.data && h.data.ok === true)){
+    const healthOk = (h.res && h.res.ok && h.data && h.data.ok === true);
+    if(!healthOk){
       const detail = (h && h.data && (h.data.message || h.data.error)) ? String(h.data.message || h.data.error) : "";
-      return { ok:false, msg:"No se pudo validar /health del Worker. " + (detail ? ("Detalle: " + detail) : "Revisa baseUrl/CORS.") };
+      const isFetchFail = (!h.res) && (h && h.data && h.data.error === "fetch_failed");
+      // Si es un bloqueo típico de CORS/fetch, no te bloqueo el ingreso: entra en modo diagnóstico.
+      if(!isFetchFail){
+        return { ok:false, msg:"No se pudo validar /health del Worker. " + (detail ? ("Detalle: " + detail) : "Revisa baseUrl/CORS.") };
+      }
     }
 
     // Crea sesión admin en modo health (sin token), y si el password fue ingresado intenta obtener token.
@@ -4867,10 +4872,10 @@ async function __login(email, password){
     }
 
     currentUser = user;
-    __sessionSave({ token: token, user: user, at: __nowIso(), mode: token ? "jwt" : "health" });
+    __sessionSave({ token: token, user: user, at: __nowIso(), mode: token ? "jwt" : (healthOk ? "health" : "health_diag") });
     try{ __lsSet("midis_last_email_v1", user.email); }catch(e){}
     try{ __audit("LOGIN", "session", user.email, { remote: !!token, healthMode: !token }); }catch(e){}
-    return { ok:true, user: user, token: token, healthMode: !token };
+    return { ok:true, user: user, token: token, healthMode: !token, healthDiag: !healthOk };
   }
 
   // ==== AUTH NORMAL (otros usuarios) ====
@@ -6256,7 +6261,7 @@ function __segShowBitacora(em){
   }
 }
 
-async async function __segRefresh(){
+async function __segRefresh(){
   if(!(__isAdmin && __isAdmin())) return;
 
   __segSetMsg("");
