@@ -39,6 +39,7 @@ body { background: #f5f5f5; }
 
 
 .badge-orange{ background:#fd7e14 !important; color:#fff !important; }
+.cons-hide{ display:none !important; }
 
 </style>
 
@@ -242,8 +243,8 @@ body { background: #f5f5f5; }
             <th>Fecha peligro</th>
             <th>Estado</th>
             <th>RP Estado</th>
-            <th>RP</th>
-            <th>RC</th>
+            <th class="col-rp">RP</th>
+            <th class="col-rc">RC</th>
             <th>Ver</th>
           </tr>
         </thead>
@@ -921,9 +922,8 @@ body { background: #f5f5f5; }
           <div class="col-md-3">
             <label class="form-label">Rol</label>
             <select id="admRole" class="form-control">
+              <option value="Consulta" selected>Consulta</option>
               <option value="Registrador">Registrador</option>
-              <option value="Consulta">Consulta</option>
-            
               <option value="Administrador">Administrador</option>
             </select>
           </div>
@@ -1540,6 +1540,14 @@ if(isReg){
   if(linkDash) linkDash.classList.remove("d-none");
 
   if(linkSeg) linkSeg.classList.toggle("d-none", !isAdmin);
+
+  // Lista de emergencias: ocultar columnas RP/RC para usuarios Consulta
+  try{
+    document.querySelectorAll('#tablaEmergencias thead th.col-rp, #tablaEmergencias thead th.col-rc').forEach(th=>{
+      th.classList.toggle('cons-hide', isConsulta);
+    });
+  }catch(e){}
+
   // Bloqueos de edición
   const disableIdsConsulta = [
     "btnGuardarRP","btnGuardarEnviarRP","btnWordRP","btnNuevoRP","btnAddAccionRP","btnEnviarAprobRP",
@@ -3375,8 +3383,8 @@ function cargarTablaEmergencias() {
 <td>${e.fechaPeligro}</td>
 <td>${e.cerrada ? "Cerrada" : "Abierta"}</td>
 <td>${__rpEstadoEtiqueta(e)}</td>
-<td><button class="btn btn-sm btn-outline-primary btnRP" ${(__isRegistrador() && e.cerrada) ? "disabled" : ""}>RP</button></td>
-<td><button class="btn btn-sm btn-primary btnRC" ${ (e.cerrada || (__isRegistrador() && String(e.rpAprobEstado||"Borrador")!=="Aprobado")) ? "disabled" : ""}>RC</button></td>
+<td class="col-rp"><button class="btn btn-sm btn-outline-primary btnRP" ${(__isRegistrador() && e.cerrada) ? "disabled" : ""}>RP</button></td>
+<td class="col-rc"><button class="btn btn-sm btn-primary btnRC" ${ (e.cerrada || (__isRegistrador() && String(e.rpAprobEstado||"Borrador")!=="Aprobado")) ? "disabled" : ""}>RC</button></td>
 <td><button class="btn btn-sm btn-outline-secondary btnVer" title="Ver detalle">👁</button></td>
 `;
     // Restricción por rol (Consulta: solo Lista y Dashboard)
@@ -3388,9 +3396,13 @@ function cargarTablaEmergencias() {
       const bVer = tr.querySelector(".btnVer");
 
       if(isConsulta){
-        // Consulta: solo lectura (Lista + Dashboard) pero sí puede VER detalle (ojito)
+        // Consulta: solo lectura (Lista + Dashboard)
+        // 1) Ocultar botones RP/RC
         if (bRC) { bRC.disabled = true; bRC.style.display = "none"; }
         if (bRP) { bRP.disabled = true; bRP.style.display = "none"; }
+        // 2) Ocultar columnas completas RP/RC
+        try{ tr.querySelectorAll('td.col-rp, td.col-rc').forEach(td=>td.classList.add('cons-hide')); }catch(_e){}
+        // 3) Mantener el botón Ver disponible
         if (bVer) { bVer.disabled = false; bVer.style.display = ""; bVer.title = "Ver detalle"; }
       } else {
         // Para Admin/Registrador: el ojito solo se muestra cuando está Cerrada
@@ -5200,7 +5212,7 @@ async function __createUserFromAdmin(){
 
   if(document.getElementById('admFullName')) document.getElementById('admFullName').value = '';
   if(document.getElementById('admEmail')) document.getElementById('admEmail').value = '';
-  if(document.getElementById('admRole')) document.getElementById('admRole').value = __ROLES.REG;
+  if(document.getElementById('admRole')) document.getElementById('admRole').value = __ROLES.CONS;
 
   const users = await __adminFetchUsers();
   __renderUsersTable(users);
@@ -6326,7 +6338,32 @@ document.addEventListener('DOMContentLoaded', async function(){
 
   // Admin modal: manejado en el bloque de INIT AUTH UI (arriba)
 
-  // estado inicial
+  // Guard: Usuario Consulta solo puede ver Lista de Emergencias y Dashboard
+  try{
+    document.querySelectorAll('#mainTabs a[data-bs-toggle="tab"]').forEach(function(a){
+      a.addEventListener('show.bs.tab', function(ev){
+        const href = (a.getAttribute('href')||'').trim();
+        const role = (currentUser && currentUser.role) ? currentUser.role : '';
+        const isCons = String(role).trim().toLowerCase() === String(__ROLES.CONS).trim().toLowerCase();
+        const isAdmin = String(role).trim().toLowerCase() === String(__ROLES.ADMIN).trim().toLowerCase();
+
+        if(isCons && (href==='#rpTab' || href==='#rcTab' || href==='#segTab')){
+          ev.preventDefault();
+          const lnk = document.querySelector('a[href="#listaTab"]');
+          if(lnk){ new bootstrap.Tab(lnk).show(); }
+          return;
+        }
+        if(!isAdmin && href==='#segTab'){
+          ev.preventDefault();
+          const lnk = document.querySelector('a[href="#listaTab"]');
+          if(lnk){ new bootstrap.Tab(lnk).show(); }
+          return;
+        }
+      });
+    });
+  }catch(e){}
+
+// estado inicial
   __updateSyncUI(0);
 });
 
