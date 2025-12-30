@@ -413,6 +413,14 @@ body { background: #f5f5f5; }
 
       <div id="datosBasicosRC" class="mb-3"></div>
 
+      <!-- Fecha de elaboración del Reporte Complementario -->
+      <div id="rcFechaElabRow" class="row g-2 mb-3">
+        <div class="col-md-4">
+          <label class="form-label">Fecha y hora de elaboración (RC)</label>
+          <input type="datetime-local" id="fechaHoraRC" class="form-control" disabled>
+        </div>
+      </div>
+
       <h5 class="text-primary">Daños en el Sector MIDIS (RC)</h5>
       <table class="table table-bordered">
         <thead>
@@ -1124,6 +1132,14 @@ function __nowIso(){
   const d = new Date();
   return d.toISOString();
 }
+
+function __nowLocalDateTimeValue(){
+  // formato para <input type="datetime-local">: YYYY-MM-DDTHH:mm (hora local)
+  const d = new Date();
+  const pad = (n)=>String(n).padStart(2,"0");
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 
 function __audit(action, entity, entityId, detail){
   try{
@@ -2640,6 +2656,7 @@ function setRCEnabled(enabled) {
 function setRCViewActive(active) {
   const elementos = document.querySelectorAll(
     "#rcTab #datosBasicosRC, " +
+    "#rcTab #rcFechaElabRow, " +
     "#rcTab h5, " +
     "#rcTab .input-group, " +
     "#rcTab table, " +
@@ -3708,7 +3725,26 @@ function abrirRC(obj) {
   rcGrabado = false;
   rcWordGenerado = false;
 
-  // Mostrar N° Global del último RC si existe; si no, vacío
+  
+
+  // Fecha de elaboración del RC (input)
+  try{
+    const fh = document.getElementById("fechaHoraRC");
+    if(fh){
+      let v = "";
+      try{
+        if(obj && Array.isArray(obj.rcReportes) && obj.rcReportes.length>0){
+          const last = obj.rcReportes[obj.rcReportes.length-1];
+          v = (last && (last.fechaHoraRC || last.fechaElaboracionRC || last.fechaElaboracion)) ? (last.fechaHoraRC || last.fechaElaboracionRC || last.fechaElaboracion) : "";
+        }
+      }catch(e){}
+      if(!v) v = (__nowLocalDateTimeValue ? __nowLocalDateTimeValue() : "");
+      fh.value = v;
+      // habilitar para Admin/otros; el Registrador se bloquea más abajo
+      fh.disabled = false;
+    }
+  }catch(e){}
+// Mostrar N° Global del último RC si existe; si no, vacío
   let numeroGlobalMostrar = "";
   if (obj.rcReportes && obj.rcReportes.length > 0) {
     const ultimoRC = obj.rcReportes[obj.rcReportes.length - 1];
@@ -3771,6 +3807,7 @@ try{
 <b>Estado:</b> ${obj.cerrada ? "Cerrada" : "Abierta"}<br>
 <b>Peligro:</b> ${obj.peligro}<br>
 <b>Ubicación:</b> ${obj.departamento} / ${obj.provincia} / ${obj.distrito}<br>
+<b>Fecha de elaboración (RC):</b> ${(document.getElementById('fechaHoraRC')?.value || '')}<br>
 <b>Fecha del peligro:</b> ${obj.fechaPeligro}<br>
 `;
   cargarTablaDaniosRC(obj);
@@ -3848,11 +3885,21 @@ function __guardarRCCore(opts={}){
   numeroReporteGlobal++;
   let numRC = numeroReporteGlobal;
 
+
+  // Fecha de elaboración del RC (datetime-local)
+  let fechaHoraRC = document.getElementById("fechaHoraRC")?.value || "";
+  if(!fechaHoraRC){
+    fechaHoraRC = (__nowLocalDateTimeValue ? __nowLocalDateTimeValue() : "");
+    const fhEl = document.getElementById("fechaHoraRC");
+    if(fhEl) fhEl.value = fechaHoraRC;
+  }
   if (!Array.isArray(em.rcReportes)) em.rcReportes = [];
   em.rcReportes.push({
     numeroReporteRC: numRC,
     numeroGlobal: numRC,
     fechaRegistro: new Date().toISOString().slice(0, 10),
+    fechaHoraRC: fechaHoraRC,
+    fechaElaboracionRC: fechaHoraRC,
     acciones: [...accionesRCTemp],
     daniosMIDIS: JSON.parse(JSON.stringify(em.daniosMIDIS)),
     // Aprobación RC
@@ -3887,6 +3934,7 @@ function __guardarRCCore(opts={}){
 <b>Estado:</b> ${em.cerrada ? "Cerrada" : "Abierta"}<br>
 <b>Peligro:</b> ${em.peligro}<br>
 <b>Ubicación:</b> ${em.departamento} / ${em.provincia} / ${em.distrito}<br>
+<b>Fecha de elaboración (RC):</b> ${(document.getElementById('fechaHoraRC')?.value || '')}<br>
 <b>Fecha del peligro:</b> ${em.fechaPeligro}<br>
 `;
 
@@ -4087,6 +4135,10 @@ document.getElementById("btnWordRC").onclick = () => {
   em.accionesRC = rc.acciones;
   em.daniosMIDIS = rc.daniosMIDIS;
 
+
+  // Fecha de elaboración del RC (para el Word): preferir fechaHoraRC
+  em.fechaHoraRC = rc.fechaHoraRC || rc.fechaElaboracionRC || rc.fechaElaboracion || "";
+  if(em.fechaHoraRC) em.fechaHora = em.fechaHoraRC;
   // --- Word (seguro): usa Worker si está configurado y hay internet; si no, intenta servicio local ---
   const __apiOkRC = (typeof __isApiConfigured === "function") ? __isApiConfigured() : false;
   const __tokenRC = (typeof __tokenGet === "function") ? __tokenGet() : null;
