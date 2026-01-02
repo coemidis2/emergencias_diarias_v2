@@ -2439,7 +2439,29 @@ document.addEventListener("DOMContentLoaded", ()=>{
 
 
   // Login
-  document.getElementById("btnLogin")?.addEventListener("click", __handleLogin);
+  
+/* ===================== DESCARGA (robusta) ===================== */
+function __downloadBlob(blob, filename){
+  const safeName = filename || "reporte.docx";
+  try{
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = safeName;
+    a.style.display = "none";
+    document.body.appendChild(a);
+    a.click();
+    // En algunos navegadores si revocas inmediato, la descarga no inicia.
+    setTimeout(() => {
+      try{ URL.revokeObjectURL(url); }catch(e){}
+      try{ document.body.removeChild(a); }catch(e){}
+    }, 1500);
+  }catch(e){
+    console.error(e);
+    alert("No se pudo iniciar la descarga del Word. Intente nuevamente.");
+  }
+}
+document.getElementById("btnLogin")?.addEventListener("click", __handleLogin);
   document.getElementById("loginUser")?.addEventListener("keydown", (e)=>{ if(e.key==="Enter") __handleLogin(); });
   document.getElementById("loginPass")?.addEventListener("keydown", (e)=>{ if(e.key==="Enter") __handleLogin(); });
 
@@ -4019,31 +4041,30 @@ document.getElementById("btnWordRP").onclick = () => {
     headers: __docHeadersRP,
     body: JSON.stringify(em)
   })
-  .then(async r => {
+  .then(async (r) => {
     if (!r.ok) {
-      const txt = await r.text().catch(()=> "");
-      throw new Error(`Error ${r.status} en servidor RP: ${txt}`);
+      let detail = "";
+      try {
+        const ct = (r.headers.get("content-type") || "");
+        detail = ct.includes("application/json") ? JSON.stringify(await r.json()) : await r.text();
+      } catch (e) {}
+      throw new Error(`Error en servidor RP (${r.status}): ${detail || r.statusText || "sin detalle"}`);
     }
-    const cd = r.headers.get("content-disposition") || "";
-    const fallback = `RP_${em.codigo}.docx`;
-    const filename = __filenameFromContentDisposition(cd, fallback);
-    const blob = await r.blob();
-    return { blob, filename };
+    return r.blob();
   })
-  .then(({blob, filename}) => {
+  .then(blob => {
     let url = URL.createObjectURL(blob);
     let a = document.createElement("a");
     a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
+    a.download = `RP_${em.codigo}.docx`;
     a.click();
-    a.remove();
     URL.revokeObjectURL(url);
     rpWordGenerado = true;
   })
   .catch(err => {
     console.error(err);
-    alert("No se pudo generar el Word RP. " + (err && err.message ? err.message : ""));
+    alert("No se pudo generar el Word RP.
+" + (err && err.message ? err.message : err));
   });
 };
 
@@ -4088,31 +4109,30 @@ document.getElementById("btnWordRC").onclick = () => {
     headers: __docHeadersRC,
     body: JSON.stringify(em)
   })
-  .then(async r => {
+  .then(async (r) => {
     if (!r.ok) {
-      const txt = await r.text().catch(()=> "");
-      throw new Error(`Error ${r.status} en servidor RC: ${txt}`);
+      let detail = "";
+      try {
+        const ct = (r.headers.get("content-type") || "");
+        detail = ct.includes("application/json") ? JSON.stringify(await r.json()) : await r.text();
+      } catch (e) {}
+      throw new Error(`Error en servidor RC (${r.status}): ${detail || r.statusText || "sin detalle"}`);
     }
-    const cd = r.headers.get("content-disposition") || "";
-    const fallback = `RC_${em.codigo}.docx`;
-    const filename = __filenameFromContentDisposition(cd, fallback);
-    const blob = await r.blob();
-    return { blob, filename };
+    return r.blob();
   })
-  .then(({blob, filename}) => {
+  .then(blob => {
     let url = URL.createObjectURL(blob);
     let a = document.createElement("a");
     a.href = url;
     a.download = `RC_${em.codigo}_N${em.numeroReporteRC}.docx`;
-    document.body.appendChild(a);
     a.click();
-    a.remove();
     URL.revokeObjectURL(url);
     rcWordGenerado = true;
   })
   .catch(err => {
     console.error(err);
-    alert("No se pudo generar el Word RC. " + (err && err.message ? err.message : ""));
+    alert("No se pudo generar el Word RC.
+" + (err && err.message ? err.message : err));
   });
 };
 
