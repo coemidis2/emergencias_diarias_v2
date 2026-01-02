@@ -1472,6 +1472,19 @@ function __recalcularCorrelativos(){
 }
 
 
+// --- Sync local entre pestañas: actualizar lista cuando otro usuario/rol graba ---
+try{
+  window.addEventListener('storage', (ev)=>{
+    try{
+      if(!ev || ev.key !== __AUTH_KEYS.emerg) return;
+      emergencias = __loadEmergencias();
+      __recalcularCorrelativos();
+      if(typeof cargarTablaEmergencias === "function") cargarTablaEmergencias();
+    }catch(_e){}
+  });
+}catch(e){}
+
+
 function __getCurrentUserName(){
   return currentUser ? currentUser.fullName : "";
 }
@@ -2781,10 +2794,18 @@ function generarCodigoRP() {
   // para todo el aplicativo (Administrador y Registrador).
   const year = new Date().getFullYear();
 
+  // IMPORTANTE: siempre leer el último estado desde localStorage para evitar duplicados entre usuarios/pestañas
+  // (por ejemplo, cuando hay dos sesiones abiertas a la vez).
+  let arr = [];
+  try{
+    arr = __loadEmergencias();
+  }catch(e){
+    arr = Array.isArray(emergencias) ? emergencias : [];
+  }
+
   // 1) Tomar el mayor correlativo ya existente en las emergencias del año actual
   let maxExistente = 0;
   try{
-    const arr = Array.isArray(emergencias) ? emergencias : __loadEmergencias();
     for(const e of arr){
       const cod = String(e && e.codigo ? e.codigo : '').trim();
       const m = /^RP-(\d+)-(\d{4})$/.exec(cod);
@@ -2802,7 +2823,20 @@ function generarCodigoRP() {
   // 3) Respaldo en memoria (por si ya generaste códigos en esta sesión)
   const seqMem = Number(contadorRPporAnio && contadorRPporAnio[year] ? contadorRPporAnio[year] : 0) || 0;
 
-  const next = Math.max(maxExistente, seqLocal, seqMem) + 1;
+  let next = Math.max(maxExistente, seqLocal, seqMem) + 1;
+
+  // 4) Blindaje final: si por alguna razón el correlativo ya existe, seguir incrementando hasta encontrar uno libre
+  try{
+    const exists = (n)=>{
+      const code = `RP-${String(n).padStart(2,"0")}-${year}`;
+      return arr.some(x => String(x && x.codigo ? x.codigo : '').trim() === code);
+    };
+    let guard = 0;
+    while(exists(next) && guard < 500){
+      next++;
+      guard++;
+    }
+  }catch(e){}
 
   if(!contadorRPporAnio) contadorRPporAnio = {};
   contadorRPporAnio[year] = next;
@@ -2811,6 +2845,7 @@ function generarCodigoRP() {
   const correl = String(next).padStart(2, "0");
   return `RP-${correl}-${year}`;
 }
+
 
 // ===================== DAÑOS RP =====================
 function crearFilaDanios(programa) {
@@ -3083,22 +3118,50 @@ function __findEmergIdxByCodigo(codigo){
   return idx;
 }
 
+let __rpSaveInFlight = false;
+
 function __saveRP(opts){
   const submit = !!(opts && opts.submit);
 
   if(!currentUser || currentUser.role === __ROLES.CONS) return null;
 
+  // Evitar doble click / doble ejecución (esto estaba generando códigos repetidos)
+  if(__rpSaveInFlight) return null;
+  __rpSaveInFlight = true;
+  try{
+    // Siempre refrescar emergencias desde localStorage para evitar duplicados entre usuarios/pestañas
+    try{
+      const latest = __loadEmergencias();
+      if(Array.isArray(latest)) emergencias = latest;
+    }catch(e){}
+    try{ __recalcularCorrelativos(); }catch(e){}
+
   let codigoActual = (document.getElementById("codigoRP")?.value || "").trim();
+  let generadoAhora = false;
 
   // Generar código si no existe
   if(!codigoActual){
     codigoActual = generarCodigoRP();
+    generadoAhora = true;
     const c = document.getElementById("codigoRP");
     if(c) c.value = codigoActual;
   }
 
-  // Buscar existente
+  // Buscar existente (con emergencias ya refrescadas)
   let idx = __findEmergIdxByCodigo(codigoActual);
+
+  // Si acabamos de generar el código y YA existía (pestaña/sesión desfasada), regenerar hasta encontrar uno libre
+  if(generadoAhora && idx >= 0){
+    let guard = 0;
+    while(idx >= 0 && guard < 200){
+      codigoActual = generarCodigoRP();
+      const c = document.getElementById("codigoRP");
+      if(c) c.value = codigoActual;
+      idx = __findEmergIdxByCodigo(codigoActual);
+      guard++;
+    }
+  }
+
   const existing = (idx >= 0) ? emergencias[idx] : null;
 
   // Restricción: Registrador no puede re-grabar si ya está Pendiente o Aprobado
@@ -3231,6 +3294,9 @@ function __saveRP(opts){
   }
 
   return base;
+  } finally {
+    __rpSaveInFlight = false;
+  }
 }
 
 // Botón Admin: solo guarda (permite editar)
