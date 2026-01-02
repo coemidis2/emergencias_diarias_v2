@@ -1509,6 +1509,18 @@ if(btnGERC) btnGERC.classList.toggle("d-none", !isReg);
 if(btnGRC)  btnGRC.classList.toggle("d-none", isReg);
 if(btnERC)  btnERC.classList.toggle("d-none", isReg);
 
+// Registrador: en RC dejar solo Word RC y Retornar como botones operativos (modo solo lectura)
+if(isReg){
+  // Deshabilitar entradas del RC
+  document.querySelectorAll("#rcTab input, #rcTab textarea, #rcTab select").forEach(el=>{ el.disabled = true; });
+
+  // Deshabilitar botones de edición/flujo del RC
+  ["btnGuardarRC","btnGuardarEnviarRC","btnAddAccionRC","btnEnviarAprobRC","btnCerrarEmergencia"].forEach(id=>{
+    const b = document.getElementById(id);
+    if(b) b.disabled = true;
+  });
+}
+
 
   const btnAprRp = document.getElementById("btnAprobarRPAdmin");
   const btnAprRc = document.getElementById("btnAprobarRCAdmin");
@@ -1570,8 +1582,11 @@ if(btnERC)  btnERC.classList.toggle("d-none", isReg);
       if(!isAdmin) apr.value = ""; // el registrador no se auto-aprueba
     }
 
-    // Ajuste botón cierre (texto/estado depende del flujo)
-    try{ __syncCloseButtonUI(); }catch(e){}
+    // Ajuste botón cierre según rol
+    const btnCierre = document.getElementById("btnCerrarEmergencia");
+    if(btnCierre){
+      btnCierre.textContent = isAdmin ? "Cerrar emergencia" : "Solicitar cierre";
+    }
 
     // Habilitar envío a aprobación cuando corresponda (se habilita al guardar)
     // Registrador: el botón Nuevo debe mantenerse habilitado para registrar otra emergencia
@@ -2128,53 +2143,6 @@ function __syncRCActionButtons(){
   }catch(e){}
 }
 
-
-function __syncCloseButtonUI(){
-  try{
-    const btn = document.getElementById("btnCerrarEmergencia");
-    if(!btn) return;
-
-    const em = emergenciaSeleccionada;
-    if(!em){
-      btn.disabled = true;
-      btn.textContent = (__isAdmin && __isAdmin()) ? "Cerrar emergencia" : "Solicitar cierre";
-      return;
-    }
-
-    if(__isConsulta && __isConsulta()){
-      btn.disabled = true;
-      return;
-    }
-
-    const cierreSt = String(em.cierreEstado || "");
-    const cerrado = !!em.cerrada;
-
-    if(__isAdmin && __isAdmin()){
-      // Admin: solo aprueba cierres solicitados
-      btn.textContent = (cierreSt === "Pendiente") ? "Aprobar cierre" : "Cerrar emergencia";
-      btn.disabled = (cierreSt !== "Pendiente") || cerrado;
-      return;
-    }
-
-    if(__isRegistrador && __isRegistrador()){
-      btn.textContent = (cierreSt === "Pendiente") ? "Cierre solicitado" : "Solicitar cierre";
-
-      // Regla: para solicitar cierre, debe existir al menos un RC y el último debe estar Aprobado
-      let lastOk = false;
-      if(Array.isArray(em.rcReportes) && em.rcReportes.length > 0){
-        const last = em.rcReportes[em.rcReportes.length - 1];
-        lastOk = (String(last?.aprobEstado || "") === "Aprobado");
-      }
-
-      btn.disabled = cerrado || (cierreSt === "Pendiente") || !lastOk;
-      return;
-    }
-
-    // Otros roles
-    btn.disabled = true;
-  }catch(e){}
-}
-
 function __collectPendientes(){
   const out = [];
   try{
@@ -2420,36 +2388,20 @@ function __solicitarCierre(){
   }
   const em = emergenciaSeleccionada;
 
-  // Registrador: solo se solicita cierre cuando el último RC está Aprobado
-  if(currentUser.role === __ROLES.REG){
-    if(!Array.isArray(em.rcReportes) || em.rcReportes.length === 0){
-      alert("Para solicitar el cierre, primero debe registrar y enviar un Reporte Complementario (RC) y esperar su aprobación.");
-      return;
-    }
-    const last = em.rcReportes[em.rcReportes.length - 1];
-    if(String((last||{}).aprobEstado || "") !== "Aprobado"){
-      alert("Para solicitar el cierre, el último RC debe estar Aprobado por el Administrador.");
-      return;
-    }
-  }
-
   if(currentUser.role === __ROLES.ADMIN){
-    // Admin: aprueba el cierre solicitado (no cierra directo sin solicitud)
-    if(String(em.cierreEstado||"") !== "Pendiente"){
-      alert("No hay solicitud de cierre pendiente para aprobar.");
-      return;
-    }
-
-    __aprobar({kind:"cierre", codigo: em.codigo});
+    // Admin cierra directo
+    em.cerrada = true;
+    em.cierreEstado = "Aprobado";
+    em.cierreAprobadoPor = __getCurrentUserName();
+    em.cierreAprobadoEn = __nowIso();
+    __audit("CIERRE_DIRECTO_ADMIN", "emergencia", em.codigo, null);
+    __histPush(em, "CIERRE_DIRECTO_ADMIN", null);
+    __touch(em);
     __saveEmergencias();
     cargarTablaEmergencias();
-    try{ __renderAprobaciones(); }catch(e){}
-    try{ dashboardRefresh?.(); }catch(e){}
-    try{ __syncCloseButtonUI(); }catch(e){}
-    alert("Cierre aprobado. La emergencia quedó cerrada.");
+    alert("Emergencia cerrada.");
     return;
   }
-
 
   // Registrador solicita
   if(em.cierreEstado === "Pendiente"){
@@ -2475,7 +2427,6 @@ function __solicitarCierre(){
     }
   }catch(e){}
 
-  try{ __syncCloseButtonUI(); }catch(e){}
   alert("Solicitud de cierre enviada a aprobación.");
 }
 
@@ -2664,11 +2615,23 @@ function setRCEnabled(enabled) {
     "btnEnviarAprobRC"
   ];
 
-  // Control general del módulo RC (por selección de emergencia).
-  // El bloqueo por flujo (RC Pendiente / Cierre Pendiente / Cerrada) se aplica en __applyRCLockUI() y __syncCloseButtonUI().
+  const isReg = currentUser?.role === __ROLES.REG;
+
   ids.forEach(id => {
     const el = document.getElementById(id);
     if (!el) return;
+
+    // Registrador: RC solo lectura. Mantener activos únicamente Word RC y Retornar
+    if (isReg) {
+      if (id === "btnWordRC" || id === "btnRetornarRC") {
+        el.disabled = !enabled;
+      } else {
+        el.disabled = true;
+      }
+      return;
+    }
+
+    // Admin/otros roles
     el.disabled = !enabled;
   });
 }
@@ -2797,26 +2760,51 @@ document.addEventListener("DOMContentLoaded", function () {
 
 // ===================== FUNCIÓN CÓDIGO RP =====================
 function generarCodigoRP() {
-  let fechaPeligro = document.getElementById("fechaPeligroRP").value;
+  // Año según la fecha del peligro (si existe), si no: año actual
+  let fechaPeligro = document.getElementById("fechaPeligroRP")?.value || "";
   let year;
-
   if (fechaPeligro) {
-    let d = new Date(fechaPeligro);
+    const d = new Date(fechaPeligro);
     year = d.getFullYear();
-    if (isNaN(year)) {
-      year = new Date().getFullYear();
-    }
+    if (isNaN(year)) year = new Date().getFullYear();
   } else {
     year = new Date().getFullYear();
   }
 
-  if (!contadorRPporAnio[year]) {
-    contadorRPporAnio[year] = 0;
+  // Calcular correlativo a partir de emergencias existentes (local + lo jalado del servidor)
+  const arr = Array.isArray(emergencias) ? emergencias : (__loadEmergencias ? __loadEmergencias() : []);
+  let maxSeq = 0;
+  for (const e of arr) {
+    const c = String(e?.codigo || "").trim();
+    const m = /^RP-(\d+)-(\d{4})$/i.exec(c);
+    if (!m) continue;
+    const n = parseInt(m[1], 10);
+    const y = parseInt(m[2], 10);
+    if (y === year && Number.isFinite(n) && n > maxSeq) maxSeq = n;
   }
-  contadorRPporAnio[year]++;
 
-  const correl = String(contadorRPporAnio[year]).padStart(2, "0");
-  return `RP-${correl}-${year}`;
+  // Respaldo local (evita que Admin/Registrador repitan código en el mismo equipo si están sin sincronizar)
+  try{
+    const k = "rp_seq_" + String(year);
+    const v = Number(__lsGet ? (__lsGet(k) || "0") : "0") || 0;
+    if(v > maxSeq) maxSeq = v;
+  }catch(e){}
+
+  // Siguiente correlativo y aseguramos que no exista ya (por si hay duplicados locales)
+  let next = maxSeq + 1;
+  while (true) {
+    const width = Math.max(2, String(next).length);
+    const correl = String(next).padStart(width, "0");
+    const code = `RP-${correl}-${year}`;
+    try{
+      if (typeof __findEmergIdxByCodigo === "function" && __findEmergIdxByCodigo(code) !== -1) { next++; continue; }
+    }catch(e){}
+    try{
+      const k = "rp_seq_" + String(year);
+      if(__lsSet) __lsSet(k, String(next));
+    }catch(e){}
+    return code;
+  }
 }
 
 // ===================== DAÑOS RP =====================
@@ -3241,15 +3229,43 @@ function __saveRP(opts){
 }
 
 // Botón Admin: solo guarda (permite editar)
-document.getElementById("btnGuardarRP").onclick = () => {
+document.getElementById("btnGuardarRP").onclick = async () => {
+  try{
+    // Antes de generar código, jalamos lo último del servidor (si está configurado y hay internet)
+    if(__isApiConfigured && __isApiConfigured() && navigator.onLine){
+      await __syncPullAuto();
+    }
+  }catch(e){}
+
   const saved = __saveRP({submit:false});
-  if(saved) alert("Reporte Preliminar guardado.");
+  if(saved){
+    try{
+      // Empuja al servidor para que el Registrador lo vea en su Listado
+      if(__isApiConfigured && __isApiConfigured() && navigator.onLine){
+        await __syncPush();
+      }
+    }catch(e){}
+    alert("Reporte Preliminar guardado.");
+  }
 };
 
 // Botón Registrador: guarda y envía a aprobación (1 solo botón)
-document.getElementById("btnGuardarEnviarRP").onclick = () => {
+document.getElementById("btnGuardarEnviarRP").onclick = async () => {
+  try{
+    if(__isApiConfigured && __isApiConfigured() && navigator.onLine){
+      await __syncPullAuto();
+    }
+  }catch(e){}
+
   const saved = __saveRP({submit:true});
-  if(saved) alert("RP guardado y enviado a aprobación.");
+  if(saved){
+    try{
+      if(__isApiConfigured && __isApiConfigured() && navigator.onLine){
+        await __syncPush();
+      }
+    }catch(e){}
+    alert("RP guardado y enviado a aprobación.");
+  }
 };
 
 // ===================== FUNCIÓN VER EMERGENCIA CERRADA =====================
@@ -3780,6 +3796,27 @@ try{
   }
 }catch(e){}
 
+  // Registrador: RC siempre en modo solo lectura (solo Word RC y Retornar)
+  try{
+    const isRegRO = (__isRegistrador && __isRegistrador());
+    if(isRegRO){
+      // Bloquear entradas
+      document.querySelectorAll("#rcTab input, #rcTab textarea, #rcTab select").forEach(el=>{ el.disabled = true; });
+
+      // Bloquear botones de edición/flujo
+      ["btnGuardarRC","btnGuardarEnviarRC","btnAddAccionRC","btnEnviarAprobRC","btnCerrarEmergencia","btnAprobarRCAdmin"].forEach(id=>{
+        const b = document.getElementById(id);
+        if(b) b.disabled = true;
+      });
+
+      // Bloquear editar/eliminar acciones RC (si existieran)
+      document.querySelectorAll("#accionesRCTabla button").forEach(btn=>{ btn.disabled = true; });
+
+      // Mantener operativos Word RC y Retornar
+      const bw = document.getElementById("btnWordRC"); if(bw) bw.disabled = false;
+      const br = document.getElementById("btnRetornarRC"); if(br) br.disabled = false;
+    }
+  }catch(e){}
 
   document.getElementById("datosBasicosRC").innerHTML = `
 <b>Código:</b> ${obj.codigo}<br>
@@ -3793,7 +3830,6 @@ try{
   cargarAccionesRC();
   try{ __applyRCLockUI(); }catch(e){}
   try{ __syncRCActionButtons(); }catch(e){}
-  try{ __syncCloseButtonUI(); }catch(e){}
 
   // Botón aprobar RC (admin) habilitado si el último RC está pendiente
   const btnApr = document.getElementById("btnAprobarRCAdmin");
