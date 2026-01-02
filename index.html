@@ -412,6 +412,13 @@ body { background: #f5f5f5; }
       <h4 class="text-primary">Reporte Complementario (RC)</h4>
 
       <div id="datosBasicosRC" class="mb-3"></div>
+  <div class="row g-2 mb-3" id="rcFechaElabRow">
+    <div class="col-md-4">
+      <label class="form-label">Fecha y hora de elaboración (RC)</label>
+      <input type="datetime-local" id="fechaHoraRC" class="form-control">
+    </div>
+  </div>
+
 
       <h5 class="text-primary">Daños en el Sector MIDIS (RC)</h5>
       <table class="table table-bordered">
@@ -3773,6 +3780,15 @@ try{
 <b>Ubicación:</b> ${obj.departamento} / ${obj.provincia} / ${obj.distrito}<br>
 <b>Fecha del peligro:</b> ${obj.fechaPeligro}<br>
 `;
+  
+  // Fecha y hora de elaboración (RC): tomar del último RC (si existe)
+  try{
+    const lastRC = (Array.isArray(obj.rcReportes) && obj.rcReportes.length) ? obj.rcReportes[obj.rcReportes.length-1] : null;
+    const fh = (lastRC && lastRC.fechaHora) ? lastRC.fechaHora : "";
+    const inpFH = document.getElementById("fechaHoraRC");
+    if(inpFH) inpFH.value = fh || "";
+  }catch(e){}
+
   cargarTablaDaniosRC(obj);
   cargarAccionesRC();
   try{ __applyRCLockUI(); }catch(e){}
@@ -3849,9 +3865,12 @@ function __guardarRCCore(opts={}){
   let numRC = numeroReporteGlobal;
 
   if (!Array.isArray(em.rcReportes)) em.rcReportes = [];
+  const __fhRc = (document.getElementById("fechaHoraRC")?.value || "").trim() || __nowDateTimeLocal();
+  try{ const inp = document.getElementById("fechaHoraRC"); if(inp && !inp.value) inp.value = __fhRc; }catch(e){}
   em.rcReportes.push({
     numeroReporteRC: numRC,
     numeroGlobal: numRC,
+    fechaHora: __fhRc,
     fechaRegistro: new Date().toISOString().slice(0, 10),
     acciones: [...accionesRCTemp],
     daniosMIDIS: JSON.parse(JSON.stringify(em.daniosMIDIS)),
@@ -3975,24 +3994,16 @@ document.getElementById("btnRetornarRP").onclick = () => {
 
 // ===================== WORD RP (solo una vez) =====================
 document.getElementById("btnWordRP").onclick = () => {
-  // Si rpGrabado quedó en false por recarga/sesión, validamos contra el registro real
-  let codigo = (document.getElementById("codigoRP")?.value || "").trim();
-
   if (!rpGrabado) {
-    const existe = codigo ? emergencias.some(e => e.codigo === codigo) : (emergencias && emergencias.length > 0);
-    if (existe) {
-      rpGrabado = true;
-    } else {
-      alert("Primero debe grabar el Reporte Preliminar.");
-      return;
-    }
+    alert("Primero debe grabar el Reporte Preliminar.");
+    return;
   }
-
   if (rpWordGenerado) {
     alert("El Word del Reporte Preliminar ya fue generado. Presione 'Nuevo' para registrar otro RP.");
     return;
   }
 
+  let codigo = document.getElementById("codigoRP").value.trim();
   let em = null;
 
   if (codigo) {
@@ -4006,66 +4017,60 @@ document.getElementById("btnWordRP").onclick = () => {
     return;
   }
 
-  // Refrescar datos actuales del formulario antes de generar Word
-  em.departamento = document.getElementById("departamentoRP")?.value || em.departamento;
-  em.provincia = document.getElementById("provinciaRP")?.value || em.provincia;
-  em.distrito = document.getElementById("distritoRP")?.value || em.distrito;
-  em.latitud = document.getElementById("latitudRP")?.value || em.latitud;
-  em.longitud = document.getElementById("longitudRP")?.value || em.longitud;
-  em.peligro = document.getElementById("peligroRP")?.value || em.peligro;
-  em.accionesPreliminar = [...(accionesRPTemp.length ? accionesRPTemp : (em.accionesPreliminar || []))];
+  em.departamento = document.getElementById("departamentoRP").value || em.departamento;
+  em.provincia = document.getElementById("provinciaRP").value || em.provincia;
+  em.distrito = document.getElementById("distritoRP").value || em.distrito;
+  em.latitud = document.getElementById("latitudRP").value || em.latitud;
+  em.longitud = document.getElementById("longitudRP").value || em.longitud;
+  em.peligro = document.getElementById("peligroRP").value || em.peligro;
+  em.accionesPreliminar = [...(accionesRPTemp.length ? accionesRPTemp : em.accionesPreliminar)];
 
-  // --- Word: si hay sesión+internet+Worker, usa /doc/rp; si no, intenta servicio local ---
-  const __useRemoteDoc = (typeof __apiConfigured === "function" ? __apiConfigured() : false) &&
-                         (typeof __tokenGet === "function" ? __tokenGet() : null) &&
-                         (navigator.onLine);
+  // --- Word (seguro): usa Worker si está configurado y hay internet; si no, intenta servicio local ---
+  const __apiOkRP = (typeof __isApiConfigured === "function") ? __isApiConfigured() : false;
+  const __tokenRP = (typeof __tokenGet === "function") ? __tokenGet() : null;
 
-  const __baseUrl = (window.__API_CFG && window.__API_CFG.baseUrl) ? String(window.__API_CFG.baseUrl) : "";
-  const __baseTrim = __baseUrl.endsWith("/") ? __baseUrl.slice(0, -1) : __baseUrl;
+  const __baseUrl = (__API_CFG && __API_CFG.baseUrl) ? String(__API_CFG.baseUrl).trim() : "";
+  const __baseTrim = __baseUrl.replace(/\/+$/g, "");
+  const __useRemoteDoc = __apiOkRP && navigator.onLine && !!__baseTrim;
+
   const __docUrlRP = __useRemoteDoc ? (__baseTrim + "/doc/rp") : "http://127.0.0.1:5000/api/generar-word-rp";
-
-  const __docHeadersRP = { "Content-Type": "application/json" };
-  if (__useRemoteDoc) __docHeadersRP["Authorization"] = "Bearer " + __tokenGet();
+  const __docHeadersRP = {"Content-Type": "application/json"};
+  if(__useRemoteDoc && __tokenRP) __docHeadersRP["Authorization"] = "Bearer " + __tokenRP;
 
   fetch(__docUrlRP, {
     method: "POST",
     headers: __docHeadersRP,
     body: JSON.stringify(em)
   })
-  .then(async (r) => {
+  .then(async r => {
+    // Si el servidor devuelve JSON de error, muéstralo (evita “descargas” vacías/corruptas)
+    const ct = (r.headers.get("content-type") || "").toLowerCase();
     if (!r.ok) {
-      let msg = `HTTP ${r.status}`;
-      try{
-        const ct = (r.headers.get("content-type") || "").toLowerCase();
-        if (ct.includes("application/json")) {
-          const j = await r.json();
-          msg += `: ${JSON.stringify(j)}`;
-        } else {
-          const t = await r.text();
-          if (t) msg += `: ${t.slice(0, 200)}`;
-        }
-      }catch(e){}
-      throw new Error(msg);
+      let det = "";
+      try { det = ct.includes("application/json") ? JSON.stringify(await r.json()) : (await r.text()); } catch(e) {}
+      throw new Error("Error en servidor RP" + (det ? (": " + det) : ""));
+    }
+    if (ct.includes("application/json")) {
+      let det = "";
+      try { det = JSON.stringify(await r.json()); } catch(e) {}
+      throw new Error("Respuesta inesperada (JSON) en Word RP" + (det ? (": " + det) : ""));
     }
     return r.blob();
   })
   .then(blob => {
-    const filename = `RP_${em.codigo}.docx`;
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
+    a.style.display = "none";
     a.href = url;
-    a.download = filename;
+    a.download = `RP_${em.codigo}.docx`;
     document.body.appendChild(a);
     a.click();
-    setTimeout(() => {
-      try { URL.revokeObjectURL(url); } catch(e){}
-      try { a.remove(); } catch(e){}
-    }, 1500);
+    setTimeout(()=>{ try{ URL.revokeObjectURL(url); }catch(e){} try{ a.remove(); }catch(e){} }, 1500);
     rpWordGenerado = true;
   })
   .catch(err => {
     console.error(err);
-    alert("No se pudo generar el Word RP.\n" + (err && err.message ? err.message : err));
+    alert("No se pudo generar el Word RP." + (err && err.message ? ("\n" + err.message) : ""));
   });
 };
 
@@ -4075,18 +4080,14 @@ document.getElementById("btnWordRC").onclick = () => {
     alert("Seleccione una emergencia desde la Lista (botón RC).");
     return;
   }
-
-  // Si rcGrabado quedó en false por recarga/sesión, validamos contra el registro real
-  if (!rcGrabado) {
-    const ok = Array.isArray(emergenciaSeleccionada.rcReportes) && emergenciaSeleccionada.rcReportes.length > 0;
-    if (ok) {
-      rcGrabado = true;
-    } else {
-      alert("Primero debe guardar el Reporte Complementario.");
-      return;
-    }
+  // Permitir Word si ya existe al menos un RC guardado en la emergencia (aunque no se haya “grabado” en esta sesión)
+  const __hasAnyRC = (()=>{
+    try{ return Array.isArray(emergenciaSeleccionada?.rcReportes) && emergenciaSeleccionada.rcReportes.length > 0; }catch(e){ return false; }
+  })();
+  if (!rcGrabado && !__hasAnyRC) {
+    alert("Primero debe guardar el Reporte Complementario.");
+    return;
   }
-
   if (rcWordGenerado) {
     alert("El Word del Reporte Complementario ya fue generado en esta sesión.");
     return;
@@ -4097,69 +4098,69 @@ document.getElementById("btnWordRC").onclick = () => {
     alert("Primero guarde un RC para esta emergencia.");
     return;
   }
-
-  const rc = emBase.rcReportes[emBase.rcReportes.length - 1];
-
-  // Construir payload para Word RC
+  let rc = emBase.rcReportes[emBase.rcReportes.length - 1];
+  // Asegurar fecha de elaboración del RC (se guarda al generar Word)
+  try{
+    if(!rc.fechaHora){
+      const fh = (document.getElementById("fechaHoraRC")?.value || "").trim() || __nowDateTimeLocal();
+      rc.fechaHora = fh;
+      try{ const inp = document.getElementById("fechaHoraRC"); if(inp) inp.value = fh; }catch(e2){}
+      try{ emBase.rcReportes[emBase.rcReportes.length - 1].fechaHora = fh; __saveEmergencias(); }catch(e3){}
+    }
+  }catch(e){}
   let em = JSON.parse(JSON.stringify(emBase));
   em.numeroReporteRP = emBase.numeroReporte;
   em.numeroReporteRC = rc.numeroReporteRC;
   em.numeroGlobal = rc.numeroGlobal || rc.numeroReporteRC;
   em.accionesRC = rc.acciones;
   em.daniosMIDIS = rc.daniosMIDIS;
-  if (rc.fechaHoraElaboracionRC) em.fechaHoraElaboracionRC = rc.fechaHoraElaboracionRC; // compat (si existe)
+  em.fechaHora = rc.fechaHora || em.fechaHora || "";
 
-  // --- Word: si hay sesión+internet+Worker, usa /doc/rc; si no, intenta servicio local ---
-  const __useRemoteDoc2 = (typeof __apiConfigured === "function" ? __apiConfigured() : false) &&
-                          (typeof __tokenGet === "function" ? __tokenGet() : null) &&
-                          (navigator.onLine);
+  // --- Word (seguro): usa Worker si está configurado y hay internet; si no, intenta servicio local ---
+  const __apiOkRC = (typeof __isApiConfigured === "function") ? __isApiConfigured() : false;
+  const __tokenRC = (typeof __tokenGet === "function") ? __tokenGet() : null;
 
-  const __baseUrl2 = (window.__API_CFG && window.__API_CFG.baseUrl) ? String(window.__API_CFG.baseUrl) : "";
-  const __baseTrim2 = __baseUrl2.endsWith("/") ? __baseUrl2.slice(0, -1) : __baseUrl2;
+  const __baseUrl2 = (__API_CFG && __API_CFG.baseUrl) ? String(__API_CFG.baseUrl).trim() : "";
+  const __baseTrim2 = __baseUrl2.replace(/\/+$/g, "");
+  const __useRemoteDoc2 = __apiOkRC && navigator.onLine && !!__baseTrim2;
+
   const __docUrlRC = __useRemoteDoc2 ? (__baseTrim2 + "/doc/rc") : "http://127.0.0.1:5000/api/generar-word-rc";
-
-  const __docHeadersRC = { "Content-Type": "application/json" };
-  if (__useRemoteDoc2) __docHeadersRC["Authorization"] = "Bearer " + __tokenGet();
+  const __docHeadersRC = {"Content-Type": "application/json"};
+  if(__useRemoteDoc2 && __tokenRC) __docHeadersRC["Authorization"] = "Bearer " + __tokenRC;
 
   fetch(__docUrlRC, {
     method: "POST",
     headers: __docHeadersRC,
     body: JSON.stringify(em)
   })
-  .then(async (r) => {
+  .then(async r => {
+    const ct = (r.headers.get("content-type") || "").toLowerCase();
     if (!r.ok) {
-      let msg = `HTTP ${r.status}`;
-      try{
-        const ct = (r.headers.get("content-type") || "").toLowerCase();
-        if (ct.includes("application/json")) {
-          const j = await r.json();
-          msg += `: ${JSON.stringify(j)}`;
-        } else {
-          const t = await r.text();
-          if (t) msg += `: ${t.slice(0, 200)}`;
-        }
-      }catch(e){}
-      throw new Error(msg);
+      let det = "";
+      try { det = ct.includes("application/json") ? JSON.stringify(await r.json()) : (await r.text()); } catch(e) {}
+      throw new Error("Error en servidor RC" + (det ? (": " + det) : ""));
+    }
+    if (ct.includes("application/json")) {
+      let det = "";
+      try { det = JSON.stringify(await r.json()); } catch(e) {}
+      throw new Error("Respuesta inesperada (JSON) en Word RC" + (det ? (": " + det) : ""));
     }
     return r.blob();
   })
   .then(blob => {
-    const filename = `RC_${em.codigo}_N${em.numeroReporteRC}.docx`;
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
+    a.style.display = "none";
     a.href = url;
-    a.download = filename;
+    a.download = `RC_${em.codigo}_N${em.numeroReporteRC}.docx`;
     document.body.appendChild(a);
     a.click();
-    setTimeout(() => {
-      try { URL.revokeObjectURL(url); } catch(e){}
-      try { a.remove(); } catch(e){}
-    }, 1500);
+    setTimeout(()=>{ try{ URL.revokeObjectURL(url); }catch(e){} try{ a.remove(); }catch(e){} }, 1500);
     rcWordGenerado = true;
   })
   .catch(err => {
     console.error(err);
-    alert("No se pudo generar el Word RC.\n" + (err && err.message ? err.message : err));
+    alert("No se pudo generar el Word RC." + (err && err.message ? ("\n" + err.message) : ""));
   });
 };
 
@@ -4190,6 +4191,12 @@ function __dashGetEmergencias(){
   // Lee la variable real del aplicativo (no window.emergencias)
   try { return (typeof emergencias !== "undefined" && Array.isArray(emergencias)) ? emergencias : []; }
   catch(e){ return []; }
+}
+
+function __nowDateTimeLocal(){
+  const d = new Date();
+  const pad = (n)=> String(n).padStart(2,"0");
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 function __dashParseDateOnly(v){
@@ -4679,11 +4686,6 @@ function __isApiConfigured(){
   if(/tu-worker/i.test(u) || /TU-WORKER/.test(u)) return false;
   if(!/^https?:\/\//i.test(u)) return false;
   return true;
-}
-
-// Compat: versiones anteriores llaman __apiConfigured()
-function __apiConfigured(){
-  try{ return (typeof __isApiConfigured === 'function') ? __isApiConfigured() : false; }catch(e){ return false; }
 }
 
 function __getDeviceId(){
