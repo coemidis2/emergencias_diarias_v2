@@ -1472,19 +1472,6 @@ function __recalcularCorrelativos(){
 }
 
 
-// --- Sync local entre pestañas: actualizar lista cuando otro usuario/rol graba ---
-try{
-  window.addEventListener('storage', (ev)=>{
-    try{
-      if(!ev || ev.key !== __AUTH_KEYS.emerg) return;
-      emergencias = __loadEmergencias();
-      __recalcularCorrelativos();
-      if(typeof cargarTablaEmergencias === "function") cargarTablaEmergencias();
-    }catch(_e){}
-  });
-}catch(e){}
-
-
 function __getCurrentUserName(){
   return currentUser ? currentUser.fullName : "";
 }
@@ -2794,18 +2781,10 @@ function generarCodigoRP() {
   // para todo el aplicativo (Administrador y Registrador).
   const year = new Date().getFullYear();
 
-  // IMPORTANTE: siempre leer el último estado desde localStorage para evitar duplicados entre usuarios/pestañas
-  // (por ejemplo, cuando hay dos sesiones abiertas a la vez).
-  let arr = [];
-  try{
-    arr = __loadEmergencias();
-  }catch(e){
-    arr = Array.isArray(emergencias) ? emergencias : [];
-  }
-
   // 1) Tomar el mayor correlativo ya existente en las emergencias del año actual
   let maxExistente = 0;
   try{
+    const arr = Array.isArray(emergencias) ? emergencias : __loadEmergencias();
     for(const e of arr){
       const cod = String(e && e.codigo ? e.codigo : '').trim();
       const m = /^RP-(\d+)-(\d{4})$/.exec(cod);
@@ -2823,20 +2802,7 @@ function generarCodigoRP() {
   // 3) Respaldo en memoria (por si ya generaste códigos en esta sesión)
   const seqMem = Number(contadorRPporAnio && contadorRPporAnio[year] ? contadorRPporAnio[year] : 0) || 0;
 
-  let next = Math.max(maxExistente, seqLocal, seqMem) + 1;
-
-  // 4) Blindaje final: si por alguna razón el correlativo ya existe, seguir incrementando hasta encontrar uno libre
-  try{
-    const exists = (n)=>{
-      const code = `RP-${String(n).padStart(2,"0")}-${year}`;
-      return arr.some(x => String(x && x.codigo ? x.codigo : '').trim() === code);
-    };
-    let guard = 0;
-    while(exists(next) && guard < 500){
-      next++;
-      guard++;
-    }
-  }catch(e){}
+  const next = Math.max(maxExistente, seqLocal, seqMem) + 1;
 
   if(!contadorRPporAnio) contadorRPporAnio = {};
   contadorRPporAnio[year] = next;
@@ -2845,7 +2811,6 @@ function generarCodigoRP() {
   const correl = String(next).padStart(2, "0");
   return `RP-${correl}-${year}`;
 }
-
 
 // ===================== DAÑOS RP =====================
 function crearFilaDanios(programa) {
@@ -3118,50 +3083,31 @@ function __findEmergIdxByCodigo(codigo){
   return idx;
 }
 
-let __rpSaveInFlight = false;
-
-function __saveRP(opts){
+async function __saveRP(opts){
   const submit = !!(opts && opts.submit);
 
   if(!currentUser || currentUser.role === __ROLES.CONS) return null;
 
-  // Evitar doble click / doble ejecución (esto estaba generando códigos repetidos)
-  if(__rpSaveInFlight) return null;
-  __rpSaveInFlight = true;
-  try{
-    // Siempre refrescar emergencias desde localStorage para evitar duplicados entre usuarios/pestañas
-    try{
-      const latest = __loadEmergencias();
-      if(Array.isArray(latest)) emergencias = latest;
-    }catch(e){}
-    try{ __recalcularCorrelativos(); }catch(e){}
-
   let codigoActual = (document.getElementById("codigoRP")?.value || "").trim();
-  let generadoAhora = false;
 
-  // Generar código si no existe
+  
+  // Antes de asignar un NUEVO código, traer lo último del servidor (si está disponible)
+  // Esto evita que Admin y Registrador creen el mismo RP-XX-AAAA en paralelo.
+  if(!codigoActual){
+    try{
+      if(typeof __syncPullAuto === 'function') await __syncPullAuto();
+      try{ emergencias = __loadEmergencias(); }catch(_e){}
+    }catch(_e){}
+  }
+// Generar código si no existe
   if(!codigoActual){
     codigoActual = generarCodigoRP();
-    generadoAhora = true;
     const c = document.getElementById("codigoRP");
     if(c) c.value = codigoActual;
   }
 
-  // Buscar existente (con emergencias ya refrescadas)
+  // Buscar existente
   let idx = __findEmergIdxByCodigo(codigoActual);
-
-  // Si acabamos de generar el código y YA existía (pestaña/sesión desfasada), regenerar hasta encontrar uno libre
-  if(generadoAhora && idx >= 0){
-    let guard = 0;
-    while(idx >= 0 && guard < 200){
-      codigoActual = generarCodigoRP();
-      const c = document.getElementById("codigoRP");
-      if(c) c.value = codigoActual;
-      idx = __findEmergIdxByCodigo(codigoActual);
-      guard++;
-    }
-  }
-
   const existing = (idx >= 0) ? emergencias[idx] : null;
 
   // Restricción: Registrador no puede re-grabar si ya está Pendiente o Aprobado
@@ -3285,7 +3231,49 @@ function __saveRP(opts){
   cargarTablaEmergencias();
   rpGrabado = true;
 
-  // Lock en Registrador cuando queda Pendiente
+  
+  // Auto-sync silencioso: publica al servidor para que el otro rol/dispositivo lo vea,
+  // y además detecta si el código fue rechazado (colisión con un RP ya existente de otro usuario).
+  try{
+    if(typeof __isApiConfigured === 'function' && __isApiConfigured() && navigator.onLine){
+      const push = await __syncPush();
+
+      // Si el servidor rechazó este código (p. ej. ya existe y no eres propietario),
+      // reasignamos un nuevo código y reintentamos (sin perder el registro local).
+      if(push && Array.isArray(push.denied) && push.denied.includes(codigoActual)){
+        // Traer el registro del servidor con ese código
+        try{ await __syncPull(__getLastPull()); }catch(_e){}
+
+        // Generar nuevo código libre y renombrar este registro local
+        let nuevoCodigo = generarCodigoRP();
+        // Asegurar unicidad por si acaso
+        let guard = 0;
+        while(guard < 20){
+          const ex = __findEmergIdxByCodigo(nuevoCodigo);
+          if(ex === -1) break;
+          nuevoCodigo = generarCodigoRP();
+          guard++;
+        }
+
+        if(nuevoCodigo && nuevoCodigo !== codigoActual){
+          try{ base.codigo = nuevoCodigo; }catch(_e){}
+          try{
+            const c = document.getElementById("codigoRP");
+            if(c) c.value = nuevoCodigo;
+          }catch(_e){}
+          __saveEmergencias();
+          cargarTablaEmergencias();
+          // Reintento de push con el nuevo código
+          try{ await __syncPush(); }catch(_e){}
+        }
+      }
+
+      // Pull final para quedar actualizado (incluye lo del Admin/Registrador)
+      try{ await __syncPull(__getLastPull()); }catch(_e){}
+      try{ await __calcPending(); }catch(_e){}
+    }
+  }catch(_e){}
+// Lock en Registrador cuando queda Pendiente
   if(currentUser.role === __ROLES.REG){
     const lockNow = (base.rpAprobEstado === "Pendiente" || base.rpAprobEstado === "Aprobado");
     __lockRPForm(lockNow);
@@ -3294,21 +3282,36 @@ function __saveRP(opts){
   }
 
   return base;
-  } finally {
-    __rpSaveInFlight = false;
-  }
 }
 
 // Botón Admin: solo guarda (permite editar)
-document.getElementById("btnGuardarRP").onclick = () => {
-  const saved = __saveRP({submit:false});
-  if(saved) alert("Reporte Preliminar guardado.");
+document.getElementById("btnGuardarRP").onclick = async () => {
+  const b1 = document.getElementById("btnGuardarRP");
+  const b2 = document.getElementById("btnGuardarEnviarRP");
+  if(b1) b1.disabled = true;
+  if(b2) b2.disabled = true;
+  try{
+    const saved = await __saveRP({submit:false});
+    if(saved) alert("Reporte Preliminar guardado.");
+  }finally{
+    if(b1) b1.disabled = false;
+    if(b2) b2.disabled = false;
+  }
 };
 
 // Botón Registrador: guarda y envía a aprobación (1 solo botón)
-document.getElementById("btnGuardarEnviarRP").onclick = () => {
-  const saved = __saveRP({submit:true});
-  if(saved) alert("RP guardado y enviado a aprobación.");
+document.getElementById("btnGuardarEnviarRP").onclick = async () => {
+  const b1 = document.getElementById("btnGuardarRP");
+  const b2 = document.getElementById("btnGuardarEnviarRP");
+  if(b1) b1.disabled = true;
+  if(b2) b2.disabled = true;
+  try{
+    const saved = await __saveRP({submit:true});
+    if(saved) alert("RP guardado y enviado a aprobación.");
+  }finally{
+    if(b1) b1.disabled = false;
+    if(b2) b2.disabled = false;
+  }
 };
 
 // ===================== FUNCIÓN VER EMERGENCIA CERRADA =====================
@@ -5521,6 +5524,62 @@ async function __syncPull(since){
 
     const i = idx[codigo];
     if(i !== undefined){
+      // Colisión de código: existe local y servidor con el mismo código pero con propietario distinto.
+      // Esto pasa cuando dos usuarios (Admin/Registrador) crean el mismo RP-XX-AAAA en paralelo.
+      // Solución automática: conservar el registro del servidor en el código original y renombrar el local a un nuevo código.
+      const localOwner  = String(local[i]?.ownerEmail || local[i]?.createdByEmail || '').trim();
+      const serverOwner = String(serverPayload?.ownerEmail || serverPayload?.createdByEmail || '').trim();
+      const isRpCode = /^RP-(\d+)-(\d{4})$/.test(codigo);
+
+      if(isRpCode && localOwner && serverOwner && localOwner !== serverOwner){
+        const yearNow = new Date().getFullYear();
+        const used = new Set();
+        try{ local.forEach(x=>{ const c=String(x?.codigo||'').trim(); if(c) used.add(c); }); }catch(_e){}
+        try{ pulled.forEach(x=>{ const c=String(x?.codigo||'').trim(); if(c) used.add(c); }); }catch(_e){}
+
+        let maxN = 0;
+        try{
+          used.forEach(c=>{
+            const mm = /^RP-(\d+)-(\d{4})$/.exec(c);
+            if(mm && Number(mm[2]) === yearNow){
+              const n = Number(mm[1]) || 0;
+              if(n > maxN) maxN = n;
+            }
+          });
+        }catch(_e){}
+
+        let next = maxN + 1;
+        let newCode = '';
+        while(true){
+          const corr = String(next).padStart(2, '0');
+          newCode = `RP-${corr}-${yearNow}`;
+          if(!used.has(newCode)) break;
+          next++;
+        }
+
+        // Clonar local y renombrar
+        let localCopy = null;
+        try{ localCopy = JSON.parse(JSON.stringify(local[i])); }catch(_e){ localCopy = Object.assign({}, local[i]); }
+        try{ localCopy.codigo = newCode; }catch(_e){}
+        try{ localCopy.estado_sync = 'Pendiente'; }catch(_e){}
+        try{ __ensureMeta(localCopy); }catch(_e){}
+
+        // Aplicar servidor al código original
+        try{ serverPayload.estado_sync = 'Sincronizado'; }catch(_e){}
+        local[i] = serverPayload;
+        idx[codigo] = i;
+
+        // Insertar la copia local renombrada
+        local.push(localCopy);
+        idx[newCode] = local.length - 1;
+
+        // Registrar evento informativo
+        conflicts.push({ codigo: codigo, reason: 'code_collision_split', local_new_codigo: newCode, server_updated_at: serverUpdated });
+
+        if(serverHash) map[codigo] = serverHash;
+        continue;
+      }
+
       const localHash = await __sha256(JSON.stringify(local[i]));
       const lastSynced = map[codigo];
       const localDirty = (lastSynced && localHash !== lastSynced);
