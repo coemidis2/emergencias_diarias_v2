@@ -2104,11 +2104,6 @@ function __applyRCLockUI(){
   document.querySelectorAll('#accionesRCTabla button[data-rc-act="edit"], #accionesRCTabla button[data-rc-act="del"]').forEach(btn=>{
     btn.disabled = locked;
   });
-
-  // Fecha de elaboración (RC)
-  const fh = document.getElementById("fechaHoraRC");
-  if (fh) fh.disabled = locked;
-
 }
 
 function __syncRCActionButtons(){
@@ -3770,10 +3765,6 @@ try{
     }
   }catch(e){}
 
-  const __rcLast = (Array.isArray(obj.rcReportes) && obj.rcReportes.length > 0) ? obj.rcReportes[obj.rcReportes.length - 1] : null;
-  const __fhRC = (__rcLast && (__rcLast.fechaHoraRC || __rcLast.fechaElaboracionRC)) ? (__rcLast.fechaHoraRC || __rcLast.fechaElaboracionRC) : "";
-  const __fhRCVal = (__fhRC || (new Date(Date.now() - (new Date().getTimezoneOffset()*60000))).toISOString().slice(0,16));
-
   document.getElementById("datosBasicosRC").innerHTML = `
 <b>Código:</b> ${obj.codigo}<br>
 <b>N° Global:</b> ${numeroGlobalMostrar}<br>
@@ -3781,15 +3772,8 @@ try{
 <b>Peligro:</b> ${obj.peligro}<br>
 <b>Ubicación:</b> ${obj.departamento} / ${obj.provincia} / ${obj.distrito}<br>
 <b>Fecha del peligro:</b> ${obj.fechaPeligro}<br>
-
-<div class="row g-2 mt-2">
-  <div class="col-md-5">
-    <label class="form-label mb-1">Fecha y hora de elaboración (RC)</label>
-    <input type="datetime-local" id="fechaHoraRC" class="form-control" value="${__fhRCVal}">
-  </div>
-</div>
 `;
-cargarTablaDaniosRC(obj);
+  cargarTablaDaniosRC(obj);
   cargarAccionesRC();
   try{ __applyRCLockUI(); }catch(e){}
   try{ __syncRCActionButtons(); }catch(e){}
@@ -3864,15 +3848,11 @@ function __guardarRCCore(opts={}){
   numeroReporteGlobal++;
   let numRC = numeroReporteGlobal;
 
-  const __nowLocalDT = () => new Date(Date.now() - (new Date().getTimezoneOffset() * 60000)).toISOString().slice(0,16);
-  const fechaHoraRC = (document.getElementById("fechaHoraRC")?.value || "").trim() || __nowLocalDT();
-
   if (!Array.isArray(em.rcReportes)) em.rcReportes = [];
   em.rcReportes.push({
     numeroReporteRC: numRC,
     numeroGlobal: numRC,
     fechaRegistro: new Date().toISOString().slice(0, 10),
-    fechaHoraRC: fechaHoraRC,
     acciones: [...accionesRCTemp],
     daniosMIDIS: JSON.parse(JSON.stringify(em.daniosMIDIS)),
     // Aprobación RC
@@ -4039,22 +4019,31 @@ document.getElementById("btnWordRP").onclick = () => {
     headers: __docHeadersRP,
     body: JSON.stringify(em)
   })
-  .then(r => {
-    if (!r.ok) throw new Error("Error en servidor RP");
-    return r.blob();
+  .then(async r => {
+    if (!r.ok) {
+      const txt = await r.text().catch(()=> "");
+      throw new Error(`Error ${r.status} en servidor RP: ${txt}`);
+    }
+    const cd = r.headers.get("content-disposition") || "";
+    const fallback = `RP_${em.codigo}.docx`;
+    const filename = __filenameFromContentDisposition(cd, fallback);
+    const blob = await r.blob();
+    return { blob, filename };
   })
-  .then(blob => {
+  .then(({blob, filename}) => {
     let url = URL.createObjectURL(blob);
     let a = document.createElement("a");
     a.href = url;
-    a.download = `RP_${em.codigo}.docx`;
+    a.download = filename;
+    document.body.appendChild(a);
     a.click();
+    a.remove();
     URL.revokeObjectURL(url);
     rpWordGenerado = true;
   })
   .catch(err => {
     console.error(err);
-    alert("No se pudo generar el Word RP.");
+    alert("No se pudo generar el Word RP. " + (err && err.message ? err.message : ""));
   });
 };
 
@@ -4080,7 +4069,6 @@ document.getElementById("btnWordRC").onclick = () => {
   }
   let rc = emBase.rcReportes[emBase.rcReportes.length - 1];
   let em = JSON.parse(JSON.stringify(emBase));
-    em.fechaHoraRC = (rc.fechaHoraRC || rc.fechaElaboracionRC || "");
   em.numeroReporteRP = emBase.numeroReporte;
   em.numeroReporteRC = rc.numeroReporteRC;
   em.numeroGlobal = rc.numeroGlobal || rc.numeroReporteRC;
@@ -4100,22 +4088,31 @@ document.getElementById("btnWordRC").onclick = () => {
     headers: __docHeadersRC,
     body: JSON.stringify(em)
   })
-  .then(r => {
-    if (!r.ok) throw new Error("Error en servidor RC");
-    return r.blob();
+  .then(async r => {
+    if (!r.ok) {
+      const txt = await r.text().catch(()=> "");
+      throw new Error(`Error ${r.status} en servidor RC: ${txt}`);
+    }
+    const cd = r.headers.get("content-disposition") || "";
+    const fallback = `RC_${em.codigo}.docx`;
+    const filename = __filenameFromContentDisposition(cd, fallback);
+    const blob = await r.blob();
+    return { blob, filename };
   })
-  .then(blob => {
+  .then(({blob, filename}) => {
     let url = URL.createObjectURL(blob);
     let a = document.createElement("a");
     a.href = url;
     a.download = `RC_${em.codigo}_N${em.numeroReporteRC}.docx`;
+    document.body.appendChild(a);
     a.click();
+    a.remove();
     URL.revokeObjectURL(url);
     rcWordGenerado = true;
   })
   .catch(err => {
     console.error(err);
-    alert("No se pudo generar el Word RC.");
+    alert("No se pudo generar el Word RC. " + (err && err.message ? err.message : ""));
   });
 };
 
