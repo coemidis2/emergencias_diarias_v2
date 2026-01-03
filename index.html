@@ -2039,6 +2039,11 @@ function __lastRCAprobEstado(em){
 function __rpEstadoEtiqueta(em){
   const rpSt = (em && em.rpAprobEstado) ? String(em.rpAprobEstado) : "Borrador";
   const rcSt = __lastRCAprobEstado(em);
+  const cierreSt = (em && em.cierreEstado != null) ? String(em.cierreEstado) : null;
+
+  // Si existe una solicitud de cierre en trámite, ese es el estado dominante para Lista
+  if(cierreSt === "Pendiente") return "Por aprobar";
+  if(cierreSt === "Observado") return "Observado";
 
   // Si el RC está en trámite, ese es el estado dominante para Lista
   if(rcSt === "Pendiente") return "Por aprobar";
@@ -2104,9 +2109,8 @@ function __applyRCLockUI(){
   if(f) f.disabled = locked;
   if(d) d.disabled = locked;
 
-  // Bloquear botones principales del RC cuando está bloqueado
-  // (para RC Pendiente normalmente luego se re-habilita Word/Retorno en la lógica de UI,
-  // pero para Cierre Pendiente quedarán bloqueados, como corresponde).
+  // Bloquear botones principales del RC cuando está bloqueado.
+  // Excepción solicitada: para REGISTRADOR, mantener activos Word RC y Retornar
   const btnIds = [
     "btnGuardarRC","btnGuardarEnviarRC","btnAddAccionRC","btnEnviarAprobRC",
     "btnCerrarEmergencia","btnWordRC","btnRetornarRC"
@@ -2115,6 +2119,16 @@ function __applyRCLockUI(){
     const b = document.getElementById(id);
     if(b) b.disabled = locked;
   });
+
+  // Mantener Word/Retornar activos en bloqueo (pendiente RC o pendiente cierre) para Registrador
+  try{
+    if(locked && (__isRegistrador && __isRegistrador())){
+      const bw = document.getElementById("btnWordRC"); if(bw) bw.disabled = false;
+      const br = document.getElementById("btnRetornarRC"); if(br) br.disabled = false;
+      // El botón Solicitar cierre debe quedar bloqueado durante la espera
+      const bc = document.getElementById("btnCerrarEmergencia"); if(bc) bc.disabled = true;
+    }
+  }catch(e){}
 
   // Bloquear botones Editar/Eliminar de Acciones RC
   document.querySelectorAll('#accionesRCTabla button[data-rc-act="edit"], #accionesRCTabla button[data-rc-act="del"]').forEach(btn=>{
@@ -2436,9 +2450,13 @@ function __solicitarCierre(){
   // Bloquear TODO el RC para el Registrador (solo visualización) hasta que el Admin apruebe/observe el cierre
   try{
     if(__isRegistrador && __isRegistrador()){
-      setRCEnabled(false);
+      setRCEnabled(true);
       try{ setRCViewActive(true); }catch(e){}
-      document.querySelectorAll("#rcTab input, #rcTab textarea, #rcTab select, #rcTab button").forEach(el=>{ el.disabled = true; });
+      document.querySelectorAll("#rcTab input, #rcTab textarea, #rcTab select").forEach(el=>{ el.disabled = true; });
+      document.querySelectorAll("#rcTab button").forEach(el=>{
+        if(el && (el.id === "btnWordRC" || el.id === "btnRetornarRC")){ el.disabled = false; }
+        else { el.disabled = true; }
+      });
       try{ __applyRCLockUI(); }catch(e){}
     }
   }catch(e){}
@@ -2637,13 +2655,40 @@ function setRCEnabled(enabled) {
     const el = document.getElementById(id);
     if (!el) return;
 
-    // Registrador: RC solo lectura. Mantener activos únicamente Word RC y Retornar
+    // Registrador: RC solo lectura.
+    // Mantener activos: Word RC, Retornar y (cuando corresponda) Solicitar cierre.
     if (isReg) {
+      if (!enabled) { el.disabled = true; return; }
+
       if (id === "btnWordRC" || id === "btnRetornarRC") {
-        el.disabled = !enabled;
-      } else {
-        el.disabled = true;
+        el.disabled = false;
+        return;
       }
+
+      if (id === "btnCerrarEmergencia") {
+        // Habilitar "Solicitar cierre" solo si:
+        // - hay emergencia seleccionada
+        // - no está cerrada
+        // - no hay solicitud de cierre pendiente
+        // - existe al menos un RC y el último está Aprobado
+        let can = false;
+        try{
+          const em = emergenciaSeleccionada;
+          if(em && !em.cerrada && String(em.cierreEstado||"") !== "Pendiente"){
+            if(Array.isArray(em.rcReportes) && em.rcReportes.length>0){
+              const last = em.rcReportes[em.rcReportes.length-1];
+              if(last && String(last.aprobEstado||"") === "Aprobado"){
+                can = true;
+              }
+            }
+          }
+        }catch(e){}
+        el.disabled = !can;
+        return;
+      }
+
+      // El resto siempre deshabilitado para Registrador
+      el.disabled = true;
       return;
     }
 
@@ -3774,7 +3819,11 @@ try{
     setRCEnabled(false);
     try{ setRCViewActive(true); }catch(e){}
     // Bloquear absolutamente todo dentro del RC (inputs y botones)
-    document.querySelectorAll("#rcTab input, #rcTab textarea, #rcTab select, #rcTab button").forEach(el=>{ el.disabled = true; });
+    document.querySelectorAll("#rcTab input, #rcTab textarea, #rcTab select").forEach(el=>{ el.disabled = true; });
+    document.querySelectorAll("#rcTab button").forEach(el=>{
+      if(el && (el.id === "btnWordRC" || el.id === "btnRetornarRC")){ el.disabled = false; }
+      else { el.disabled = true; }
+    });
     try{ cargarAccionesRC(); __applyRCLockUI(); }catch(e){}
   } else {
     // 2) Si existe un RC pendiente: mantener visible para lectura, sin edición (pero permitiendo Word/Retorno)
@@ -3800,7 +3849,7 @@ try{
       document.querySelectorAll("#rcTab input, #rcTab textarea, #rcTab select").forEach(el=>{ el.disabled = true; });
 
       // Bloquear botones de edición/flujo
-      ["btnGuardarRC","btnGuardarEnviarRC","btnAddAccionRC","btnEnviarAprobRC","btnCerrarEmergencia","btnAprobarRCAdmin"].forEach(id=>{
+      ["btnGuardarRC","btnGuardarEnviarRC","btnAddAccionRC","btnEnviarAprobRC","btnAprobarRCAdmin"].forEach(id=>{
         const b = document.getElementById(id);
         if(b) b.disabled = true;
       });
@@ -3811,6 +3860,18 @@ try{
       // Mantener operativos Word RC y Retornar
       const bw = document.getElementById("btnWordRC"); if(bw) bw.disabled = false;
       const br = document.getElementById("btnRetornarRC"); if(br) br.disabled = false;
+      // Habilitar "Solicitar cierre" cuando corresponda
+      const bc = document.getElementById("btnCerrarEmergencia");
+      if(bc){
+        let can = false;
+        try{
+          const cierrePend = (obj && String(obj.cierreEstado||"") === "Pendiente");
+          const hasRC = (obj && Array.isArray(obj.rcReportes) && obj.rcReportes.length>0);
+          const lastOk = hasRC ? (String((obj.rcReportes[obj.rcReportes.length-1]?.aprobEstado)||"") === "Aprobado") : false;
+          can = (!!obj && !obj.cerrada && !cierrePend && hasRC && lastOk);
+        }catch(e){}
+        bc.disabled = !can;
+      }
     }
   }catch(e){}
 
