@@ -4585,6 +4585,9 @@ function __dashRenderAfectaMidisTable(data){
   const tbody = document.getElementById("dashAfectaMidisTbody");
   tbody.innerHTML = "";
 
+  // Snapshot para el botón 👁 (fallback)
+  try{ window.__dashLastData = Array.isArray(data) ? data : []; }catch(_e){}
+
   data.filter(__dashAfectaMidis).forEach(e=>{
     const st = __dashGetStatus(e);
     const badge = `<span class="badge" style="background:${st.color}"> </span>`;
@@ -4611,10 +4614,55 @@ if(!tbody.dataset.hasDashVer){
   tbody.addEventListener("click", (ev)=>{
     const btn = ev.target.closest(".btnDashVer");
     if(!btn) return;
-    const codigo = btn.getAttribute("data-code") || "";
-    const list = (window.emergencias || []);
-    const e2 = list.find(x => String(x.codigo||"") === String(codigo));
-    if(e2) verEmergencia(e2);
+
+    const codigo = String(btn.getAttribute("data-code") || "").trim();
+    if(!codigo) return;
+
+    // OJO: 'emergencias' está declarado con 'let', por lo que NO cuelga de window.
+    // Para asegurar el detalle, leemos lo más fresco desde localStorage.
+    let list = [];
+    try{
+      if(typeof __loadEmergencias === "function") list = __loadEmergencias();
+      else if(Array.isArray(emergencias)) list = emergencias;
+      else if(window.emergencias) list = window.emergencias;
+    }catch(_e){}
+
+    let e2 = (Array.isArray(list) ? list : []).find(x => String(x?.codigo||"").trim() === codigo);
+
+    // Fallback 1: variable global 'emergencias' (si existe)
+    if(!e2){
+      try{
+        if(Array.isArray(emergencias)){
+          e2 = emergencias.find(x => String(x?.codigo||"").trim() === codigo);
+        }
+      }catch(_e){}
+    }
+
+    // Fallback 2: último snapshot del dashboard
+    if(!e2){
+      try{
+        const snap = (window.__dashLastData && Array.isArray(window.__dashLastData)) ? window.__dashLastData : null;
+        if(snap) e2 = snap.find(x => String(x?.codigo||"").trim() === codigo);
+      }catch(_e){}
+    }
+
+    if(e2){
+      verEmergencia(e2);
+      return;
+    }
+
+    // Si no se encuentra el detalle, mostramos un mensaje claro en el mismo modal
+    const cont = document.getElementById("contenidoVerEmergencia");
+    if(cont){
+      cont.innerHTML = `<div class="alert alert-warning mb-0">
+        No se encontró el detalle del RP/RC para <strong>${codigo}</strong> en esta sesión.
+        <br><small class="text-muted">Sugerencia: presiona <strong>Sincronizar</strong> y vuelve a intentar.</small>
+      </div>`;
+      try{
+        const modal = new bootstrap.Modal(document.getElementById("modalVerEmergencia"));
+        modal.show();
+      }catch(_e){}
+    }
   });
   tbody.dataset.hasDashVer = "1";
 }
