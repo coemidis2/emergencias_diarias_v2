@@ -3083,23 +3083,14 @@ function __findEmergIdxByCodigo(codigo){
   return idx;
 }
 
-async function __saveRP(opts){
+function __saveRP(opts){
   const submit = !!(opts && opts.submit);
 
   if(!currentUser || currentUser.role === __ROLES.CONS) return null;
 
   let codigoActual = (document.getElementById("codigoRP")?.value || "").trim();
 
-  
-  // Antes de asignar un NUEVO código, traer lo último del servidor (si está disponible)
-  // Esto evita que Admin y Registrador creen el mismo RP-XX-AAAA en paralelo.
-  if(!codigoActual){
-    try{
-      if(typeof __syncPullAuto === 'function') await __syncPullAuto();
-      try{ emergencias = __loadEmergencias(); }catch(_e){}
-    }catch(_e){}
-  }
-// Generar código si no existe
+  // Generar código si no existe
   if(!codigoActual){
     codigoActual = generarCodigoRP();
     const c = document.getElementById("codigoRP");
@@ -3231,49 +3222,7 @@ async function __saveRP(opts){
   cargarTablaEmergencias();
   rpGrabado = true;
 
-  
-  // Auto-sync silencioso: publica al servidor para que el otro rol/dispositivo lo vea,
-  // y además detecta si el código fue rechazado (colisión con un RP ya existente de otro usuario).
-  try{
-    if(typeof __isApiConfigured === 'function' && __isApiConfigured() && navigator.onLine){
-      const push = await __syncPush();
-
-      // Si el servidor rechazó este código (p. ej. ya existe y no eres propietario),
-      // reasignamos un nuevo código y reintentamos (sin perder el registro local).
-      if(push && Array.isArray(push.denied) && push.denied.includes(codigoActual)){
-        // Traer el registro del servidor con ese código
-        try{ await __syncPull(__getLastPull()); }catch(_e){}
-
-        // Generar nuevo código libre y renombrar este registro local
-        let nuevoCodigo = generarCodigoRP();
-        // Asegurar unicidad por si acaso
-        let guard = 0;
-        while(guard < 20){
-          const ex = __findEmergIdxByCodigo(nuevoCodigo);
-          if(ex === -1) break;
-          nuevoCodigo = generarCodigoRP();
-          guard++;
-        }
-
-        if(nuevoCodigo && nuevoCodigo !== codigoActual){
-          try{ base.codigo = nuevoCodigo; }catch(_e){}
-          try{
-            const c = document.getElementById("codigoRP");
-            if(c) c.value = nuevoCodigo;
-          }catch(_e){}
-          __saveEmergencias();
-          cargarTablaEmergencias();
-          // Reintento de push con el nuevo código
-          try{ await __syncPush(); }catch(_e){}
-        }
-      }
-
-      // Pull final para quedar actualizado (incluye lo del Admin/Registrador)
-      try{ await __syncPull(__getLastPull()); }catch(_e){}
-      try{ await __calcPending(); }catch(_e){}
-    }
-  }catch(_e){}
-// Lock en Registrador cuando queda Pendiente
+  // Lock en Registrador cuando queda Pendiente
   if(currentUser.role === __ROLES.REG){
     const lockNow = (base.rpAprobEstado === "Pendiente" || base.rpAprobEstado === "Aprobado");
     __lockRPForm(lockNow);
@@ -3285,33 +3234,15 @@ async function __saveRP(opts){
 }
 
 // Botón Admin: solo guarda (permite editar)
-document.getElementById("btnGuardarRP").onclick = async () => {
-  const b1 = document.getElementById("btnGuardarRP");
-  const b2 = document.getElementById("btnGuardarEnviarRP");
-  if(b1) b1.disabled = true;
-  if(b2) b2.disabled = true;
-  try{
-    const saved = await __saveRP({submit:false});
-    if(saved) alert("Reporte Preliminar guardado.");
-  }finally{
-    if(b1) b1.disabled = false;
-    if(b2) b2.disabled = false;
-  }
+document.getElementById("btnGuardarRP").onclick = () => {
+  const saved = __saveRP({submit:false});
+  if(saved) alert("Reporte Preliminar guardado.");
 };
 
 // Botón Registrador: guarda y envía a aprobación (1 solo botón)
-document.getElementById("btnGuardarEnviarRP").onclick = async () => {
-  const b1 = document.getElementById("btnGuardarRP");
-  const b2 = document.getElementById("btnGuardarEnviarRP");
-  if(b1) b1.disabled = true;
-  if(b2) b2.disabled = true;
-  try{
-    const saved = await __saveRP({submit:true});
-    if(saved) alert("RP guardado y enviado a aprobación.");
-  }finally{
-    if(b1) b1.disabled = false;
-    if(b2) b2.disabled = false;
-  }
+document.getElementById("btnGuardarEnviarRP").onclick = () => {
+  const saved = __saveRP({submit:true});
+  if(saved) alert("RP guardado y enviado a aprobación.");
 };
 
 // ===================== FUNCIÓN VER EMERGENCIA CERRADA =====================
@@ -4973,12 +4904,29 @@ async function __calcPending(){
     const map = __getHashMap();
     const arr = Array.isArray(emergencias) ? emergencias : __loadEmergencias();
     let pending = 0;
+
+    const isAdmin = currentUser && currentUser.role === __ROLES.ADMIN;
+    const me = currentUser ? String(currentUser.email || "").toLowerCase() : "";
+
     for(const e of arr){
       const codigo = String(e && e.codigo ? e.codigo : "").trim();
       if(!codigo) continue;
+
       const h = await __sha256(JSON.stringify(e));
+
+      // Si no es admin y no es propietario, no se cuenta como pendiente (y se evita reintentar eternamente)
+      if(!isAdmin){
+        const owner = String((e && (e.ownerEmail || e.createdByEmail || "")) || "").toLowerCase();
+        if(!me || !owner || owner !== me){
+          if(!map[codigo]) map[codigo] = h;
+          continue;
+        }
+      }
+
       if(map[codigo] !== h) pending++;
     }
+
+    __setHashMap(map);
     __updateSyncUI(pending);
     return pending;
   }catch(e){
@@ -5389,6 +5337,60 @@ async function __createUserFromAdmin(){
   __renderUsersTable(users);
 }
 
+function __syncIsOwner(em){
+  try{
+    if(!currentUser) return false;
+    const me = String(currentUser.email || "").toLowerCase();
+    if(!me) return false;
+    const owner = String((em && (em.ownerEmail || em.createdByEmail || "")) || "").toLowerCase();
+    return owner && owner === me;
+  }catch(e){ return false; }
+}
+
+function __syncCanPush(em){
+  try{
+    if(!currentUser) return false;
+    if(currentUser.role === __ROLES.ADMIN) return true;
+    return __syncIsOwner(em);
+  }catch(e){ return false; }
+}
+
+function __nextCodigoRPFromArray(arr, year){
+  try{
+    const y = Number(year || (new Date().getFullYear()));
+    let maxExistente = 0;
+    const used = new Set();
+    try{
+      (arr || []).forEach(e=>{
+        const cod = String(e && e.codigo ? e.codigo : "").trim();
+        if(cod) used.add(cod);
+        const m = /^RP-(\d+)-(\d{4})$/.exec(cod);
+        if(m && Number(m[2]) === y){
+          const n = Number(m[1]) || 0;
+          if(n > maxExistente) maxExistente = n;
+        }
+      });
+    }catch(e){}
+    const lsKey = `rp_seq_${y}`;
+    const seqLocal = Number(localStorage.getItem(lsKey) || 0) || 0;
+    const seqMem = Number(contadorRPporAnio && contadorRPporAnio[y] ? contadorRPporAnio[y] : 0) || 0;
+
+    let next = Math.max(maxExistente, seqLocal, seqMem) + 1;
+    let code = `RP-${String(next).padStart(2,"0")}-${y}`;
+    while(used.has(code)){
+      next++;
+      code = `RP-${String(next).padStart(2,"0")}-${y}`;
+    }
+
+    if(!contadorRPporAnio) contadorRPporAnio = {};
+    contadorRPporAnio[y] = next;
+    try{ localStorage.setItem(lsKey, String(next)); }catch(e){}
+    return code;
+  }catch(e){
+    return `RP-01-${new Date().getFullYear()}`;
+  }
+}
+
 // ---- SYNC ----
 async function __syncPush(){
   if(!__isApiConfigured()) throw new Error('server_not_configured');
@@ -5404,10 +5406,25 @@ async function __syncPush(){
   const arr = Array.isArray(emergencias) ? emergencias : __loadEmergencias();
   const deviceId = __getDeviceId();
 
+  const isAdmin = currentUser && currentUser.role === __ROLES.ADMIN;
+  const me = currentUser ? String(currentUser.email || "").toLowerCase() : "";
+
   const toSend = [];
   for(const e of arr){
     const codigo = String(e && e.codigo ? e.codigo : '').trim();
     if(!codigo) continue;
+
+    // No intentes enviar registros que no pertenecen al usuario (evita "no propietario")
+    if(!isAdmin){
+      const owner = String((e && (e.ownerEmail || e.createdByEmail || "")) || "").toLowerCase();
+      if(!me || !owner || owner !== me){
+        // Guardar hash para que no quede como pendiente infinito en este dispositivo
+        const h0 = await __sha256(JSON.stringify(e));
+        if(!map[codigo]) map[codigo] = h0;
+        continue;
+      }
+    }
+
     const h = await __sha256(JSON.stringify(e));
     if(map[codigo] !== h){
       try{ e.estado_sync = 'Pendiente'; }catch(_e){}
@@ -5423,7 +5440,10 @@ async function __syncPush(){
     }
   }
 
-  if(toSend.length === 0) return { ok:true, acked:[], empty:true };
+  if(toSend.length === 0){
+    __setHashMap(map);
+    return { ok:true, acked:[], empty:true };
+  }
 
   const batchSize = 150;
   const allAcked = [];
@@ -5434,10 +5454,10 @@ async function __syncPush(){
     const batch = toSend.slice(i, i+batchSize);
     const out = await __api('/sync/push', { method:'POST', token: token, body:{ records: batch } });
     if(out.res && out.res.status === 401){
-    throw new Error('unauthorized');
-  }
+      throw new Error('unauthorized');
+    }
 
-  if(!out.res || !out.res.ok){
+    if(!out.res || !out.res.ok){
       const err = out.data && out.data.error ? out.data.error : 'push_failed';
       throw new Error(err);
     }
@@ -5510,6 +5530,8 @@ async function __syncPull(since){
     if(c) idx[c] = i;
   }
 
+  const me = currentUser ? String(currentUser.email || "").toLowerCase() : "";
+
   let maxUpdated = s;
   const conflicts = [];
 
@@ -5524,64 +5546,45 @@ async function __syncPull(since){
 
     const i = idx[codigo];
     if(i !== undefined){
-      // Colisión de código: existe local y servidor con el mismo código pero con propietario distinto.
-      // Esto pasa cuando dos usuarios (Admin/Registrador) crean el mismo RP-XX-AAAA en paralelo.
-      // Solución automática: conservar el registro del servidor en el código original y renombrar el local a un nuevo código.
-      const localOwner  = String(local[i]?.ownerEmail || local[i]?.createdByEmail || '').trim();
-      const serverOwner = String(serverPayload?.ownerEmail || serverPayload?.createdByEmail || '').trim();
-      const isRpCode = /^RP-(\d+)-(\d{4})$/.test(codigo);
+      const loc = local[i];
+      const localHash = await __sha256(JSON.stringify(loc));
+      const lastSynced = map[codigo];
 
-      if(isRpCode && localOwner && serverOwner && localOwner !== serverOwner){
-        const yearNow = new Date().getFullYear();
-        const used = new Set();
-        try{ local.forEach(x=>{ const c=String(x?.codigo||'').trim(); if(c) used.add(c); }); }catch(_e){}
-        try{ pulled.forEach(x=>{ const c=String(x?.codigo||'').trim(); if(c) used.add(c); }); }catch(_e){}
+      const locOwner = String((loc && (loc.ownerEmail || loc.createdByEmail || "")) || "").toLowerCase();
+      const srvOwner = String((serverPayload && (serverPayload.ownerEmail || serverPayload.createdByEmail || "")) || "").toLowerCase();
 
-        let maxN = 0;
+      const ownersDiffer = !!(locOwner && srvOwner && locOwner !== srvOwner);
+      const canRenameLocal = me && locOwner === me && ownersDiffer;
+
+      // Caso típico de choque de código: mismo "codigo" pero emergencias distintas (dueños distintos)
+      if(canRenameLocal && serverHash && localHash && serverHash !== localHash){
+        let y = new Date().getFullYear();
+        const my = /^RP-(\d+)-(\d{4})$/.exec(String(codigo));
+        if(my) y = Number(my[2]) || y;
+        const newCode = __nextCodigoRPFromArray(local, y);
+
         try{
-          used.forEach(c=>{
-            const mm = /^RP-(\d+)-(\d{4})$/.exec(c);
-            if(mm && Number(mm[2]) === yearNow){
-              const n = Number(mm[1]) || 0;
-              if(n > maxN) maxN = n;
-            }
-          });
-        }catch(_e){}
+          loc.codigo = newCode;
+          loc.estado_sync = 'Pendiente';
+          __ensureMeta(loc);
+        }catch(e){}
 
-        let next = maxN + 1;
-        let newCode = '';
-        while(true){
-          const corr = String(next).padStart(2, '0');
-          newCode = `RP-${corr}-${yearNow}`;
-          if(!used.has(newCode)) break;
-          next++;
-        }
+        // reindex local
+        delete idx[codigo];
+        idx[newCode] = i;
 
-        // Clonar local y renombrar
-        let localCopy = null;
-        try{ localCopy = JSON.parse(JSON.stringify(local[i])); }catch(_e){ localCopy = Object.assign({}, local[i]); }
-        try{ localCopy.codigo = newCode; }catch(_e){}
-        try{ localCopy.estado_sync = 'Pendiente'; }catch(_e){}
-        try{ __ensureMeta(localCopy); }catch(_e){}
+        // no seteamos hash en map para newCode: forzará push del registro renombrado
+        try{ delete map[newCode]; }catch(e){}
 
-        // Aplicar servidor al código original
+        // aplicar servidor bajo el código original
         try{ serverPayload.estado_sync = 'Sincronizado'; }catch(_e){}
-        local[i] = serverPayload;
-        idx[codigo] = i;
-
-        // Insertar la copia local renombrada
-        local.push(localCopy);
-        idx[newCode] = local.length - 1;
-
-        // Registrar evento informativo
-        conflicts.push({ codigo: codigo, reason: 'code_collision_split', local_new_codigo: newCode, server_updated_at: serverUpdated });
+        local.push(serverPayload);
+        idx[codigo] = local.length - 1;
 
         if(serverHash) map[codigo] = serverHash;
         continue;
       }
 
-      const localHash = await __sha256(JSON.stringify(local[i]));
-      const lastSynced = map[codigo];
       const localDirty = (lastSynced && localHash !== lastSynced);
 
       if(localDirty && lastSynced && serverHash && serverHash !== lastSynced){
@@ -5599,6 +5602,27 @@ async function __syncPull(since){
 
     if(serverHash) map[codigo] = serverHash;
   }
+
+  // Actualiza rp_seq del año actual al máximo observado (evita RP-01 duplicados tras pull)
+  try{
+    const y = new Date().getFullYear();
+    let maxExistente = 0;
+    for(const e of local){
+      const cod = String(e && e.codigo ? e.codigo : "").trim();
+      const m = /^RP-(\d+)-(\d{4})$/.exec(cod);
+      if(m && Number(m[2]) === y){
+        const n = Number(m[1]) || 0;
+        if(n > maxExistente) maxExistente = n;
+      }
+    }
+    const lsKey = `rp_seq_${y}`;
+    const cur = Number(localStorage.getItem(lsKey) || 0) || 0;
+    if(maxExistente > cur){
+      try{ localStorage.setItem(lsKey, String(maxExistente)); }catch(e){}
+    }
+    if(!contadorRPporAnio) contadorRPporAnio = {};
+    if(maxExistente > (Number(contadorRPporAnio[y] || 0) || 0)) contadorRPporAnio[y] = maxExistente;
+  }catch(e){}
 
   emergencias = local;
   __saveEmergencias();
@@ -5634,6 +5658,13 @@ async function __syncAll(){
 
     const isCons = currentUser && currentUser.role === __ROLES.CONS;
 
+    // pull primero (evita enviar registros ajenos y reduce choques de código)
+    const pull = await __syncPull(__getLastPull());
+
+    if(pull.conflicts && pull.conflicts.length){
+      alert('Pull: se detectaron conflictos (local vs servidor). No se sobreescribió tu edición local.');
+    }
+
     // push (si corresponde)
     if(!isCons){
       const push = await __syncPush();
@@ -5645,15 +5676,8 @@ async function __syncAll(){
       }
     }
 
-    // pull siempre
-    const pull = await __syncPull(__getLastPull());
-
     // recalcular pendientes
     await __calcPending();
-
-    if(pull.conflicts && pull.conflicts.length){
-      alert('Pull: se detectaron conflictos (local vs servidor). No se sobreescribió tu edición local.');
-    }
 
   }catch(e){
     const msg = (e && e.message) ? e.message : String(e);
