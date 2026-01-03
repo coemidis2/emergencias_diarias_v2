@@ -631,7 +631,7 @@ body { background: #f5f5f5; }
             <thead>
               <tr>
                 <th>Código</th><th>Estado</th><th>Peligro</th><th>Departamento</th><th>Provincia</th><th>Distrito</th>
-                <th>Fecha del peligro</th><th>Total usuarios</th><th>Total servicios</th>
+                <th>Fecha del peligro</th><th>Total usuarios</th><th>Total servicios</th><th>Ver</th>
               </tr>
             </thead>
             <tbody id="dashAfectaMidisTbody"></tbody>
@@ -4601,8 +4601,23 @@ function __dashRenderAfectaMidisTable(data){
         <td>${e.fechaPeligro||""}</td>
         <td>${t.usuarios}</td>
         <td>${t.servicios}</td>
+        <td><button class="btn btn-sm btn-outline-secondary btnDashVer" title="Ver RP/RC" data-code="${e.codigo||""}">👁</button></td>
       </tr>`;
   });
+
+
+// Dashboard: Ver RP/RC (ojo) — solo para la tabla "Relación de emergencias que afectan al MIDIS"
+if(!tbody.dataset.hasDashVer){
+  tbody.addEventListener("click", (ev)=>{
+    const btn = ev.target.closest(".btnDashVer");
+    if(!btn) return;
+    const codigo = btn.getAttribute("data-code") || "";
+    const list = (window.emergencias || []);
+    const e2 = list.find(x => String(x.codigo||"") === String(codigo));
+    if(e2) verEmergencia(e2);
+  });
+  tbody.dataset.hasDashVer = "1";
+}
 }
 
 function dashboardRefresh(){
@@ -4904,29 +4919,12 @@ async function __calcPending(){
     const map = __getHashMap();
     const arr = Array.isArray(emergencias) ? emergencias : __loadEmergencias();
     let pending = 0;
-
-    const isAdmin = currentUser && currentUser.role === __ROLES.ADMIN;
-    const me = currentUser ? String(currentUser.email || "").toLowerCase() : "";
-
     for(const e of arr){
       const codigo = String(e && e.codigo ? e.codigo : "").trim();
       if(!codigo) continue;
-
       const h = await __sha256(JSON.stringify(e));
-
-      // Si no es admin y no es propietario, no se cuenta como pendiente (y se evita reintentar eternamente)
-      if(!isAdmin){
-        const owner = String((e && (e.ownerEmail || e.createdByEmail || "")) || "").toLowerCase();
-        if(!me || !owner || owner !== me){
-          if(!map[codigo]) map[codigo] = h;
-          continue;
-        }
-      }
-
       if(map[codigo] !== h) pending++;
     }
-
-    __setHashMap(map);
     __updateSyncUI(pending);
     return pending;
   }catch(e){
@@ -5337,60 +5335,6 @@ async function __createUserFromAdmin(){
   __renderUsersTable(users);
 }
 
-function __syncIsOwner(em){
-  try{
-    if(!currentUser) return false;
-    const me = String(currentUser.email || "").toLowerCase();
-    if(!me) return false;
-    const owner = String((em && (em.ownerEmail || em.createdByEmail || "")) || "").toLowerCase();
-    return owner && owner === me;
-  }catch(e){ return false; }
-}
-
-function __syncCanPush(em){
-  try{
-    if(!currentUser) return false;
-    if(currentUser.role === __ROLES.ADMIN) return true;
-    return __syncIsOwner(em);
-  }catch(e){ return false; }
-}
-
-function __nextCodigoRPFromArray(arr, year){
-  try{
-    const y = Number(year || (new Date().getFullYear()));
-    let maxExistente = 0;
-    const used = new Set();
-    try{
-      (arr || []).forEach(e=>{
-        const cod = String(e && e.codigo ? e.codigo : "").trim();
-        if(cod) used.add(cod);
-        const m = /^RP-(\d+)-(\d{4})$/.exec(cod);
-        if(m && Number(m[2]) === y){
-          const n = Number(m[1]) || 0;
-          if(n > maxExistente) maxExistente = n;
-        }
-      });
-    }catch(e){}
-    const lsKey = `rp_seq_${y}`;
-    const seqLocal = Number(localStorage.getItem(lsKey) || 0) || 0;
-    const seqMem = Number(contadorRPporAnio && contadorRPporAnio[y] ? contadorRPporAnio[y] : 0) || 0;
-
-    let next = Math.max(maxExistente, seqLocal, seqMem) + 1;
-    let code = `RP-${String(next).padStart(2,"0")}-${y}`;
-    while(used.has(code)){
-      next++;
-      code = `RP-${String(next).padStart(2,"0")}-${y}`;
-    }
-
-    if(!contadorRPporAnio) contadorRPporAnio = {};
-    contadorRPporAnio[y] = next;
-    try{ localStorage.setItem(lsKey, String(next)); }catch(e){}
-    return code;
-  }catch(e){
-    return `RP-01-${new Date().getFullYear()}`;
-  }
-}
-
 // ---- SYNC ----
 async function __syncPush(){
   if(!__isApiConfigured()) throw new Error('server_not_configured');
@@ -5406,25 +5350,10 @@ async function __syncPush(){
   const arr = Array.isArray(emergencias) ? emergencias : __loadEmergencias();
   const deviceId = __getDeviceId();
 
-  const isAdmin = currentUser && currentUser.role === __ROLES.ADMIN;
-  const me = currentUser ? String(currentUser.email || "").toLowerCase() : "";
-
   const toSend = [];
   for(const e of arr){
     const codigo = String(e && e.codigo ? e.codigo : '').trim();
     if(!codigo) continue;
-
-    // No intentes enviar registros que no pertenecen al usuario (evita "no propietario")
-    if(!isAdmin){
-      const owner = String((e && (e.ownerEmail || e.createdByEmail || "")) || "").toLowerCase();
-      if(!me || !owner || owner !== me){
-        // Guardar hash para que no quede como pendiente infinito en este dispositivo
-        const h0 = await __sha256(JSON.stringify(e));
-        if(!map[codigo]) map[codigo] = h0;
-        continue;
-      }
-    }
-
     const h = await __sha256(JSON.stringify(e));
     if(map[codigo] !== h){
       try{ e.estado_sync = 'Pendiente'; }catch(_e){}
@@ -5440,10 +5369,7 @@ async function __syncPush(){
     }
   }
 
-  if(toSend.length === 0){
-    __setHashMap(map);
-    return { ok:true, acked:[], empty:true };
-  }
+  if(toSend.length === 0) return { ok:true, acked:[], empty:true };
 
   const batchSize = 150;
   const allAcked = [];
@@ -5454,10 +5380,10 @@ async function __syncPush(){
     const batch = toSend.slice(i, i+batchSize);
     const out = await __api('/sync/push', { method:'POST', token: token, body:{ records: batch } });
     if(out.res && out.res.status === 401){
-      throw new Error('unauthorized');
-    }
+    throw new Error('unauthorized');
+  }
 
-    if(!out.res || !out.res.ok){
+  if(!out.res || !out.res.ok){
       const err = out.data && out.data.error ? out.data.error : 'push_failed';
       throw new Error(err);
     }
@@ -5530,8 +5456,6 @@ async function __syncPull(since){
     if(c) idx[c] = i;
   }
 
-  const me = currentUser ? String(currentUser.email || "").toLowerCase() : "";
-
   let maxUpdated = s;
   const conflicts = [];
 
@@ -5546,45 +5470,8 @@ async function __syncPull(since){
 
     const i = idx[codigo];
     if(i !== undefined){
-      const loc = local[i];
-      const localHash = await __sha256(JSON.stringify(loc));
+      const localHash = await __sha256(JSON.stringify(local[i]));
       const lastSynced = map[codigo];
-
-      const locOwner = String((loc && (loc.ownerEmail || loc.createdByEmail || "")) || "").toLowerCase();
-      const srvOwner = String((serverPayload && (serverPayload.ownerEmail || serverPayload.createdByEmail || "")) || "").toLowerCase();
-
-      const ownersDiffer = !!(locOwner && srvOwner && locOwner !== srvOwner);
-      const canRenameLocal = me && locOwner === me && ownersDiffer;
-
-      // Caso típico de choque de código: mismo "codigo" pero emergencias distintas (dueños distintos)
-      if(canRenameLocal && serverHash && localHash && serverHash !== localHash){
-        let y = new Date().getFullYear();
-        const my = /^RP-(\d+)-(\d{4})$/.exec(String(codigo));
-        if(my) y = Number(my[2]) || y;
-        const newCode = __nextCodigoRPFromArray(local, y);
-
-        try{
-          loc.codigo = newCode;
-          loc.estado_sync = 'Pendiente';
-          __ensureMeta(loc);
-        }catch(e){}
-
-        // reindex local
-        delete idx[codigo];
-        idx[newCode] = i;
-
-        // no seteamos hash en map para newCode: forzará push del registro renombrado
-        try{ delete map[newCode]; }catch(e){}
-
-        // aplicar servidor bajo el código original
-        try{ serverPayload.estado_sync = 'Sincronizado'; }catch(_e){}
-        local.push(serverPayload);
-        idx[codigo] = local.length - 1;
-
-        if(serverHash) map[codigo] = serverHash;
-        continue;
-      }
-
       const localDirty = (lastSynced && localHash !== lastSynced);
 
       if(localDirty && lastSynced && serverHash && serverHash !== lastSynced){
@@ -5602,27 +5489,6 @@ async function __syncPull(since){
 
     if(serverHash) map[codigo] = serverHash;
   }
-
-  // Actualiza rp_seq del año actual al máximo observado (evita RP-01 duplicados tras pull)
-  try{
-    const y = new Date().getFullYear();
-    let maxExistente = 0;
-    for(const e of local){
-      const cod = String(e && e.codigo ? e.codigo : "").trim();
-      const m = /^RP-(\d+)-(\d{4})$/.exec(cod);
-      if(m && Number(m[2]) === y){
-        const n = Number(m[1]) || 0;
-        if(n > maxExistente) maxExistente = n;
-      }
-    }
-    const lsKey = `rp_seq_${y}`;
-    const cur = Number(localStorage.getItem(lsKey) || 0) || 0;
-    if(maxExistente > cur){
-      try{ localStorage.setItem(lsKey, String(maxExistente)); }catch(e){}
-    }
-    if(!contadorRPporAnio) contadorRPporAnio = {};
-    if(maxExistente > (Number(contadorRPporAnio[y] || 0) || 0)) contadorRPporAnio[y] = maxExistente;
-  }catch(e){}
 
   emergencias = local;
   __saveEmergencias();
@@ -5658,13 +5524,6 @@ async function __syncAll(){
 
     const isCons = currentUser && currentUser.role === __ROLES.CONS;
 
-    // pull primero (evita enviar registros ajenos y reduce choques de código)
-    const pull = await __syncPull(__getLastPull());
-
-    if(pull.conflicts && pull.conflicts.length){
-      alert('Pull: se detectaron conflictos (local vs servidor). No se sobreescribió tu edición local.');
-    }
-
     // push (si corresponde)
     if(!isCons){
       const push = await __syncPush();
@@ -5676,8 +5535,15 @@ async function __syncAll(){
       }
     }
 
+    // pull siempre
+    const pull = await __syncPull(__getLastPull());
+
     // recalcular pendientes
     await __calcPending();
+
+    if(pull.conflicts && pull.conflicts.length){
+      alert('Pull: se detectaron conflictos (local vs servidor). No se sobreescribió tu edición local.');
+    }
 
   }catch(e){
     const msg = (e && e.message) ? e.message : String(e);
