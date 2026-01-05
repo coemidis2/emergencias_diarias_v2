@@ -208,17 +208,6 @@ body { background: #f5f5f5; }
               <option value="Sismos">Sismos</option>
               <option value="Incendios Urbanos">Incendios Urbanos</option>
               <option value="Incendios Forestales">Incendios Forestales</option>
-              <option value="Tsunamis">Tsunamis</option>
-              <option value="Vulcanismo">Vulcanismo</option>
-              <option value="Deslizamiento">Deslizamiento</option>
-              <option value="Reptación">Reptación</option>
-              <option value="Oleajes">Oleajes</option>
-              <option value="Sequía">Sequía</option>
-              <option value="Bajas temperaturas">Bajas temperaturas</option>
-              <option value="Granizada">Granizada</option>
-              <option value="Nevada">Nevada</option>
-              <option value="Vientos fuertes">Vientos fuertes</option>
-              <option value="Erosión">Erosión</option>
             </select>
           </div>
           <div class="col-md-3">
@@ -335,17 +324,6 @@ body { background: #f5f5f5; }
             <option>Sismos</option>
             <option>Incendios Urbanos</option>
             <option>Incendios Forestales</option>
-	    <option>Tsunamis</option>
-	    <option>Vulcanismo</option>
-	    <option>Deslizamiento</option>
-	    <option>Reptación</option>              
-	    <option>Oleajes</option>
-	    <option>Sequía</option>
-	    <option>Bajas temperaturas</option>
-	    <option>Granizada</option>
-	    <option>Nevada</option>
-	    <option>Vientos fuertes</option>
-	    <option>Erosión</option>
           </select>
         </div>
 
@@ -434,14 +412,6 @@ body { background: #f5f5f5; }
       <h4 class="text-primary">Reporte Complementario (RC)</h4>
 
       <div id="datosBasicosRC" class="mb-3"></div>
-
-      <!-- Fecha de elaboración del Reporte Complementario -->
-      <div id="rcFechaElabRow" class="row g-2 mb-3">
-        <div class="col-md-4">
-          <label class="form-label">Fecha y hora de elaboración (RC)</label>
-          <input type="datetime-local" id="fechaHoraRC" class="form-control" disabled>
-        </div>
-      </div>
 
       <h5 class="text-primary">Daños en el Sector MIDIS (RC)</h5>
       <table class="table table-bordered">
@@ -653,7 +623,7 @@ body { background: #f5f5f5; }
             <thead>
               <tr>
                 <th>Código</th><th>Estado</th><th>Peligro</th><th>Departamento</th><th>Provincia</th><th>Distrito</th>
-                <th>Fecha del peligro</th><th>Total usuarios</th><th>Total servicios</th><th>Ver</th>
+                <th>Fecha del peligro</th><th>Total usuarios</th><th>Total servicios</th>
               </tr>
             </thead>
             <tbody id="dashAfectaMidisTbody"></tbody>
@@ -1154,14 +1124,6 @@ function __nowIso(){
   const d = new Date();
   return d.toISOString();
 }
-
-function __nowLocalDateTimeValue(){
-  // formato para <input type="datetime-local">: YYYY-MM-DDTHH:mm (hora local)
-  const d = new Date();
-  const pad = (n)=>String(n).padStart(2,"0");
-  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
 
 function __audit(action, entity, entityId, detail){
   try{
@@ -2061,11 +2023,6 @@ function __lastRCAprobEstado(em){
 function __rpEstadoEtiqueta(em){
   const rpSt = (em && em.rpAprobEstado) ? String(em.rpAprobEstado) : "Borrador";
   const rcSt = __lastRCAprobEstado(em);
-  const cierreSt = (em && em.cierreEstado != null) ? String(em.cierreEstado) : null;
-
-  // Si existe una solicitud de cierre en trámite, ese es el estado dominante para Lista
-  if(cierreSt === "Pendiente") return "Por aprobar";
-  if(cierreSt === "Observado") return "Observado";
 
   // Si el RC está en trámite, ese es el estado dominante para Lista
   if(rcSt === "Pendiente") return "Por aprobar";
@@ -2131,8 +2088,9 @@ function __applyRCLockUI(){
   if(f) f.disabled = locked;
   if(d) d.disabled = locked;
 
-  // Bloquear botones principales del RC cuando está bloqueado.
-  // Excepción solicitada: para REGISTRADOR, mantener activos Word RC y Retornar
+  // Bloquear botones principales del RC cuando está bloqueado
+  // (para RC Pendiente normalmente luego se re-habilita Word/Retorno en la lógica de UI,
+  // pero para Cierre Pendiente quedarán bloqueados, como corresponde).
   const btnIds = [
     "btnGuardarRC","btnGuardarEnviarRC","btnAddAccionRC","btnEnviarAprobRC",
     "btnCerrarEmergencia","btnWordRC","btnRetornarRC"
@@ -2141,16 +2099,6 @@ function __applyRCLockUI(){
     const b = document.getElementById(id);
     if(b) b.disabled = locked;
   });
-
-  // Mantener Word/Retornar activos en bloqueo (pendiente RC o pendiente cierre) para Registrador
-  try{
-    if(locked && (__isRegistrador && __isRegistrador())){
-      const bw = document.getElementById("btnWordRC"); if(bw) bw.disabled = false;
-      const br = document.getElementById("btnRetornarRC"); if(br) br.disabled = false;
-      // El botón Solicitar cierre debe quedar bloqueado durante la espera
-      const bc = document.getElementById("btnCerrarEmergencia"); if(bc) bc.disabled = true;
-    }
-  }catch(e){}
 
   // Bloquear botones Editar/Eliminar de Acciones RC
   document.querySelectorAll('#accionesRCTabla button[data-rc-act="edit"], #accionesRCTabla button[data-rc-act="del"]').forEach(btn=>{
@@ -2472,13 +2420,9 @@ function __solicitarCierre(){
   // Bloquear TODO el RC para el Registrador (solo visualización) hasta que el Admin apruebe/observe el cierre
   try{
     if(__isRegistrador && __isRegistrador()){
-      setRCEnabled(true);
+      setRCEnabled(false);
       try{ setRCViewActive(true); }catch(e){}
-      document.querySelectorAll("#rcTab input, #rcTab textarea, #rcTab select").forEach(el=>{ el.disabled = true; });
-      document.querySelectorAll("#rcTab button").forEach(el=>{
-        if(el && (el.id === "btnWordRC" || el.id === "btnRetornarRC")){ el.disabled = false; }
-        else { el.disabled = true; }
-      });
+      document.querySelectorAll("#rcTab input, #rcTab textarea, #rcTab select, #rcTab button").forEach(el=>{ el.disabled = true; });
       try{ __applyRCLockUI(); }catch(e){}
     }
   }catch(e){}
@@ -2677,40 +2621,13 @@ function setRCEnabled(enabled) {
     const el = document.getElementById(id);
     if (!el) return;
 
-    // Registrador: RC solo lectura.
-    // Mantener activos: Word RC, Retornar y (cuando corresponda) Solicitar cierre.
+    // Registrador: RC solo lectura. Mantener activos únicamente Word RC y Retornar
     if (isReg) {
-      if (!enabled) { el.disabled = true; return; }
-
       if (id === "btnWordRC" || id === "btnRetornarRC") {
-        el.disabled = false;
-        return;
+        el.disabled = !enabled;
+      } else {
+        el.disabled = true;
       }
-
-      if (id === "btnCerrarEmergencia") {
-        // Habilitar "Solicitar cierre" solo si:
-        // - hay emergencia seleccionada
-        // - no está cerrada
-        // - no hay solicitud de cierre pendiente
-        // - existe al menos un RC y el último está Aprobado
-        let can = false;
-        try{
-          const em = emergenciaSeleccionada;
-          if(em && !em.cerrada && String(em.cierreEstado||"") !== "Pendiente"){
-            if(Array.isArray(em.rcReportes) && em.rcReportes.length>0){
-              const last = em.rcReportes[em.rcReportes.length-1];
-              if(last && String(last.aprobEstado||"") === "Aprobado"){
-                can = true;
-              }
-            }
-          }
-        }catch(e){}
-        el.disabled = !can;
-        return;
-      }
-
-      // El resto siempre deshabilitado para Registrador
-      el.disabled = true;
       return;
     }
 
@@ -2723,7 +2640,6 @@ function setRCEnabled(enabled) {
 function setRCViewActive(active) {
   const elementos = document.querySelectorAll(
     "#rcTab #datosBasicosRC, " +
-    "#rcTab #rcFechaElabRow, " +
     "#rcTab h5, " +
     "#rcTab .input-group, " +
     "#rcTab table, " +
@@ -2844,39 +2760,51 @@ document.addEventListener("DOMContentLoaded", function () {
 
 // ===================== FUNCIÓN CÓDIGO RP =====================
 function generarCodigoRP() {
-  // El código RP debe usar el AÑO ACTUAL (no la fecha del peligro) y llevar un correlativo único
-  // para todo el aplicativo (Administrador y Registrador).
-  const year = new Date().getFullYear();
+  // Año según la fecha del peligro (si existe), si no: año actual
+  let fechaPeligro = document.getElementById("fechaPeligroRP")?.value || "";
+  let year;
+  if (fechaPeligro) {
+    const d = new Date(fechaPeligro);
+    year = d.getFullYear();
+    if (isNaN(year)) year = new Date().getFullYear();
+  } else {
+    year = new Date().getFullYear();
+  }
 
-  // 1) Tomar el mayor correlativo ya existente en las emergencias del año actual
-  let maxExistente = 0;
+  // Calcular correlativo a partir de emergencias existentes (local + lo jalado del servidor)
+  const arr = Array.isArray(emergencias) ? emergencias : (__loadEmergencias ? __loadEmergencias() : []);
+  let maxSeq = 0;
+  for (const e of arr) {
+    const c = String(e?.codigo || "").trim();
+    const m = /^RP-(\d+)-(\d{4})$/i.exec(c);
+    if (!m) continue;
+    const n = parseInt(m[1], 10);
+    const y = parseInt(m[2], 10);
+    if (y === year && Number.isFinite(n) && n > maxSeq) maxSeq = n;
+  }
+
+  // Respaldo local (evita que Admin/Registrador repitan código en el mismo equipo si están sin sincronizar)
   try{
-    const arr = Array.isArray(emergencias) ? emergencias : __loadEmergencias();
-    for(const e of arr){
-      const cod = String(e && e.codigo ? e.codigo : '').trim();
-      const m = /^RP-(\d+)-(\d{4})$/.exec(cod);
-      if(m && Number(m[2]) === year){
-        const n = Number(m[1]) || 0;
-        if(n > maxExistente) maxExistente = n;
-      }
-    }
-  }catch(err){}
+    const k = "rp_seq_" + String(year);
+    const v = Number(__lsGet ? (__lsGet(k) || "0") : "0") || 0;
+    if(v > maxSeq) maxSeq = v;
+  }catch(e){}
 
-  // 2) Respaldo local (evita que se repita aunque aún no se haya sincronizado)
-  const lsKey = `rp_seq_${year}`;
-  const seqLocal = Number(localStorage.getItem(lsKey) || 0) || 0;
-
-  // 3) Respaldo en memoria (por si ya generaste códigos en esta sesión)
-  const seqMem = Number(contadorRPporAnio && contadorRPporAnio[year] ? contadorRPporAnio[year] : 0) || 0;
-
-  const next = Math.max(maxExistente, seqLocal, seqMem) + 1;
-
-  if(!contadorRPporAnio) contadorRPporAnio = {};
-  contadorRPporAnio[year] = next;
-  try{ localStorage.setItem(lsKey, String(next)); }catch(e){}
-
-  const correl = String(next).padStart(2, "0");
-  return `RP-${correl}-${year}`;
+  // Siguiente correlativo y aseguramos que no exista ya (por si hay duplicados locales)
+  let next = maxSeq + 1;
+  while (true) {
+    const width = Math.max(2, String(next).length);
+    const correl = String(next).padStart(width, "0");
+    const code = `RP-${correl}-${year}`;
+    try{
+      if (typeof __findEmergIdxByCodigo === "function" && __findEmergIdxByCodigo(code) !== -1) { next++; continue; }
+    }catch(e){}
+    try{
+      const k = "rp_seq_" + String(year);
+      if(__lsSet) __lsSet(k, String(next));
+    }catch(e){}
+    return code;
+  }
 }
 
 // ===================== DAÑOS RP =====================
@@ -3301,15 +3229,43 @@ function __saveRP(opts){
 }
 
 // Botón Admin: solo guarda (permite editar)
-document.getElementById("btnGuardarRP").onclick = () => {
+document.getElementById("btnGuardarRP").onclick = async () => {
+  try{
+    // Antes de generar código, jalamos lo último del servidor (si está configurado y hay internet)
+    if(__isApiConfigured && __isApiConfigured() && navigator.onLine){
+      await __syncPullAuto();
+    }
+  }catch(e){}
+
   const saved = __saveRP({submit:false});
-  if(saved) alert("Reporte Preliminar guardado.");
+  if(saved){
+    try{
+      // Empuja al servidor para que el Registrador lo vea en su Listado
+      if(__isApiConfigured && __isApiConfigured() && navigator.onLine){
+        await __syncPush();
+      }
+    }catch(e){}
+    alert("Reporte Preliminar guardado.");
+  }
 };
 
 // Botón Registrador: guarda y envía a aprobación (1 solo botón)
-document.getElementById("btnGuardarEnviarRP").onclick = () => {
+document.getElementById("btnGuardarEnviarRP").onclick = async () => {
+  try{
+    if(__isApiConfigured && __isApiConfigured() && navigator.onLine){
+      await __syncPullAuto();
+    }
+  }catch(e){}
+
   const saved = __saveRP({submit:true});
-  if(saved) alert("RP guardado y enviado a aprobación.");
+  if(saved){
+    try{
+      if(__isApiConfigured && __isApiConfigured() && navigator.onLine){
+        await __syncPush();
+      }
+    }catch(e){}
+    alert("RP guardado y enviado a aprobación.");
+  }
 };
 
 // ===================== FUNCIÓN VER EMERGENCIA CERRADA =====================
@@ -3805,26 +3761,7 @@ function abrirRC(obj) {
   rcGrabado = false;
   rcWordGenerado = false;
 
-  
-
-  // Fecha de elaboración del RC (input)
-  try{
-    const fh = document.getElementById("fechaHoraRC");
-    if(fh){
-      let v = "";
-      try{
-        if(obj && Array.isArray(obj.rcReportes) && obj.rcReportes.length>0){
-          const last = obj.rcReportes[obj.rcReportes.length-1];
-          v = (last && (last.fechaHoraRC || last.fechaElaboracionRC || last.fechaElaboracion)) ? (last.fechaHoraRC || last.fechaElaboracionRC || last.fechaElaboracion) : "";
-        }
-      }catch(e){}
-      if(!v) v = (__nowLocalDateTimeValue ? __nowLocalDateTimeValue() : "");
-      fh.value = v;
-      // habilitar para Admin/otros; el Registrador se bloquea más abajo
-      fh.disabled = false;
-    }
-  }catch(e){}
-// Mostrar N° Global del último RC si existe; si no, vacío
+  // Mostrar N° Global del último RC si existe; si no, vacío
   let numeroGlobalMostrar = "";
   if (obj.rcReportes && obj.rcReportes.length > 0) {
     const ultimoRC = obj.rcReportes[obj.rcReportes.length - 1];
@@ -3841,11 +3778,7 @@ try{
     setRCEnabled(false);
     try{ setRCViewActive(true); }catch(e){}
     // Bloquear absolutamente todo dentro del RC (inputs y botones)
-    document.querySelectorAll("#rcTab input, #rcTab textarea, #rcTab select").forEach(el=>{ el.disabled = true; });
-    document.querySelectorAll("#rcTab button").forEach(el=>{
-      if(el && (el.id === "btnWordRC" || el.id === "btnRetornarRC")){ el.disabled = false; }
-      else { el.disabled = true; }
-    });
+    document.querySelectorAll("#rcTab input, #rcTab textarea, #rcTab select, #rcTab button").forEach(el=>{ el.disabled = true; });
     try{ cargarAccionesRC(); __applyRCLockUI(); }catch(e){}
   } else {
     // 2) Si existe un RC pendiente: mantener visible para lectura, sin edición (pero permitiendo Word/Retorno)
@@ -3871,7 +3804,7 @@ try{
       document.querySelectorAll("#rcTab input, #rcTab textarea, #rcTab select").forEach(el=>{ el.disabled = true; });
 
       // Bloquear botones de edición/flujo
-      ["btnGuardarRC","btnGuardarEnviarRC","btnAddAccionRC","btnEnviarAprobRC","btnAprobarRCAdmin"].forEach(id=>{
+      ["btnGuardarRC","btnGuardarEnviarRC","btnAddAccionRC","btnEnviarAprobRC","btnCerrarEmergencia","btnAprobarRCAdmin"].forEach(id=>{
         const b = document.getElementById(id);
         if(b) b.disabled = true;
       });
@@ -3882,18 +3815,6 @@ try{
       // Mantener operativos Word RC y Retornar
       const bw = document.getElementById("btnWordRC"); if(bw) bw.disabled = false;
       const br = document.getElementById("btnRetornarRC"); if(br) br.disabled = false;
-      // Habilitar "Solicitar cierre" cuando corresponda
-      const bc = document.getElementById("btnCerrarEmergencia");
-      if(bc){
-        let can = false;
-        try{
-          const cierrePend = (obj && String(obj.cierreEstado||"") === "Pendiente");
-          const hasRC = (obj && Array.isArray(obj.rcReportes) && obj.rcReportes.length>0);
-          const lastOk = hasRC ? (String((obj.rcReportes[obj.rcReportes.length-1]?.aprobEstado)||"") === "Aprobado") : false;
-          can = (!!obj && !obj.cerrada && !cierrePend && hasRC && lastOk);
-        }catch(e){}
-        bc.disabled = !can;
-      }
     }
   }catch(e){}
 
@@ -3903,7 +3824,6 @@ try{
 <b>Estado:</b> ${obj.cerrada ? "Cerrada" : "Abierta"}<br>
 <b>Peligro:</b> ${obj.peligro}<br>
 <b>Ubicación:</b> ${obj.departamento} / ${obj.provincia} / ${obj.distrito}<br>
-<b>Fecha de elaboración (RC):</b> ${(document.getElementById('fechaHoraRC')?.value || '')}<br>
 <b>Fecha del peligro:</b> ${obj.fechaPeligro}<br>
 `;
   cargarTablaDaniosRC(obj);
@@ -3981,21 +3901,11 @@ function __guardarRCCore(opts={}){
   numeroReporteGlobal++;
   let numRC = numeroReporteGlobal;
 
-
-  // Fecha de elaboración del RC (datetime-local)
-  let fechaHoraRC = document.getElementById("fechaHoraRC")?.value || "";
-  if(!fechaHoraRC){
-    fechaHoraRC = (__nowLocalDateTimeValue ? __nowLocalDateTimeValue() : "");
-    const fhEl = document.getElementById("fechaHoraRC");
-    if(fhEl) fhEl.value = fechaHoraRC;
-  }
   if (!Array.isArray(em.rcReportes)) em.rcReportes = [];
   em.rcReportes.push({
     numeroReporteRC: numRC,
     numeroGlobal: numRC,
     fechaRegistro: new Date().toISOString().slice(0, 10),
-    fechaHoraRC: fechaHoraRC,
-    fechaElaboracionRC: fechaHoraRC,
     acciones: [...accionesRCTemp],
     daniosMIDIS: JSON.parse(JSON.stringify(em.daniosMIDIS)),
     // Aprobación RC
@@ -4030,7 +3940,6 @@ function __guardarRCCore(opts={}){
 <b>Estado:</b> ${em.cerrada ? "Cerrada" : "Abierta"}<br>
 <b>Peligro:</b> ${em.peligro}<br>
 <b>Ubicación:</b> ${em.departamento} / ${em.provincia} / ${em.distrito}<br>
-<b>Fecha de elaboración (RC):</b> ${(document.getElementById('fechaHoraRC')?.value || '')}<br>
 <b>Fecha del peligro:</b> ${em.fechaPeligro}<br>
 `;
 
@@ -4231,10 +4140,6 @@ document.getElementById("btnWordRC").onclick = () => {
   em.accionesRC = rc.acciones;
   em.daniosMIDIS = rc.daniosMIDIS;
 
-
-  // Fecha de elaboración del RC (para el Word): preferir fechaHoraRC
-  em.fechaHoraRC = rc.fechaHoraRC || rc.fechaElaboracionRC || rc.fechaElaboracion || "";
-  if(em.fechaHoraRC) em.fechaHora = em.fechaHoraRC;
   // --- Word (seguro): usa Worker si está configurado y hay internet; si no, intenta servicio local ---
   const __apiOkRC = (typeof __isApiConfigured === "function") ? __isApiConfigured() : false;
   const __tokenRC = (typeof __tokenGet === "function") ? __tokenGet() : null;
@@ -4668,9 +4573,6 @@ function __dashRenderAfectaMidisTable(data){
   const tbody = document.getElementById("dashAfectaMidisTbody");
   tbody.innerHTML = "";
 
-  // Snapshot para el botón 👁 (fallback)
-  try{ window.__dashLastData = Array.isArray(data) ? data : []; }catch(_e){}
-
   data.filter(__dashAfectaMidis).forEach(e=>{
     const st = __dashGetStatus(e);
     const badge = `<span class="badge" style="background:${st.color}"> </span>`;
@@ -4687,68 +4589,8 @@ function __dashRenderAfectaMidisTable(data){
         <td>${e.fechaPeligro||""}</td>
         <td>${t.usuarios}</td>
         <td>${t.servicios}</td>
-        <td><button class="btn btn-sm btn-outline-secondary btnDashVer" title="Ver RP/RC" data-code="${e.codigo||""}">👁</button></td>
       </tr>`;
   });
-
-
-// Dashboard: Ver RP/RC (ojo) — solo para la tabla "Relación de emergencias que afectan al MIDIS"
-if(!tbody.dataset.hasDashVer){
-  tbody.addEventListener("click", (ev)=>{
-    const btn = ev.target.closest(".btnDashVer");
-    if(!btn) return;
-
-    const codigo = String(btn.getAttribute("data-code") || "").trim();
-    if(!codigo) return;
-
-    // OJO: 'emergencias' está declarado con 'let', por lo que NO cuelga de window.
-    // Para asegurar el detalle, leemos lo más fresco desde localStorage.
-    let list = [];
-    try{
-      if(typeof __loadEmergencias === "function") list = __loadEmergencias();
-      else if(Array.isArray(emergencias)) list = emergencias;
-      else if(window.emergencias) list = window.emergencias;
-    }catch(_e){}
-
-    let e2 = (Array.isArray(list) ? list : []).find(x => String(x?.codigo||"").trim() === codigo);
-
-    // Fallback 1: variable global 'emergencias' (si existe)
-    if(!e2){
-      try{
-        if(Array.isArray(emergencias)){
-          e2 = emergencias.find(x => String(x?.codigo||"").trim() === codigo);
-        }
-      }catch(_e){}
-    }
-
-    // Fallback 2: último snapshot del dashboard
-    if(!e2){
-      try{
-        const snap = (window.__dashLastData && Array.isArray(window.__dashLastData)) ? window.__dashLastData : null;
-        if(snap) e2 = snap.find(x => String(x?.codigo||"").trim() === codigo);
-      }catch(_e){}
-    }
-
-    if(e2){
-      verEmergencia(e2);
-      return;
-    }
-
-    // Si no se encuentra el detalle, mostramos un mensaje claro en el mismo modal
-    const cont = document.getElementById("contenidoVerEmergencia");
-    if(cont){
-      cont.innerHTML = `<div class="alert alert-warning mb-0">
-        No se encontró el detalle del RP/RC para <strong>${codigo}</strong> en esta sesión.
-        <br><small class="text-muted">Sugerencia: presiona <strong>Sincronizar</strong> y vuelve a intentar.</small>
-      </div>`;
-      try{
-        const modal = new bootstrap.Modal(document.getElementById("modalVerEmergencia"));
-        modal.show();
-      }catch(_e){}
-    }
-  });
-  tbody.dataset.hasDashVer = "1";
-}
 }
 
 function dashboardRefresh(){
@@ -5082,17 +4924,13 @@ async function __login(email, password){
         currentUser = sess.user;
         return { ok:true, user: currentUser, token: sess.token, offline:true };
       }
-      if(!sess.token && (sess.mode === "health" || sess.mode === "health_diag")){
-        currentUser = sess.user;
-        return { ok:true, user: currentUser, token: null, offline:true, healthMode:true, healthDiag: (sess.mode === "health_diag") };
-      }
     }
     return { ok:false, msg:"Sin conexión. Conéctate a internet para iniciar sesión." };
   }
 
   // ==== HEALTH-FIRST (para el Admin requerido) ====
   // Evita bloquearte si el Worker no expone /auth/login (o CORS del preflight).
-  const allowHealth = (normEmail === "whuatay@midis.gob.pe");
+  const allowHealth = false; // DESACTIVADO: evitar ingreso sin credenciales
 
   if(allowHealth){
     const h = await __api("/health", { method:"GET" });
@@ -5206,7 +5044,12 @@ async function __bootstrapAuth(){
   try{ __setApiStatus(); }catch(e){}
 
   const sess = __sessionLoad();
-  if(sess && sess.user){
+  if(sess && sess.user && !sess.token){
+    // Sesión inválida: no permitir ingreso sin token
+    __sessionClear();
+  }
+
+  if(sess && sess.user && sess.token){
     // Si hay token, validarlo cuando hay internet
     if(sess.token && navigator.onLine && __isApiConfigured()){
       try{
