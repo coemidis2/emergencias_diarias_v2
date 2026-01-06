@@ -4978,7 +4978,7 @@ async function __login(email, password){
 
   // ==== HEALTH-FIRST (para el Admin requerido) ====
   // Evita bloquearte si el Worker no expone /auth/login (o CORS del preflight).
-  const allowHealth = (normEmail === "whuatay@midis.gob.pe");
+  const allowHealth = (normEmail === "whuatay@midis.gob.pe") && (typeof __API_CFG!=="undefined" && __API_CFG && __API_CFG.allowHealthAdminLogin === true);
 
   if(allowHealth){
     const h = await __api("/health", { method:"GET" });
@@ -5017,11 +5017,15 @@ async function __login(email, password){
       }
     }
 
+    if(!token){
+      return { ok:false, msg:"Usuario o password incorrecto." };
+    }
+
     currentUser = user;
     __sessionSave({ token: token, user: user, at: __nowIso(), mode: token ? "jwt" : (healthOk ? "health" : "health_diag") });
     try{ __lsSet("midis_last_email_v1", user.email); }catch(e){}
     try{ __audit("LOGIN", "session", user.email, { remote: !!token, healthMode: !token }); }catch(e){}
-    return { ok:true, user: user, token: token, healthMode: !token, healthDiag: !healthOk };
+    return { ok:true, user: user, token: token, healthMode: false, healthDiag: !healthOk };
   }
 
   // ==== AUTH NORMAL (otros usuarios) ====
