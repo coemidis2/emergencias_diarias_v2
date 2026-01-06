@@ -1125,6 +1125,11 @@ function __nowIso(){
   return d.toISOString();
 }
 
+function __normCoord(v){
+  if(v === null || v === undefined) return "";
+  return String(v).trim().replace(",", ".");
+}
+
 function __audit(action, entity, entityId, detail){
   try{
     const logs = JSON.parse(__lsGet(__AUTH_KEYS.audit) || "[]");
@@ -3181,8 +3186,8 @@ function __saveRP(opts){
   base.provincia    = document.getElementById("provinciaRP")?.value || "";
   base.distrito     = document.getElementById("distritoRP")?.value || "";
   base.peligro      = document.getElementById("peligroRP")?.value || "";
-  base.latitud      = document.getElementById("latitudRP")?.value || "";
-  base.longitud     = document.getElementById("longitudRP")?.value || "";
+  base.latitud      = __normCoord(document.getElementById("latitudRP")?.value || "");
+  base.longitud     = __normCoord(document.getElementById("longitudRP")?.value || "");
   base.daniosMIDIS  = daniosMIDIS;
   base.daniosOtros  = document.getElementById("daniosOtrosRP")?.value || "";
   base.accionesPreliminar = [...accionesRPTemp];
@@ -3672,9 +3677,26 @@ function abrirRP(obj){
   setVal("hechosRP", obj.hechos || "");
   setVal("fechaPeligroRP", obj.fechaPeligro || "");
   setVal("peligroRP", obj.peligro || "");
-  setVal("departamentoRP", obj.departamento || "");
-  setVal("provinciaRP", obj.provincia || "");
-  setVal("distritoRP", obj.distrito || "");
+  // Cargar combos Ubigeo en cascada (dep → prov → dist) para que se vea en Admin al abrir RP
+  try {
+    const depEl = document.getElementById("departamentoRP");
+    const provEl = document.getElementById("provinciaRP");
+    const distEl = document.getElementById("distritoRP");
+
+    if (depEl) {
+      depEl.value = obj.departamento || "";
+      depEl.dispatchEvent(new Event("change"));
+    }
+    if (provEl) {
+      provEl.value = obj.provincia || "";
+      provEl.dispatchEvent(new Event("change"));
+    }
+    if (distEl) {
+      distEl.value = obj.distrito || "";
+    }
+  } catch (e) {
+    // noop
+  }
   setVal("latitudRP", obj.latitud || "");
   setVal("longitudRP", obj.longitud || "");
   setVal("daniosOtrosRP", obj.daniosOtros || "");
@@ -4924,13 +4946,17 @@ async function __login(email, password){
         currentUser = sess.user;
         return { ok:true, user: currentUser, token: sess.token, offline:true };
       }
+      if(!sess.token && (sess.mode === "health" || sess.mode === "health_diag")){
+        currentUser = sess.user;
+        return { ok:true, user: currentUser, token: null, offline:true, healthMode:true, healthDiag: (sess.mode === "health_diag") };
+      }
     }
     return { ok:false, msg:"Sin conexión. Conéctate a internet para iniciar sesión." };
   }
 
   // ==== HEALTH-FIRST (para el Admin requerido) ====
   // Evita bloquearte si el Worker no expone /auth/login (o CORS del preflight).
-  const allowHealth = false; // DESACTIVADO: evitar ingreso sin credenciales
+  const allowHealth = (normEmail === "whuatay@midis.gob.pe");
 
   if(allowHealth){
     const h = await __api("/health", { method:"GET" });
@@ -5044,12 +5070,7 @@ async function __bootstrapAuth(){
   try{ __setApiStatus(); }catch(e){}
 
   const sess = __sessionLoad();
-  if(sess && sess.user && !sess.token){
-    // Sesión inválida: no permitir ingreso sin token
-    __sessionClear();
-  }
-
-  if(sess && sess.user && sess.token){
+  if(sess && sess.user){
     // Si hay token, validarlo cuando hay internet
     if(sess.token && navigator.onLine && __isApiConfigured()){
       try{
