@@ -3305,7 +3305,7 @@ function verEmergencia(e) {
   const isCerrada = !!e.cerrada;
   const isConsulta = (typeof currentUser !== "undefined" && currentUser && currentUser.role === __ROLES.CONS);
 // RP
-  let html = `<h5 id="ver_rp" class="text-primary">Reporte Preliminar</h5>`;
+  let html = `<h5 class="text-primary">Reporte Preliminar</h5>`;
   html += `<p>
 <strong>Código:</strong> ${e.codigo || ""}<br>
 <strong>N° Global RP:</strong> ${e.numeroGlobal || ""}<br>
@@ -3369,7 +3369,7 @@ function verEmergencia(e) {
     
     const lastIdx = e.rcReportes.length - 1;
 e.rcReportes.forEach((rc, idx) => {
-      html += `<h6 id="ver_rc_${idx}">RC ${idx + 1} – N° Global: ${rc.numeroGlobal || rc.numeroReporteRC || ""}</h6>`;
+      html += `<h6>RC ${idx + 1} – N° Global: ${rc.numeroGlobal || rc.numeroReporteRC || ""}</h6>`;
       html += `<p><strong>Fecha de registro:</strong> ${rc.fechaRegistro || ""}</p>`;
 
             if (!isCerrada || idx === lastIdx) {
@@ -3425,16 +3425,38 @@ e.rcReportes.forEach((rc, idx) => {
   modal.show();
 }
 
+
+// === Helpers: VER (RP/RC) desde Dashboard/Listado ===
+function __scrollVerToLastRC(){
+  setTimeout(()=>{
+    const cont = document.getElementById("contenidoVerEmergencia");
+    if(!cont) return;
+    const rcHeaders = [...cont.querySelectorAll("h6")].filter(h=>{
+      const t = (h.textContent||"").trim();
+      return /^RC\s*\d+/i.test(t);
+    });
+    const target = rcHeaders.length ? rcHeaders[rcHeaders.length-1] : null;
+    if(target) target.scrollIntoView({ behavior:"smooth", block:"start" });
+  }, 250);
+}
+
+function __openVerByCodigo(codigo){
+  try{
+    const cod = String(codigo||"");
+    const em = (Array.isArray(emergencias) ? emergencias : []).find(x=>String(x.codigo||"")===cod) || null;
+    if(!em){ alert("No se encontró la emergencia: " + cod); return; }
+    verEmergencia(em);
+    if(Array.isArray(em.rcReportes) && em.rcReportes.length>0) __scrollVerToLastRC();
+  }catch(err){
+    alert("No se pudo abrir el detalle: " + (err?.message || String(err)));
+  }
+}
+
+
 // ===================== TABLA EMERGENCIAS =====================
 function cargarTablaEmergencias() {
   let body = document.querySelector("#tablaEmergencias tbody");
   body.innerHTML = "";
-
-  // Ícono (ojito) uniforme para la columna "Ver"
-  const eyeSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16" aria-hidden="true">
-    <path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8z"/>
-    <path d="M8 5a3 3 0 1 0 0 6 3 3 0 0 0 0-6z"/>
-  </svg>`;
 
   // Leer filtros
   const fCodigo = normalizarTexto(document.getElementById("filtroCodigo")?.value || "");
@@ -3471,7 +3493,7 @@ function cargarTablaEmergencias() {
 <td>${__rpEstadoEtiqueta(e)}</td>
 <td class="col-rp"><button class="btn btn-sm btn-outline-primary btnRP" ${(__isRegistrador() && e.cerrada) ? "disabled" : ""}>RP</button></td>
 <td class="col-rc"><button class="btn btn-sm btn-primary btnRC" ${ (e.cerrada || (__isRegistrador() && String(e.rpAprobEstado||"Borrador")!=="Aprobado")) ? "disabled" : ""}>RC</button></td>
-<td class="text-center"><div class="dropdown d-inline-block"><button type="button" class="btn btn-sm btn-outline-primary btnVerDrop" data-bs-toggle="dropdown" aria-expanded="false" title="Ver" aria-label="Ver">${eyeSvg}</button><ul class="dropdown-menu dropdown-menu-end menuVer"></ul></div></td>
+<td><button class="btn btn-sm btn-outline-secondary btnVer" title="Ver detalle">👁</button></td>
 `;
     // Restricción por rol (Consulta: solo Lista y Dashboard)
     try{
@@ -3479,7 +3501,7 @@ function cargarTablaEmergencias() {
       const isAdmin = __isAdmin();
       const bRC = tr.querySelector(".btnRC");
       const bRP = tr.querySelector(".btnRP");
-      const bVer = tr.querySelector(".btnVerDrop");
+      const bVer = tr.querySelector(".btnVer");
 
       if(isConsulta){
         // Consulta: solo lectura (Lista + Dashboard)
@@ -3491,11 +3513,11 @@ function cargarTablaEmergencias() {
         // 3) Mantener el botón Ver disponible
         if (bVer) { bVer.disabled = false; bVer.style.display = ""; bVer.title = "Ver detalle"; }
       } else {
-        // Para Admin/Registrador: el ojito siempre disponible (ver RP y, si existe, el último RC)
+        // Para Admin/Registrador: el ojito siempre disponible (abierta o cerrada)
         if (bVer) {
-          const hasRC = Array.isArray(e.rcReportes) && e.rcReportes.length > 0;
           bVer.disabled = false;
           bVer.style.display = "";
+          const hasRC = Array.isArray(e.rcReportes) && e.rcReportes.length > 0;
           bVer.title = hasRC ? "Ver último RC" : "Ver RP";
         }
 
@@ -3568,52 +3590,14 @@ function cargarTablaEmergencias() {
         }
       }
     }
-    // Menú "Ver" (RP + RCs) — disponible siempre (cerrada o no)
-    const btnVerDrop = tr.querySelector(".btnVerDrop");
-    const menuVer = tr.querySelector(".menuVer");
-    if(menuVer){
-      let items = `<li><button class="dropdown-item" type="button" data-view-kind="RP">RP</button></li>`;
-      if(Array.isArray(e.rcReportes) && e.rcReportes.length > 0){
-        items += `<li><hr class="dropdown-divider"></li>`;
-        e.rcReportes.forEach((rc, idx)=>{
-          const est = rc && rc.aprobEstado ? ` – ${rc.aprobEstado}` : "";
-          const g = (rc && (rc.numeroGlobal || rc.numeroReporteRC)) ? (rc.numeroGlobal || rc.numeroReporteRC) : "";
-          const gtxt = g ? ` – N° ${g}` : "";
-          items += `<li><button class="dropdown-item" type="button" data-view-kind="RC" data-view-idx="${idx}">RC ${idx+1}${gtxt}${est}</button></li>`;
-        });
-      } else {
-        items += `<li><button class="dropdown-item text-muted" type="button" disabled>Sin RC</button></li>`;
-      }
-      menuVer.innerHTML = items;
 
-      menuVer.querySelectorAll("button[data-view-kind]").forEach(b=>{
-        b.addEventListener("click", ()=>{
-          const kind = b.getAttribute("data-view-kind");
-          const idx = b.getAttribute("data-view-idx");
-
-          verEmergencia(e);
-
-          setTimeout(()=>{
-            const cont = document.getElementById("contenidoVerEmergencia");
-            if(!cont) return;
-
-            let target = null;
-            if(kind === "RP"){
-              target = document.getElementById("ver_rp") || cont.querySelector("h5");
-            } else {
-              const i = Number(idx);
-              target = document.getElementById("ver_rc_" + i);
-              if(!target){
-                const rx = new RegExp("^RC\s*" + (i+1) + "\b", "i");
-                target = [...cont.querySelectorAll("h6")].find(h=>rx.test((h.textContent||"").trim()));
-              }
-            }
-            if(target) target.scrollIntoView({ behavior:"smooth", block:"start" });
-          }, 250);
-        });
-      });
+    // Handlers de botones según disponibilidad (display/disabled ya se controla por rol/estado)
+    const btnVer = tr.querySelector(".btnVer");
+    if (btnVer && !btnVer.disabled && btnVer.style.display !== "none") {
+      btnVer.onclick = () => { verEmergencia(e); if(Array.isArray(e.rcReportes) && e.rcReportes.length>0) __scrollVerToLastRC(); };
     }
-$2
+
+    const btnRP = tr.querySelector(".btnRP");
     if (btnRP && btnRP.style.display !== "none") {
       // Enforce: Registrador no puede abrir RP si la emergencia está Cerrada
       const isReg = __isRegistrador();
@@ -4659,86 +4643,15 @@ function __dashRenderImpacto(data, groupBy){
   }
 }
 
-function __dashVerRP_RC(codigo, kind, idx){
-  try{
-    const all = __dashGetEmergencias();
-    const em = all.find(x => String(x.codigo||"") === String(codigo||""));
-    if(!em){
-      alert("No se encontró la emergencia: " + (codigo||""));
-      return;
-    }
-    if(typeof verEmergencia !== "function"){
-      alert("No está disponible la vista de RP/RC (verEmergencia).");
-      return;
-    }
-
-    verEmergencia(em);
-
-    setTimeout(()=>{
-      const cont = document.getElementById("contenidoVerEmergencia");
-      if(!cont) return;
-
-      let target = null;
-      if(kind === "RP"){
-        target = document.getElementById("ver_rp") || cont.querySelector("h5");
-      } else if(kind === "RC"){
-        const i = Number(idx);
-        target = document.getElementById("ver_rc_" + i);
-        if(!target){
-          const rx = new RegExp("^RC\s*" + (i+1) + "\b", "i");
-          target = [...cont.querySelectorAll("h6")].find(h=>rx.test((h.textContent||"").trim()));
-        }
-      }
-      if(target) target.scrollIntoView({ behavior:"smooth", block:"start" });
-    }, 250);
-
-  }catch(err){
-    alert("Error al abrir RP/RC: " + (err?.message || String(err)));
-  }
-}
-
-
-
-
-\1(data){
+function __dashRenderAfectaMidisTable(data){
   const tbody = document.getElementById("dashAfectaMidisTbody");
-  if(!tbody) return;
   tbody.innerHTML = "";
 
-  const rows = data.filter(__dashAfectaMidis);
-  if(rows.length === 0){
-    tbody.innerHTML = '<tr><td colspan="10" class="text-muted">Sin emergencias con afectación al MIDIS (según filtro).</td></tr>';
-    return;
-  }
-
-  const eyeSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"
-    fill="currentColor" viewBox="0 0 16 16" aria-hidden="true">
-    <path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8z"/>
-    <path d="M8 5a3 3 0 1 0 0 6 3 3 0 0 0 0-6z"/>
-  </svg>`;
-
-  rows.forEach(e=>{
+  data.filter(__dashAfectaMidis).forEach(e=>{
     const st = __dashGetStatus(e);
     const badge = `<span class="badge" style="background:${st.color}"> </span>`;
 
     const t = __dashTotalesMidis(e.daniosMIDIS);
-
-    // Menú "Ver" (RP + RCs)
-    const hasRC = Array.isArray(e.rcReportes) && e.rcReportes.length > 0;
-    const codigoStr = String(e.codigo||"");
-    let menuItems = `<li><button class="dropdown-item" type="button" onclick='__dashVerRP_RC(${JSON.stringify(codigoStr)}, ${JSON.stringify("RP")}, null)'>RP</button></li>`;
-    if(hasRC){
-      menuItems += `<li><hr class="dropdown-divider"></li>`;
-      e.rcReportes.forEach((rc, idx)=>{
-        const est = rc && rc.aprobEstado ? ` – ${rc.aprobEstado}` : "";
-        const g = (rc && (rc.numeroGlobal || rc.numeroReporteRC)) ? (rc.numeroGlobal || rc.numeroReporteRC) : "";
-        const gtxt = g ? ` – N° ${g}` : "";
-        menuItems += `<li><button class="dropdown-item" type="button" onclick='__dashVerRP_RC(${JSON.stringify(codigoStr)}, ${JSON.stringify("RC")}, ${idx})'>RC ${idx+1}${gtxt}${est}</button></li>`;
-      });
-    } else {
-      menuItems += `<li><button class="dropdown-item text-muted" type="button" disabled>Sin RC</button></li>`;
-    }
-
     tbody.innerHTML += `
       <tr>
         <td>${e.codigo||""}</td>
@@ -4751,18 +4664,12 @@ function __dashVerRP_RC(codigo, kind, idx){
         <td>${t.usuarios}</td>
         <td>${t.servicios}</td>
         <td class="text-center">
-          <div class="dropdown d-inline-block">
-            <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="dropdown"
-              aria-expanded="false" title="Ver" aria-label="Ver">
-              ${eyeSvg}
-            </button>
-            <ul class="dropdown-menu dropdown-menu-end">${menuItems}</ul>
-          </div>
+          <button type="button" class="btn btn-sm btn-outline-primary" title="Ver RP/RC"
+            onclick='__openVerByCodigo(${JSON.stringify(String(e.codigo||""))})'>👁</button>
         </td>
       </tr>`;
   });
 }
-
 
 function dashboardRefresh(){
   __dashInitIfNeeded();
