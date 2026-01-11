@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
+<!-- build: VER_PRINT_RC_ALWAYS_VISIBLE v4 2026-01-11 -->
 <meta charset="UTF-8" />
 <title>Registro de Emergencias MIDIS</title>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -883,7 +884,7 @@ body { background: #f5f5f5; }
         <!-- aquí se inyecta el contenido dinámico -->
       </div>
       <div class="modal-footer">
-  <div class="btn-group d-none" id="grpPrintRC">
+  <div class="btn-group" id="grpPrintRC">
     <button type="button" class="btn btn-danger" id="btnPrintRCLast" onclick="__printRC_PDF()" title="Imprimir último RC (PDF)">🖨 RC (PDF)</button>
     <button type="button" class="btn btn-danger dropdown-toggle dropdown-toggle-split" id="btnPrintRCDrop"
             data-bs-toggle="dropdown" aria-expanded="false" title="Elegir RC a imprimir">
@@ -3438,20 +3439,26 @@ e.rcReportes.forEach((rc, idx) => {
 
   cont.innerHTML = html;
 
-// Mostrar/ocultar + poblar menú de impresión RC (PDF) en el footer del modal
+// Configurar impresión RC (PDF) en el footer del modal (siempre visible)
 try{
   const hasRC = Array.isArray(e.rcReportes) && e.rcReportes.length > 0;
 
-  const grp = document.getElementById("grpPrintRC");
-  if(grp) grp.classList.toggle("d-none", !hasRC);
-
   const btnLast = document.getElementById("btnPrintRCLast");
-  if(btnLast) btnLast.title = hasRC ? "Imprimir último RC (PDF)" : "";
+  if(btnLast){
+    btnLast.disabled = !hasRC;
+    btnLast.title = hasRC ? "Imprimir último RC (PDF)" : "Sin RC para imprimir";
+  }
+
+  const btnDrop = document.getElementById("btnPrintRCDrop");
+  if(btnDrop){
+    btnDrop.disabled = !hasRC;
+    btnDrop.title = hasRC ? "Elegir RC a imprimir" : "Sin RC para imprimir";
+  }
 
   const menu = document.getElementById("menuPrintRC");
   if(menu){
     if(!hasRC){
-      menu.innerHTML = "";
+      menu.innerHTML = '<li><span class="dropdown-item-text text-muted">Sin RC registrado</span></li>';
     }else{
       let items = '';
       items += `<li><button class="dropdown-item" type="button" onclick="__printRC_PDF()">Imprimir último RC</button></li>`;
@@ -3467,7 +3474,7 @@ try{
   }
 }catch(_e){}
 
-  const modal = new bootstrap.Modal(document.getElementById("modalVerEmergencia"));
+const modal = new bootstrap.Modal(document.getElementById("modalVerEmergencia"));
   modal.show();
 }
 
