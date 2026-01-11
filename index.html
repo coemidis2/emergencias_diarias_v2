@@ -883,8 +883,16 @@ body { background: #f5f5f5; }
         <!-- aquí se inyecta el contenido dinámico -->
       </div>
       <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
-      </div>
+  <div class="btn-group d-none" id="grpPrintRC">
+    <button type="button" class="btn btn-danger" id="btnPrintRCLast" onclick="__printRC_PDF()" title="Imprimir último RC (PDF)">🖨 RC (PDF)</button>
+    <button type="button" class="btn btn-danger dropdown-toggle dropdown-toggle-split" id="btnPrintRCDrop"
+            data-bs-toggle="dropdown" aria-expanded="false" title="Elegir RC a imprimir">
+      <span class="visually-hidden">Elegir RC</span>
+    </button>
+    <ul class="dropdown-menu dropdown-menu-end" id="menuPrintRC"></ul>
+  </div>
+  <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+</div>
     </div>
   </div>
 </div>
@@ -3313,7 +3321,7 @@ function verEmergencia(e) {
 <strong>N° Global RP:</strong> ${e.numeroGlobal || ""}<br>
 <strong>Fecha y hora de elaboración:</strong> ${e.fechaHora || ""}<br>
 <strong>Hechos:</strong> ${(e.hechos || "").replace(/\n/g, "<br>")}<br>
-<strong>Fecha del peligro:</strong> ${e.fechaPeligro || ""}<br>
+<strong>Fecha del peligro:</strong> ${e.fechaPeligro || ""} &nbsp; | &nbsp; <strong>Estado:</strong> ${e.cerrada ? "Cerrada" : "Abierta"}<br>
 <strong>Ubicación:</strong> ${e.departamento || ""} / ${e.provincia || ""} / ${e.distrito || ""}<br>
 <strong>Peligro:</strong> ${e.peligro || ""}<br>
 <strong>Coordenadas:</strong> ${e.latitud || ""}, ${e.longitud || ""}<br>
@@ -3367,7 +3375,7 @@ function verEmergencia(e) {
 
   // RC
   html += `<hr><h5 class="text-primary">Reportes Complementarios (RC)</h5>`;
-  if (isCerrada && Array.isArray(e.rcReportes) && e.rcReportes.length > 0) {
+  if (Array.isArray(e.rcReportes) && e.rcReportes.length > 0) {
     html += `<div class="d-flex flex-wrap gap-2 mb-2">
       <button type="button" class="btn btn-sm btn-danger" onclick="__printRC_PDF()">🖨 Imprimir RC (PDF)</button>
     </div>`;
@@ -3430,6 +3438,35 @@ e.rcReportes.forEach((rc, idx) => {
 
   cont.innerHTML = html;
 
+// Mostrar/ocultar + poblar menú de impresión RC (PDF) en el footer del modal
+try{
+  const hasRC = Array.isArray(e.rcReportes) && e.rcReportes.length > 0;
+
+  const grp = document.getElementById("grpPrintRC");
+  if(grp) grp.classList.toggle("d-none", !hasRC);
+
+  const btnLast = document.getElementById("btnPrintRCLast");
+  if(btnLast) btnLast.title = hasRC ? "Imprimir último RC (PDF)" : "";
+
+  const menu = document.getElementById("menuPrintRC");
+  if(menu){
+    if(!hasRC){
+      menu.innerHTML = "";
+    }else{
+      let items = '';
+      items += `<li><button class="dropdown-item" type="button" onclick="__printRC_PDF()">Imprimir último RC</button></li>`;
+      items += `<li><hr class="dropdown-divider"></li>`;
+      e.rcReportes.forEach((rc, idx)=>{
+        const g = rc && (rc.numeroGlobal || rc.numeroReporteRC) ? (rc.numeroGlobal || rc.numeroReporteRC) : "";
+        const est = rc && (rc.aprobEstado || rc.estado || rc.status) ? (rc.aprobEstado || rc.estado || rc.status) : "";
+        const extra = `${g ? " – N° " + g : ""}${est ? " – " + est : ""}`;
+        items += `<li><button class="dropdown-item" type="button" onclick="__printRC_PDF(${idx})">Imprimir RC ${idx+1}${extra}</button></li>`;
+      });
+      menu.innerHTML = items;
+    }
+  }
+}catch(_e){}
+
   const modal = new bootstrap.Modal(document.getElementById("modalVerEmergencia"));
   modal.show();
 }
@@ -3466,12 +3503,6 @@ function __printRC_PDF(idxOpt){
   try{
     const e = window.__VER_EMERG_ACTUAL;
     if(!e){ alert("No hay emergencia seleccionada."); return; }
-
-    if(!e.cerrada){
-      alert("La emergencia aún no está cerrada. Para imprimir RC, debe estar cerrada.");
-      return;
-    }
-
     if(!Array.isArray(e.rcReportes) || e.rcReportes.length === 0){
       alert("No hay Reporte Complementario (RC) para imprimir.");
       return;
@@ -3494,7 +3525,7 @@ function __printRC_PDF(idxOpt){
           <strong>N° Global RP:</strong> ${e.numeroGlobal || ""} &nbsp; | &nbsp;
           <strong>Peligro:</strong> ${e.peligro || ""}<br>
           <strong>Ubicación:</strong> ${e.departamento || ""} / ${e.provincia || ""} / ${e.distrito || ""}<br>
-          <strong>Fecha del peligro:</strong> ${e.fechaPeligro || ""}
+          <strong>Fecha del peligro:</strong> ${e.fechaPeligro || ""} &nbsp; | &nbsp; <strong>Estado:</strong> ${e.cerrada ? "Cerrada" : "Abierta"}
         </div>
       </div>`;
 
