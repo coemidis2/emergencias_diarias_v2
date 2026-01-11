@@ -645,7 +645,7 @@ body { background: #f5f5f5; }
             <thead>
               <tr>
                 <th>Código</th><th>Estado</th><th>Peligro</th><th>Departamento</th><th>Provincia</th><th>Distrito</th>
-                <th>Fecha del peligro</th><th>Total usuarios</th><th>Total servicios</th>
+                <th>Fecha del peligro</th><th>Total usuarios</th><th>Total servicios</th><th class="text-center" style="width:54px">Ver</th>
               </tr>
             </thead>
             <tbody id="dashAfectaMidisTbody"></tbody>
@@ -4613,15 +4613,69 @@ function __dashRenderImpacto(data, groupBy){
   }
 }
 
+function __dashVerRP_RC(codigo, foco){
+  try{
+    const all = __dashGetEmergencias();
+    const em = all.find(x => String(x.codigo||"") === String(codigo||""));
+    if(!em){
+      alert("No se encontró la emergencia: " + (codigo||""));
+      return;
+    }
+    if(typeof verEmergencia !== "function"){
+      alert("No está disponible la vista de RP/RC (verEmergencia).");
+      return;
+    }
+
+    // Abre el modal con RP y RC (si existen)
+    verEmergencia(em);
+
+    // Si se pide enfocar el último RC, hacemos scroll dentro del modal
+    if(foco === "LAST_RC"){
+      setTimeout(()=>{
+        const cont = document.getElementById("contenidoVerEmergencia");
+        if(!cont) return;
+
+        const rcHeaders = [...cont.querySelectorAll("h6")]
+          .filter(h => /^RC\s*\d+/i.test((h.textContent||"").trim()));
+
+        const target = rcHeaders.length ? rcHeaders[rcHeaders.length - 1] : null;
+        if(target) target.scrollIntoView({ behavior:"smooth", block:"start" });
+      }, 250);
+    }
+  }catch(err){
+    alert("Error al abrir RP/RC: " + (err?.message || String(err)));
+  }
+}
+
+
 function __dashRenderAfectaMidisTable(data){
   const tbody = document.getElementById("dashAfectaMidisTbody");
+  if(!tbody) return;
   tbody.innerHTML = "";
 
-  data.filter(__dashAfectaMidis).forEach(e=>{
+  const rows = data.filter(__dashAfectaMidis);
+  if(rows.length === 0){
+    tbody.innerHTML = '<tr><td colspan="10" class="text-muted">Sin emergencias con afectación al MIDIS (según filtro).</td></tr>';
+    return;
+  }
+
+  const eyeSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"
+    fill="currentColor" viewBox="0 0 16 16" aria-hidden="true">
+    <path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8z"/>
+    <path d="M8 5a3 3 0 1 0 0 6 3 3 0 0 0 0-6z"/>
+  </svg>`;
+
+  rows.forEach(e=>{
     const st = __dashGetStatus(e);
     const badge = `<span class="badge" style="background:${st.color}"> </span>`;
 
     const t = __dashTotalesMidis(e.daniosMIDIS);
+
+    // Si hay RC, el ojito enfoca el último RC; si no, muestra RP
+    const hasRC = Array.isArray(e.rcReportes) && e.rcReportes.length > 0;
+    const tip = hasRC ? "Ver último RC" : "Ver RP";
+    const foco = hasRC ? "LAST_RC" : "RP";
+
     tbody.innerHTML += `
       <tr>
         <td>${e.codigo||""}</td>
@@ -4633,9 +4687,17 @@ function __dashRenderAfectaMidisTable(data){
         <td>${e.fechaPeligro||""}</td>
         <td>${t.usuarios}</td>
         <td>${t.servicios}</td>
+        <td class="text-center">
+          <button type="button" class="btn btn-sm btn-outline-primary"
+            title="${tip}" aria-label="${tip}"
+            onclick='__dashVerRP_RC(${JSON.stringify(String(e.codigo||""))}, ${JSON.stringify(foco)})'>
+            ${eyeSvg}
+          </button>
+        </td>
       </tr>`;
   });
 }
+
 
 function dashboardRefresh(){
   __dashInitIfNeeded();
