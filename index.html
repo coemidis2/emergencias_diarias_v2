@@ -3300,12 +3300,14 @@ function verEmergencia(e) {
   const cont = document.getElementById("contenidoVerEmergencia");
   if (!cont) return;
 
+  window.__VER_EMERG_ACTUAL = e;
+
   
 
   const isCerrada = !!e.cerrada;
   const isConsulta = (typeof currentUser !== "undefined" && currentUser && currentUser.role === __ROLES.CONS);
 // RP
-  let html = `<h5 class="text-primary">Reporte Preliminar</h5>`;
+  let html = `<h5 id="ver_rp" class="text-primary">Reporte Preliminar</h5>`;
   html += `<p>
 <strong>Código:</strong> ${e.codigo || ""}<br>
 <strong>N° Global RP:</strong> ${e.numeroGlobal || ""}<br>
@@ -3365,11 +3367,17 @@ function verEmergencia(e) {
 
   // RC
   html += `<hr><h5 class="text-primary">Reportes Complementarios (RC)</h5>`;
+  if (isCerrada && Array.isArray(e.rcReportes) && e.rcReportes.length > 0) {
+    html += `<div class="d-flex flex-wrap gap-2 mb-2">
+      <button type="button" class="btn btn-sm btn-danger" onclick="__printRC_PDF()">🖨 Imprimir RC (PDF)</button>
+    </div>`;
+  }
   if (Array.isArray(e.rcReportes) && e.rcReportes.length > 0) {
     
     const lastIdx = e.rcReportes.length - 1;
 e.rcReportes.forEach((rc, idx) => {
-      html += `<h6>RC ${idx + 1} – N° Global: ${rc.numeroGlobal || rc.numeroReporteRC || ""}</h6>`;
+      html += `<div class="rc-block" id="ver_rc_block_${idx}">`;
+      html += `<h6 id="ver_rc_${idx}">RC ${idx + 1} – N° Global: ${rc.numeroGlobal || rc.numeroReporteRC || ""}</h6>`;
       html += `<p><strong>Fecha de registro:</strong> ${rc.fechaRegistro || ""}</p>`;
 
             if (!isCerrada || idx === lastIdx) {
@@ -3414,6 +3422,7 @@ e.rcReportes.forEach((rc, idx) => {
       } else {
         html += `<p><em>Sin acciones RC registradas.</em></p>`;
       }
+      html += `</div>`;
     });
   } else {
     html += `<p><em>Sin reportes complementarios registrados.</em></p>`;
@@ -3449,6 +3458,76 @@ function __openVerByCodigo(codigo){
     if(Array.isArray(em.rcReportes) && em.rcReportes.length>0) __scrollVerToLastRC();
   }catch(err){
     alert("No se pudo abrir el detalle: " + (err?.message || String(err)));
+  }
+}
+
+
+function __printRC_PDF(idxOpt){
+  try{
+    const e = window.__VER_EMERG_ACTUAL;
+    if(!e){ alert("No hay emergencia seleccionada."); return; }
+
+    if(!e.cerrada){
+      alert("La emergencia aún no está cerrada. Para imprimir RC, debe estar cerrada.");
+      return;
+    }
+
+    if(!Array.isArray(e.rcReportes) || e.rcReportes.length === 0){
+      alert("No hay Reporte Complementario (RC) para imprimir.");
+      return;
+    }
+
+    const idx = (typeof idxOpt === "number" && !isNaN(idxOpt)) ? idxOpt : (e.rcReportes.length - 1);
+    const rcEl = document.getElementById("ver_rc_block_" + idx);
+    if(!rcEl){
+      alert("No se encontró el contenido del RC para imprimir.");
+      return;
+    }
+
+    const titulo = `RC ${idx+1} - Emergencia ${e.codigo || ""}`;
+
+    const header = `
+      <div style="margin-bottom:12px">
+        <h2 style="margin:0;font-size:16pt;color:#1F4E79">Reporte Complementario (RC)</h2>
+        <div style="font-size:11pt; margin-top:6px">
+          <strong>Código:</strong> ${e.codigo || ""} &nbsp; | &nbsp;
+          <strong>N° Global RP:</strong> ${e.numeroGlobal || ""} &nbsp; | &nbsp;
+          <strong>Peligro:</strong> ${e.peligro || ""}<br>
+          <strong>Ubicación:</strong> ${e.departamento || ""} / ${e.provincia || ""} / ${e.distrito || ""}<br>
+          <strong>Fecha del peligro:</strong> ${e.fechaPeligro || ""}
+        </div>
+      </div>`;
+
+    const styles = `
+      <style>
+        @page { size: A4; margin: 15mm; }
+        body { font-family: Calibri, Arial, sans-serif; font-size: 11pt; color:#111; }
+        h5,h6 { color:#1F4E79; margin: 8px 0 6px; }
+        p { margin: 4px 0; }
+        ul { margin: 6px 0 10px 18px; }
+        table { width: 100%; border-collapse: collapse; margin: 8px 0 12px; }
+        th, td { border: 1px solid #333; padding: 4px 6px; font-size: 10pt; }
+        th { background: #f2f2f2; }
+        .table-responsive { overflow: visible !important; }
+        button, .btn { display:none !important; }
+        hr { border:0; border-top:1px solid #999; margin:12px 0; }
+      </style>`;
+
+    const w = window.open("", "_blank");
+    if(!w){
+      alert("El navegador bloqueó la ventana de impresión. Habilita ventanas emergentes (pop-ups) para este sitio.");
+      return;
+    }
+    w.document.open();
+    w.document.write(`<html><head><title>${titulo}</title>${styles}</head><body>${header}${rcEl.outerHTML}</body></html>`);
+    w.document.close();
+    w.focus();
+
+    w.onload = () => {
+      try{ w.print(); }catch(_e){}
+    };
+  }catch(err){
+    alert("Error al imprimir RC: " + (err?.message || String(err)));
   }
 }
 
