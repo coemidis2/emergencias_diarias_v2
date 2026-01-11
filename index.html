@@ -2162,7 +2162,7 @@ function __syncRCActionButtons(){
       if(String(em.rpAprobEstado||"Borrador") !== "Aprobado") enabled = false;
 
       // Solo un RC en trámite
-      if(Array.isArray(em.rcReportes) && em.rcReportes.length>0){
+      if(__getRCList(em).length>0){
         const last = em.rcReportes[em.rcReportes.length-1];
         if(last && String(last.aprobEstado||"") === "Pendiente") enabled = false;
       }
@@ -3310,8 +3310,7 @@ function verEmergencia(e) {
   if (!cont) return;
 
   window.__VER_EMERG_ACTUAL = e;
-
-  
+  const rcList = __getRCList(e);
 
   const isCerrada = !!e.cerrada;
   const isConsulta = (typeof currentUser !== "undefined" && currentUser && currentUser.role === __ROLES.CONS);
@@ -3376,15 +3375,15 @@ function verEmergencia(e) {
 
   // RC
   html += `<hr><h5 class="text-primary">Reportes Complementarios (RC)</h5>`;
-  if (Array.isArray(e.rcReportes) && e.rcReportes.length > 0) {
+  if (rcList.length > 0) {
     html += `<div class="d-flex flex-wrap gap-2 mb-2">
       <button type="button" class="btn btn-sm btn-danger" onclick="__printRC_PDF()">🖨 Imprimir RC (PDF)</button>
     </div>`;
   }
-  if (Array.isArray(e.rcReportes) && e.rcReportes.length > 0) {
+  if (rcList.length > 0) {
     
-    const lastIdx = e.rcReportes.length - 1;
-e.rcReportes.forEach((rc, idx) => {
+    const lastIdx = rcList.length - 1;
+rcList.forEach((rc, idx) => {
       html += `<div class="rc-block" id="ver_rc_block_${idx}">`;
       html += `<h6 id="ver_rc_${idx}">RC ${idx + 1} – N° Global: ${rc.numeroGlobal || rc.numeroReporteRC || ""}</h6>`;
       html += `<p><strong>Fecha de registro:</strong> ${rc.fechaRegistro || ""}</p>`;
@@ -3441,7 +3440,7 @@ e.rcReportes.forEach((rc, idx) => {
 
 // Configurar impresión RC (PDF) en el footer del modal (siempre visible)
 try{
-  const hasRC = Array.isArray(e.rcReportes) && e.rcReportes.length > 0;
+  const hasRC = (rcList && rcList.length > 0) || (document.querySelectorAll('#contenidoVerEmergencia .rc-block').length > 0);
 
   const btnLast = document.getElementById("btnPrintRCLast");
   if(btnLast){
@@ -3463,7 +3462,7 @@ try{
       let items = '';
       items += `<li><button class="dropdown-item" type="button" onclick="__printRC_PDF()">Imprimir último RC</button></li>`;
       items += `<li><hr class="dropdown-divider"></li>`;
-      e.rcReportes.forEach((rc, idx)=>{
+      rcList.forEach((rc, idx)=>{
         const g = rc && (rc.numeroGlobal || rc.numeroReporteRC) ? (rc.numeroGlobal || rc.numeroReporteRC) : "";
         const est = rc && (rc.aprobEstado || rc.estado || rc.status) ? (rc.aprobEstado || rc.estado || rc.status) : "";
         const extra = `${g ? " – N° " + g : ""}${est ? " – " + est : ""}`;
@@ -3499,23 +3498,58 @@ function __openVerByCodigo(codigo){
     const em = (Array.isArray(emergencias) ? emergencias : []).find(x=>String(x.codigo||"")===cod) || null;
     if(!em){ alert("No se encontró la emergencia: " + cod); return; }
     verEmergencia(em);
-    if(Array.isArray(em.rcReportes) && em.rcReportes.length>0) __scrollVerToLastRC();
+    if(__getRCList(em).length>0) __scrollVerToLastRC();
   }catch(err){
     alert("No se pudo abrir el detalle: " + (err?.message || String(err)));
   }
 }
 
 
+
+// === Helper: obtener lista de RC desde distintos formatos/campos (compatibilidad) ===
+function __getRCList(em){
+  if(!em) return [];
+  let rc =
+    em.rcReportes ??
+    em.rcReportesJson ??
+    em.rcReportesJSON ??
+    em.rc_reportes ??
+    em.rc_reportes_json ??
+    em.rc_json ??
+    em.rcJson ??
+    em.reportesRC ??
+    em.reportesComplementarios ??
+    em.reporteComplementario ??
+    em.reporteComplementarioJson ??
+    em.rcs ??
+    em.rc;
+
+  // Si viene como string (JSON), intentar parsear
+  if(typeof rc === "string"){
+    try{ rc = JSON.parse(rc); }catch(_e){}
+  }
+
+  // Si viene como objeto contenedor, intentar extraer
+  if(rc && typeof rc === "object" && !Array.isArray(rc)){
+    if(Array.isArray(rc.rcReportes)) rc = rc.rcReportes;
+    else if(Array.isArray(rc.items)) rc = rc.items;
+    else if(Array.isArray(rc.data)) rc = rc.data;
+  }
+
+  return Array.isArray(rc) ? rc : [];
+}
+
 function __printRC_PDF(idxOpt){
   try{
     const e = window.__VER_EMERG_ACTUAL;
     if(!e){ alert("No hay emergencia seleccionada."); return; }
-    if(!Array.isArray(e.rcReportes) || e.rcReportes.length === 0){
+    const rcList = __getRCList(e);
+    if(rcList.length === 0){
       alert("No hay Reporte Complementario (RC) para imprimir.");
       return;
     }
 
-    const idx = (typeof idxOpt === "number" && !isNaN(idxOpt)) ? idxOpt : (e.rcReportes.length - 1);
+    const idx = (typeof idxOpt === "number" && !isNaN(idxOpt)) ? idxOpt : (rcList.length - 1);
     const rcEl = document.getElementById("ver_rc_block_" + idx);
     if(!rcEl){
       alert("No se encontró el contenido del RC para imprimir.");
@@ -3634,7 +3668,7 @@ function cargarTablaEmergencias() {
         if (bVer) {
           bVer.disabled = false;
           bVer.style.display = "";
-          const hasRC = Array.isArray(e.rcReportes) && e.rcReportes.length > 0;
+          const hasRC = (rcList && rcList.length > 0) || (document.querySelectorAll('#contenidoVerEmergencia .rc-block').length > 0);
           bVer.title = hasRC ? "Ver último RC" : "Ver RP";
         }
 
@@ -3711,7 +3745,7 @@ function cargarTablaEmergencias() {
     // Handlers de botones según disponibilidad (display/disabled ya se controla por rol/estado)
     const btnVer = tr.querySelector(".btnVer");
     if (btnVer && !btnVer.disabled && btnVer.style.display !== "none") {
-      btnVer.onclick = () => { verEmergencia(e); if(Array.isArray(e.rcReportes) && e.rcReportes.length>0) __scrollVerToLastRC(); };
+      btnVer.onclick = () => { verEmergencia(e); if(__getRCList(e).length>0) __scrollVerToLastRC(); };
     }
 
     const btnRP = tr.querySelector(".btnRP");
@@ -5816,7 +5850,7 @@ function __segStage(em){
     // Dominancia RC
     let rcSt = null;
     try{
-      if(Array.isArray(em.rcReportes) && em.rcReportes.length>0){
+      if(__getRCList(em).length>0){
         const last = em.rcReportes[em.rcReportes.length-1];
         rcSt = last ? String(last.aprobEstado||"") : null;
       }
