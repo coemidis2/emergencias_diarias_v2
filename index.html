@@ -2059,22 +2059,16 @@ function __lastRCAprobEstado(em){
 function __rpEstadoEtiqueta(em){
   const rpSt = (em && em.rpAprobEstado) ? String(em.rpAprobEstado) : "Borrador";
   const rcSt = __lastRCAprobEstado(em);
-  const cierreSt = (em && em.cierreEstado) ? String(em.cierreEstado) : "";
 
-  // 0) Si hay solicitud de CIERRE en trámite, ese estado es dominante
-  if(cierreSt === "Pendiente") return "Por Aprobar";
-  if(cierreSt === "Observado") return "Observado";
-  if(cierreSt === "Aprobado") return "Aprobado";
-
-  // 1) Si el RC está en trámite, ese es el estado dominante para Lista
-  if(rcSt === "Pendiente") return "Por Aprobar";
+  // Si el RC está en trámite, ese es el estado dominante para Lista
+  if(rcSt === "Pendiente") return "Por aprobar";
   if(rcSt === "Observado") return "Observado";
 
-  // 2) Si RP está en trámite
-  if(rpSt === "Pendiente") return "Por Aprobar";
+  // Si RP está en trámite
+  if(rpSt === "Pendiente") return "Por aprobar";
   if(rpSt === "Observado") return "Observado";
 
-  // 3) Si RP aprobado y no hay RC pendiente/observado, se considera aprobado
+  // Si RP aprobado y no hay RC pendiente/observado, se considera aprobado
   if(rpSt === "Aprobado"){
     if(!rcSt || rcSt === "" || rcSt === "Aprobado") return "Aprobado";
     if(rcSt === "Borrador") return "Borrador";
@@ -2082,20 +2076,6 @@ function __rpEstadoEtiqueta(em){
 
   return rpSt; // Borrador u otros
 }
-
-function __estadoBadge(label){
-  const txt = String(label || "").trim();
-  let cls = "text-bg-secondary";
-  if(/por\s+aprobar/i.test(txt)) cls = "text-bg-warning";
-  else if(/aprobado/i.test(txt)) cls = "text-bg-success";
-  else if(/observado/i.test(txt)) cls = "text-bg-danger";
-  else if(/borrador/i.test(txt)) cls = "text-bg-secondary";
-  return `<span class="badge ${cls}">${txt}</span>`;
-}
-function __rpEstadoBadge(em){
-  return __estadoBadge(__rpEstadoEtiqueta(em));
-}
-
 function __roleEq(expected){
   try{
     return String((currentUser && currentUser.role) ? currentUser.role : "").trim().toLowerCase() === String(expected || "").trim().toLowerCase();
@@ -2144,23 +2124,19 @@ function __applyRCLockUI(){
   if(f) f.disabled = locked;
   if(d) d.disabled = locked;
 
-  // Bloquear botones de edición/flujo del RC cuando está bloqueado (permite Word y Retornar)
+  // Bloquear botones principales del RC cuando está bloqueado
+  // (para RC Pendiente normalmente luego se re-habilita Word/Retorno en la lógica de UI,
+  // pero para Cierre Pendiente quedarán bloqueados, como corresponde).
   const btnIds = [
     "btnGuardarRC","btnGuardarEnviarRC","btnAddAccionRC","btnEnviarAprobRC",
-    "btnCerrarEmergencia"
+    "btnCerrarEmergencia","btnWordRC","btnRetornarRC"
   ];
   btnIds.forEach(id=>{
     const b = document.getElementById(id);
     if(b) b.disabled = locked;
   });
-  if(locked){
-    const bw = document.getElementById("btnWordRC");
-    const br = document.getElementById("btnRetornarRC");
-    if(bw) bw.disabled = false;
-    if(br) br.disabled = false;
-  }
 
-// Bloquear botones Editar/Eliminar de Acciones RC
+  // Bloquear botones Editar/Eliminar de Acciones RC
   document.querySelectorAll('#accionesRCTabla button[data-rc-act="edit"], #accionesRCTabla button[data-rc-act="del"]').forEach(btn=>{
     btn.disabled = locked;
   });
@@ -2477,25 +2453,17 @@ function __solicitarCierre(){
   __saveEmergencias();
   cargarTablaEmergencias();
 
-  // Bloquear edición del RC para el Registrador (solo visualización) hasta que el Admin apruebe/observe el cierre
+  // Bloquear TODO el RC para el Registrador (solo visualización) hasta que el Admin apruebe/observe el cierre
   try{
     if(__isRegistrador && __isRegistrador()){
       setRCEnabled(false);
       try{ setRCViewActive(true); }catch(e){}
-      document.querySelectorAll("#rcTab input, #rcTab textarea, #rcTab select").forEach(el=>{ el.disabled = true; });
-      ["btnGuardarRC","btnGuardarEnviarRC","btnAddAccionRC","btnEnviarAprobRC","btnCerrarEmergencia"].forEach(id=>{
-        const b = document.getElementById(id);
-        if(b) b.disabled = true;
-      });
+      document.querySelectorAll("#rcTab input, #rcTab textarea, #rcTab select, #rcTab button").forEach(el=>{ el.disabled = true; });
       try{ __applyRCLockUI(); }catch(e){}
-      // PERMITIR Word RC y Retornar aun con cierre pendiente
-      const bw = document.getElementById("btnWordRC");
-      const br = document.getElementById("btnRetornarRC");
-      if(bw) bw.disabled = false;
-      if(br) br.disabled = false;
     }
   }catch(e){}
-alert("Solicitud de cierre enviada a aprobación.");
+
+  alert("Solicitud de cierre enviada a aprobación.");
 }
 
 // ===================== INIT AUTH UI =====================
@@ -3673,7 +3641,7 @@ function cargarTablaEmergencias() {
 <td>${e.distrito}</td>
 <td>${e.fechaPeligro}</td>
 <td>${e.cerrada ? "Cerrada" : "Abierta"}</td>
-<td>${__rpEstadoBadge(e)}</td>
+<td>${__rpEstadoEtiqueta(e)}</td>
 <td class="col-rp"><button class="btn btn-sm btn-outline-primary btnRP" ${(__isRegistrador() && e.cerrada) ? "disabled" : ""}>RP</button></td>
 <td class="col-rc"><button class="btn btn-sm btn-primary btnRC" ${ (e.cerrada || (__isRegistrador() && String(e.rpAprobEstado||"Borrador")!=="Aprobado")) ? "disabled" : ""}>RC</button></td>
 <td><button class="btn btn-sm btn-outline-secondary btnVer" title="Ver detalle">👁</button></td>
@@ -4034,19 +4002,10 @@ try{
   if(isReg && cierrePend){
     setRCEnabled(false);
     try{ setRCViewActive(true); }catch(e){}
-    // Bloquear edición del RC por solicitud de cierre (solo lectura)
-    document.querySelectorAll("#rcTab input, #rcTab textarea, #rcTab select").forEach(el=>{ el.disabled = true; });
-    ["btnGuardarRC","btnGuardarEnviarRC","btnAddAccionRC","btnEnviarAprobRC","btnCerrarEmergencia"].forEach(id=>{
-      const b = document.getElementById(id);
-      if(b) b.disabled = true;
-    });
+    // Bloquear absolutamente todo dentro del RC (inputs y botones)
+    document.querySelectorAll("#rcTab input, #rcTab textarea, #rcTab select, #rcTab button").forEach(el=>{ el.disabled = true; });
     try{ cargarAccionesRC(); __applyRCLockUI(); }catch(e){}
-    // PERMITIR que el Registrador genere Word RC y pueda retornar aun con el cierre pendiente
-    const bw = document.getElementById("btnWordRC");
-    const br = document.getElementById("btnRetornarRC");
-    if(bw) bw.disabled = false;
-    if(br) br.disabled = false;
-} else {
+  } else {
     // 2) Si existe un RC pendiente: mantener visible para lectura, sin edición (pero permitiendo Word/Retorno)
     if(isReg && Array.isArray(obj.rcReportes) && obj.rcReportes.length>0){
       const last = obj.rcReportes[obj.rcReportes.length-1];
