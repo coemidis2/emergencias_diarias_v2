@@ -3723,24 +3723,34 @@ function cargarTablaEmergencias() {
  
 
 
-    // Colorear celda Estado según regla (Leyenda: Activo=Rojo, En Proceso=Naranja, Cerrada=Verde)
-    const estadoTd = tr.children[6];
-    if (estadoTd) {
-      if (e.cerrada) {
-        // Cerrada -> Verde
-        estadoTd.style.backgroundColor = "#00B050";
-        estadoTd.style.color = "#ffffff";
-      } else {
-        // Abierta: si es hoy -> Rojo (Activo), si no -> Naranja (En Proceso)
-        if (esMismaFecha(e.fechaPeligro, hoy)) {
-          estadoTd.style.backgroundColor = "#FF0000";
-          estadoTd.style.color = "#ffffff";
-        } else {
-          estadoTd.style.backgroundColor = "#FFA500";
-          estadoTd.style.color = "#000000";
-        }
-      }
+    // Colorear celda Estado según regla solicitada:
+// - Cerrada: Verde
+// - Abierta con solo RP registrado: Rojo
+// - Abierta con RP + RC registrados: Naranja
+const estadoTd = tr.children[6];
+if (estadoTd) {
+  if (e.cerrada) {
+    // Cerrada -> Verde
+    estadoTd.style.backgroundColor = "#00B050";
+    estadoTd.style.color = "#ffffff";
+  } else {
+    // Abierta -> depende si hay RC registrado
+    let rcCount = 0;
+    try { rcCount = (__getRCList && typeof __getRCList === "function") ? __getRCList(e).length : 0; } catch (_e) { rcCount = 0; }
+    const hasRC = rcCount > 0;
+
+    if (hasRC) {
+      // Abierta + RP + RC -> Naranja
+      estadoTd.style.backgroundColor = "#FFA500";
+      estadoTd.style.color = "#000000";
+    } else {
+      // Abierta + solo RP -> Rojo
+      estadoTd.style.backgroundColor = "#FF0000";
+      estadoTd.style.color = "#ffffff";
     }
+  }
+}
+
 
     // Handlers de botones según disponibilidad (display/disabled ya se controla por rol/estado)
     const btnVer = tr.querySelector(".btnVer");
