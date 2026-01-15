@@ -42,6 +42,23 @@ body { background: #f5f5f5; }
 .badge-orange{ background:#fd7e14 !important; color:#fff !important; }
 .cons-hide{ display:none !important; }
 
+
+/* ======= SORT (Lista de Emergencias) ======= */
+#tablaEmergencias thead th.sortable{
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+#tablaEmergencias thead th.sortable .sort-ind{
+  display:inline-block;
+  margin-left:6px;
+  font-size:10px;
+  opacity:.7;
+}
+#tablaEmergencias thead th.sortable.active .sort-ind{
+  opacity:1;
+}
+
 </style>
 
  <script src="./patch_cf_sync.js?v=20251225a"></script>
@@ -247,13 +264,13 @@ body { background: #f5f5f5; }
       <table class="table table-striped" id="tablaEmergencias">
         <thead>
           <tr>
-            <th>Código</th>
-            <th>Peligro</th>
-            <th>Departamento</th>
+            <th data-sort-key="codigo">Código <span class="sort-ind">↕</span></th>
+            <th data-sort-key="peligro">Peligro <span class="sort-ind">↕</span></th>
+            <th data-sort-key="departamento">Departamento <span class="sort-ind">↕</span></th>
             <th>Provincia</th>
             <th>Distrito</th>
-            <th>Fecha peligro</th>
-            <th>Estado</th>
+            <th data-sort-key="fechaPeligro">Fecha peligro <span class="sort-ind">↕</span></th>
+            <th data-sort-key="estado">Estado <span class="sort-ind">↕</span></th>
             <th>RP Estado</th>
             <th class="col-rp">RP</th>
             <th class="col-rc">RC</th>
@@ -3604,6 +3621,81 @@ function __printRC_PDF(idxOpt){
 }
 
 
+
+// ===================== ORDENAMIENTO (LISTA EMERGENCIAS) =====================
+const __LIST_SORT = { key: null, dir: 1 }; // dir: 1 asc, -1 desc
+
+function __listParseDateYYYYMMDD(s){
+  if(!s) return null;
+  const str = String(s).trim();
+  const m = str.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if(!m) return null;
+  const d = new Date(Number(m[1]), Number(m[2])-1, Number(m[3]));
+  if(isNaN(d.getTime())) return null;
+  return d;
+}
+
+function __listSortValue(e, key){
+  const norm = (v)=> normalizarTexto(String(v ?? ""));
+  switch(key){
+    case "codigo": return norm(e?.codigo || "");
+    case "peligro": return norm(e?.peligro || "");
+    case "departamento": return norm(e?.departamento || "");
+    case "fechaPeligro": {
+      const d = __listParseDateYYYYMMDD(e?.fechaPeligro);
+      return d ? d.getTime() : -Infinity;
+    }
+    case "estado": return (e?.cerrada ? 1 : 0); // Abierta (0) primero en asc
+    default: return "";
+  }
+}
+
+function __listApplySort(arr){
+  const key = __LIST_SORT.key;
+  if(!key) return arr;
+  const dir = (__LIST_SORT.dir === -1 ? -1 : 1);
+  return arr.slice().sort((a,b)=>{
+    const va = __listSortValue(a, key);
+    const vb = __listSortValue(b, key);
+    if(typeof va === "number" && typeof vb === "number") return (va - vb) * dir;
+    return String(va).localeCompare(String(vb), "es", { sensitivity:"base" }) * dir;
+  });
+}
+
+function __listUpdateSortUI(){
+  document.querySelectorAll('#tablaEmergencias thead th.sortable').forEach(th=>{
+    const k = th.getAttribute("data-sort-key");
+    const ind = th.querySelector(".sort-ind");
+    const active = (__LIST_SORT.key && k === __LIST_SORT.key);
+    th.classList.toggle("active", active);
+    if(ind){
+      if(!active) ind.textContent = "↕";
+      else ind.textContent = (__LIST_SORT.dir === 1 ? "▲" : "▼");
+    }
+  });
+}
+
+function __listInitSort(){
+  const ths = document.querySelectorAll('#tablaEmergencias thead th[data-sort-key]');
+  if(!ths || !ths.length) return;
+  ths.forEach(th=>{
+    th.classList.add("sortable");
+    th.addEventListener("click", ()=>{
+      const k = th.getAttribute("data-sort-key");
+      if(__LIST_SORT.key === k){
+        __LIST_SORT.dir = (__LIST_SORT.dir === 1 ? -1 : 1);
+      }else{
+        __LIST_SORT.key = k;
+        __LIST_SORT.dir = 1;
+      }
+      __listUpdateSortUI();
+      cargarTablaEmergencias();
+    });
+  });
+  __listUpdateSortUI();
+}
+
+
 // ===================== TABLA EMERGENCIAS =====================
 function cargarTablaEmergencias() {
   let body = document.querySelector("#tablaEmergencias tbody");
@@ -3617,10 +3709,9 @@ function cargarTablaEmergencias() {
   const fDep = normalizarTexto(document.getElementById("filtroDepartamento")?.value || "");
   const fProv = normalizarTexto(document.getElementById("filtroProvincia")?.value || "");
 
-  const hoy = new Date();
-
+  // 1) Filtrar
+  const filtered = [];
   emergencias.forEach(e => {
-    // Aplicar filtros
     if (fCodigo && !normalizarTexto(e.codigo).includes(fCodigo)) return;
     if (fFechaPeligro && (e.fechaPeligro || "") !== fFechaPeligro) return;
 
@@ -3632,6 +3723,14 @@ function cargarTablaEmergencias() {
     if (fDep && !normalizarTexto(e.departamento).includes(fDep)) return;
     if (fProv && !normalizarTexto(e.provincia).includes(fProv)) return;
 
+    filtered.push(e);
+  });
+
+  // 2) Ordenar (si el usuario hizo clic en cabecera)
+  const list = (typeof __listApplySort === "function") ? __listApplySort(filtered) : filtered;
+
+  // 3) Render
+  list.forEach(e => {
     let tr = document.createElement("tr");
     tr.innerHTML = `
 <td>${e.codigo}</td>
@@ -3646,6 +3745,7 @@ function cargarTablaEmergencias() {
 <td class="col-rc"><button class="btn btn-sm btn-primary btnRC" ${ (e.cerrada || (__isRegistrador() && String(e.rpAprobEstado||"Borrador")!=="Aprobado")) ? "disabled" : ""}>RC</button></td>
 <td><button class="btn btn-sm btn-outline-secondary btnVer" title="Ver detalle">👁</button></td>
 `;
+
     // Restricción por rol (Consulta: solo Lista y Dashboard)
     try{
       const isConsulta = __isConsulta();
@@ -3656,19 +3756,16 @@ function cargarTablaEmergencias() {
 
       if(isConsulta){
         // Consulta: solo lectura (Lista + Dashboard)
-        // 1) Ocultar botones RP/RC
         if (bRC) { bRC.disabled = true; bRC.style.display = "none"; }
         if (bRP) { bRP.disabled = true; bRP.style.display = "none"; }
-        // 2) Ocultar columnas completas RP/RC
         try{ tr.querySelectorAll('td.col-rp, td.col-rc').forEach(td=>td.classList.add('cons-hide')); }catch(_e){}
-        // 3) Mantener el botón Ver disponible
         if (bVer) { bVer.disabled = false; bVer.style.display = ""; bVer.title = "Ver detalle"; }
       } else {
         // Para Admin/Registrador: el ojito siempre disponible (abierta o cerrada)
         if (bVer) {
           bVer.disabled = false;
           bVer.style.display = "";
-          const hasRC = (rcList && rcList.length > 0) || (document.querySelectorAll('#contenidoVerEmergencia .rc-block').length > 0);
+          const hasRC = (__getRCList(e).length > 0);
           bVer.title = hasRC ? "Ver último RC" : "Ver RP";
         }
 
@@ -3720,39 +3817,29 @@ function cargarTablaEmergencias() {
         }
       }
     }catch(_e){}
- 
-
 
     // Colorear celda Estado según regla solicitada:
-// - Cerrada: Verde
-// - Abierta con solo RP registrado: Rojo
-// - Abierta con RP + RC registrados: Naranja
-const estadoTd = tr.children[6];
-if (estadoTd) {
-  if (e.cerrada) {
-    // Cerrada -> Verde
-    estadoTd.style.backgroundColor = "#00B050";
-    estadoTd.style.color = "#ffffff";
-  } else {
-    // Abierta -> depende si hay RC registrado
-    let rcCount = 0;
-    try { rcCount = (__getRCList && typeof __getRCList === "function") ? __getRCList(e).length : 0; } catch (_e) { rcCount = 0; }
-    const hasRC = rcCount > 0;
-
-    if (hasRC) {
-      // Abierta + RP + RC -> Naranja
-      estadoTd.style.backgroundColor = "#FFA500";
-      estadoTd.style.color = "#000000";
-    } else {
-      // Abierta + solo RP -> Rojo
-      estadoTd.style.backgroundColor = "#FF0000";
-      estadoTd.style.color = "#ffffff";
+    // - Cerrada: verde
+    // - Abierta con solo RP (sin RC): rojo
+    // - Abierta con RP + RC: naranja
+    const estadoTd = tr.children[6];
+    if (estadoTd) {
+      if (e.cerrada) {
+        estadoTd.style.backgroundColor = "#00B050";
+        estadoTd.style.color = "#ffffff";
+      } else {
+        const tieneRC = (__getRCList(e).length > 0);
+        if (tieneRC) {
+          estadoTd.style.backgroundColor = "#FFA500";
+          estadoTd.style.color = "#000000";
+        } else {
+          estadoTd.style.backgroundColor = "#FF0000";
+          estadoTd.style.color = "#ffffff";
+        }
+      }
     }
-  }
-}
 
-
-    // Handlers de botones según disponibilidad (display/disabled ya se controla por rol/estado)
+    // Handlers de botones según disponibilidad
     const btnVer = tr.querySelector(".btnVer");
     if (btnVer && !btnVer.disabled && btnVer.style.display !== "none") {
       btnVer.onclick = () => { verEmergencia(e); if(__getRCList(e).length>0) __scrollVerToLastRC(); };
@@ -3760,7 +3847,6 @@ if (estadoTd) {
 
     const btnRP = tr.querySelector(".btnRP");
     if (btnRP && btnRP.style.display !== "none") {
-      // Enforce: Registrador no puede abrir RP si la emergencia está Cerrada
       const isReg = __isRegistrador();
       const isClosed = !!e.cerrada;
       if (isReg && isClosed) {
@@ -3782,6 +3868,7 @@ if (estadoTd) {
     body.appendChild(tr);
   });
 }
+
 
 // ===================== RC =====================
 function crearFilaDaniosRC(programa, vals) {
@@ -5108,6 +5195,7 @@ function __setNetBadge(){
 
 function __updateSyncUI(pending){
   __setNetBadge();
+  __listInitSort();
   const b = document.getElementById("syncPendBadge");
   const btn = document.getElementById("btnSync");
 
