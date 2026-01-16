@@ -42,6 +42,23 @@ body { background: #f5f5f5; }
 .badge-orange{ background:#fd7e14 !important; color:#fff !important; }
 .cons-hide{ display:none !important; }
 
+
+/* ======= SORT (Lista de Emergencias) ======= */
+#tablaEmergencias thead th.sortable{
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+#tablaEmergencias thead th.sortable .sort-ind{
+  display:inline-block;
+  margin-left:6px;
+  font-size:10px;
+  opacity:.7;
+}
+#tablaEmergencias thead th.sortable.active .sort-ind{
+  opacity:1;
+}
+
 </style>
 
  <script src="./patch_cf_sync.js?v=20251225a"></script>
@@ -176,7 +193,7 @@ body { background: #f5f5f5; }
       <!-- Botón Nuevo (migrado desde Registro Preliminar) -->
       <button id="btnNuevoRP" class="btn btn-sm btn-secondary mb-2 ms-2" type="button">Nuevo</button>
 
-      <!-- Exportar Word (Listado por rango de elaboración) -->
+      <!-- Botón Exportar Word (Listado) -->
       <button id="btnExportWordLista" class="btn btn-sm btn-success mb-2 ms-2" type="button">Exportar Word</button>
 
       <!-- Bloque desplegable de búsqueda -->
@@ -238,9 +255,9 @@ body { background: #f5f5f5; }
         <!-- Leyenda de colores -->
         <div class="mb-3" style="font-family: Calibri, Arial, sans-serif; font-size:9pt;">
           <strong>Leyenda:</strong>
-          Activo :
+          RP :
           <span style="background-color:#FF0000; padding:0 8px; display:inline-block; min-width:30px;">&nbsp;</span>
-          – En Proceso:
+          – RP-RC:
           <span style="background-color:#FFA500; padding:0 8px; display:inline-block; min-width:30px;">&nbsp;</span>
           – Cerrada :
           <span style="background-color:#00B050; padding:0 8px; display:inline-block; min-width:30px;">&nbsp;</span>
@@ -250,13 +267,13 @@ body { background: #f5f5f5; }
       <table class="table table-striped" id="tablaEmergencias">
         <thead>
           <tr>
-            <th>Código</th>
-            <th>Peligro</th>
-            <th>Departamento</th>
+            <th data-sort-key="codigo">Código <span class="sort-ind">↕</span></th>
+            <th data-sort-key="peligro">Peligro <span class="sort-ind">↕</span></th>
+            <th data-sort-key="departamento">Departamento <span class="sort-ind">↕</span></th>
             <th>Provincia</th>
             <th>Distrito</th>
-            <th>Fecha peligro</th>
-            <th>Estado</th>
+            <th data-sort-key="fechaPeligro">Fecha peligro <span class="sort-ind">↕</span></th>
+            <th data-sort-key="estado">Estado <span class="sort-ind">↕</span></th>
             <th>RP Estado</th>
             <th class="col-rp">RP</th>
             <th class="col-rc">RC</th>
@@ -536,7 +553,10 @@ body { background: #f5f5f5; }
 
       <!-- 1. Activas del día -->
       <div class="mb-3">
-        <h5 class="text-primary">Emergencias activas del día</h5>
+        <div class="d-flex justify-content-between align-items-center mb-1">
+          <h5 class="text-primary mb-0">Emergencias activas del día</h5>
+          <button class="btn btn-sm btn-outline-primary" id="dashBtnWordActivas" title="Exportar Word">Exportar Word</button>
+        </div>
         <div class="table-responsive">
           <table class="table table-striped table-sm">
             <thead>
@@ -876,39 +896,6 @@ body { background: #f5f5f5; }
 </div><!-- tab-content -->
 
 <!-- MODAL PARA VER EMERGENCIA CERRADA -->
-
-
-<!-- ===================== MODAL EXPORTAR WORD (LISTA) ===================== -->
-<div class="modal fade" id="modalExportListaWord" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title">Exportar Word (Listado de Emergencias)</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
-      </div>
-      <div class="modal-body">
-        <div class="row g-2">
-          <div class="col-12">
-            <label class="form-label">Fecha inicial de elaboración</label>
-            <input type="date" id="expListaDesde" class="form-control">
-          </div>
-          <div class="col-12">
-            <label class="form-label">Fecha final de elaboración</label>
-            <input type="date" id="expListaHasta" class="form-control">
-          </div>
-          <div class="col-12 small text-muted">
-            Filtro por fecha de elaboración (registro) de la emergencia.
-          </div>
-        </div>
-      </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-        <button type="button" class="btn btn-success" id="btnDoExportListaWord">Exportar</button>
-      </div>
-    </div>
-  </div>
-</div>
-
 <div class="modal fade" id="modalVerEmergencia" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-lg modal-dialog-scrollable">
     <div class="modal-content">
@@ -3640,6 +3627,81 @@ function __printRC_PDF(idxOpt){
 }
 
 
+
+// ===================== ORDENAMIENTO (LISTA EMERGENCIAS) =====================
+const __LIST_SORT = { key: null, dir: 1 }; // dir: 1 asc, -1 desc
+
+function __listParseDateYYYYMMDD(s){
+  if(!s) return null;
+  const str = String(s).trim();
+  const m = str.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if(!m) return null;
+  const d = new Date(Number(m[1]), Number(m[2])-1, Number(m[3]));
+  if(isNaN(d.getTime())) return null;
+  return d;
+}
+
+function __listSortValue(e, key){
+  const norm = (v)=> normalizarTexto(String(v ?? ""));
+  switch(key){
+    case "codigo": return norm(e?.codigo || "");
+    case "peligro": return norm(e?.peligro || "");
+    case "departamento": return norm(e?.departamento || "");
+    case "fechaPeligro": {
+      const d = __listParseDateYYYYMMDD(e?.fechaPeligro);
+      return d ? d.getTime() : -Infinity;
+    }
+    case "estado": return (e?.cerrada ? 1 : 0); // Abierta (0) primero en asc
+    default: return "";
+  }
+}
+
+function __listApplySort(arr){
+  const key = __LIST_SORT.key;
+  if(!key) return arr;
+  const dir = (__LIST_SORT.dir === -1 ? -1 : 1);
+  return arr.slice().sort((a,b)=>{
+    const va = __listSortValue(a, key);
+    const vb = __listSortValue(b, key);
+    if(typeof va === "number" && typeof vb === "number") return (va - vb) * dir;
+    return String(va).localeCompare(String(vb), "es", { sensitivity:"base" }) * dir;
+  });
+}
+
+function __listUpdateSortUI(){
+  document.querySelectorAll('#tablaEmergencias thead th.sortable').forEach(th=>{
+    const k = th.getAttribute("data-sort-key");
+    const ind = th.querySelector(".sort-ind");
+    const active = (__LIST_SORT.key && k === __LIST_SORT.key);
+    th.classList.toggle("active", active);
+    if(ind){
+      if(!active) ind.textContent = "↕";
+      else ind.textContent = (__LIST_SORT.dir === 1 ? "▲" : "▼");
+    }
+  });
+}
+
+function __listInitSort(){
+  const ths = document.querySelectorAll('#tablaEmergencias thead th[data-sort-key]');
+  if(!ths || !ths.length) return;
+  ths.forEach(th=>{
+    th.classList.add("sortable");
+    th.addEventListener("click", ()=>{
+      const k = th.getAttribute("data-sort-key");
+      if(__LIST_SORT.key === k){
+        __LIST_SORT.dir = (__LIST_SORT.dir === 1 ? -1 : 1);
+      }else{
+        __LIST_SORT.key = k;
+        __LIST_SORT.dir = 1;
+      }
+      __listUpdateSortUI();
+      cargarTablaEmergencias();
+    });
+  });
+  __listUpdateSortUI();
+}
+
+
 // ===================== TABLA EMERGENCIAS =====================
 function cargarTablaEmergencias() {
   let body = document.querySelector("#tablaEmergencias tbody");
@@ -3653,10 +3715,9 @@ function cargarTablaEmergencias() {
   const fDep = normalizarTexto(document.getElementById("filtroDepartamento")?.value || "");
   const fProv = normalizarTexto(document.getElementById("filtroProvincia")?.value || "");
 
-  const hoy = new Date();
-
+  // 1) Filtrar
+  const filtered = [];
   emergencias.forEach(e => {
-    // Aplicar filtros
     if (fCodigo && !normalizarTexto(e.codigo).includes(fCodigo)) return;
     if (fFechaPeligro && (e.fechaPeligro || "") !== fFechaPeligro) return;
 
@@ -3668,6 +3729,14 @@ function cargarTablaEmergencias() {
     if (fDep && !normalizarTexto(e.departamento).includes(fDep)) return;
     if (fProv && !normalizarTexto(e.provincia).includes(fProv)) return;
 
+    filtered.push(e);
+  });
+
+  // 2) Ordenar (si el usuario hizo clic en cabecera)
+  const list = (typeof __listApplySort === "function") ? __listApplySort(filtered) : filtered;
+
+  // 3) Render
+  list.forEach(e => {
     let tr = document.createElement("tr");
     tr.innerHTML = `
 <td>${e.codigo}</td>
@@ -3682,6 +3751,7 @@ function cargarTablaEmergencias() {
 <td class="col-rc"><button class="btn btn-sm btn-primary btnRC" ${ (e.cerrada || (__isRegistrador() && String(e.rpAprobEstado||"Borrador")!=="Aprobado")) ? "disabled" : ""}>RC</button></td>
 <td><button class="btn btn-sm btn-outline-secondary btnVer" title="Ver detalle">👁</button></td>
 `;
+
     // Restricción por rol (Consulta: solo Lista y Dashboard)
     try{
       const isConsulta = __isConsulta();
@@ -3692,19 +3762,16 @@ function cargarTablaEmergencias() {
 
       if(isConsulta){
         // Consulta: solo lectura (Lista + Dashboard)
-        // 1) Ocultar botones RP/RC
         if (bRC) { bRC.disabled = true; bRC.style.display = "none"; }
         if (bRP) { bRP.disabled = true; bRP.style.display = "none"; }
-        // 2) Ocultar columnas completas RP/RC
         try{ tr.querySelectorAll('td.col-rp, td.col-rc').forEach(td=>td.classList.add('cons-hide')); }catch(_e){}
-        // 3) Mantener el botón Ver disponible
         if (bVer) { bVer.disabled = false; bVer.style.display = ""; bVer.title = "Ver detalle"; }
       } else {
         // Para Admin/Registrador: el ojito siempre disponible (abierta o cerrada)
         if (bVer) {
           bVer.disabled = false;
           bVer.style.display = "";
-          const hasRC = (rcList && rcList.length > 0) || (document.querySelectorAll('#contenidoVerEmergencia .rc-block').length > 0);
+          const hasRC = (__getRCList(e).length > 0);
           bVer.title = hasRC ? "Ver último RC" : "Ver RP";
         }
 
@@ -3756,29 +3823,29 @@ function cargarTablaEmergencias() {
         }
       }
     }catch(_e){}
- 
 
-
-    // Colorear celda Estado según regla (Leyenda: Activo=Rojo, En Proceso=Naranja, Cerrada=Verde)
+    // Colorear celda Estado según regla solicitada:
+    // - Cerrada: verde
+    // - Abierta con solo RP (sin RC): rojo
+    // - Abierta con RP + RC: naranja
     const estadoTd = tr.children[6];
     if (estadoTd) {
       if (e.cerrada) {
-        // Cerrada -> Verde
         estadoTd.style.backgroundColor = "#00B050";
         estadoTd.style.color = "#ffffff";
       } else {
-        // Abierta: si es hoy -> Rojo (Activo), si no -> Naranja (En Proceso)
-        if (esMismaFecha(e.fechaPeligro, hoy)) {
-          estadoTd.style.backgroundColor = "#FF0000";
-          estadoTd.style.color = "#ffffff";
-        } else {
+        const tieneRC = (__getRCList(e).length > 0);
+        if (tieneRC) {
           estadoTd.style.backgroundColor = "#FFA500";
           estadoTd.style.color = "#000000";
+        } else {
+          estadoTd.style.backgroundColor = "#FF0000";
+          estadoTd.style.color = "#ffffff";
         }
       }
     }
 
-    // Handlers de botones según disponibilidad (display/disabled ya se controla por rol/estado)
+    // Handlers de botones según disponibilidad
     const btnVer = tr.querySelector(".btnVer");
     if (btnVer && !btnVer.disabled && btnVer.style.display !== "none") {
       btnVer.onclick = () => { verEmergencia(e); if(__getRCList(e).length>0) __scrollVerToLastRC(); };
@@ -3786,7 +3853,6 @@ function cargarTablaEmergencias() {
 
     const btnRP = tr.querySelector(".btnRP");
     if (btnRP && btnRP.style.display !== "none") {
-      // Enforce: Registrador no puede abrir RP si la emergencia está Cerrada
       const isReg = __isRegistrador();
       const isClosed = !!e.cerrada;
       if (isReg && isClosed) {
@@ -3808,6 +3874,7 @@ function cargarTablaEmergencias() {
     body.appendChild(tr);
   });
 }
+
 
 // ===================== RC =====================
 function crearFilaDaniosRC(programa, vals) {
@@ -4638,19 +4705,143 @@ function __dashRenderMap(data){
   });
 }
 
-function __dashRenderActivasHoy(){
-  const tbody = document.getElementById("dashActivasTbody");
-  tbody.innerHTML = "";
-
+function __dashGetActivasHoyList(){
   const hoy = new Date();
   const hoyD = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate());
+  const out = [];
 
   // Activas del día = NO cerradas y registradas hoy (fechaHora). Si no hay fechaHora, usa fechaPeligro.
   __dashGetEmergencias().forEach(e=>{
     if(e?.cerrada) return;
     const fr = __dashParseDateOnly(e?.fechaHora) || __dashParseDateOnly(e?.fechaPeligro);
     if(!__dashIsSameDay(fr, hoyD)) return;
+    out.push(e);
+  });
+  return out;
+}
 
+function __dashHtmlEscape(s){
+  return String(s ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function __dashFmtDateDDMMYYYY(v){
+  if(!v) return "";
+  const s = String(v).trim();
+  // YYYY-MM-DD
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if(m) return `${m[3]}/${m[2]}/${m[1]}`;
+  return s;
+}
+
+function __dashFmtMultiline(s){
+  return __dashHtmlEscape(s).replace(/\r?\n/g, "<br>");
+}
+
+function __dashFmtAccionesPreliminar(acciones){
+  if(!acciones || !Array.isArray(acciones) || acciones.length===0) return "";
+  const lines = [];
+  acciones.forEach((acc, i)=>{
+    if(acc && typeof acc === "object"){
+      const f = __dashFmtDateDDMMYYYY(acc.fecha || "");
+      const d = acc.descripcion || "";
+      const prefix = f ? `${i+1}. [${f}] ` : `${i+1}. `;
+      lines.push(prefix + String(d));
+    }else{
+      lines.push(`${i+1}. ` + String(acc));
+    }
+  });
+  return __dashFmtMultiline(lines.join("\n"));
+}
+
+function __dashExportActivasHoyWord(){
+  const list = __dashGetActivasHoyList();
+  if(!list.length){
+    alert("No hay emergencias activas del día para exportar.");
+    return;
+  }
+
+  const hoy = new Date();
+  const ymd = hoy.toISOString().slice(0,10);
+  const titulo = `EMERGENCIAS ACTIVAS DEL DIA - ${__dashFmtDateDDMMYYYY(ymd)}`;
+
+  let rows = "";
+  list.forEach(e=>{
+    const codigo = __dashHtmlEscape(e.codigo||"");
+    const fechaP = __dashHtmlEscape(__dashFmtDateDDMMYYYY(e.fechaPeligro||""));
+    const peligro = __dashHtmlEscape(e.peligro||"");
+    const ubic = __dashHtmlEscape(`${e.departamento||""} / ${e.provincia||""} / ${e.distrito||""}`);
+    const hechos = __dashFmtMultiline(e.hechos||"");
+    const daniosOtros = __dashFmtMultiline(e.daniosOtros||"");
+    const acciones = __dashFmtAccionesPreliminar(e.accionesPreliminar);
+
+    rows += `\n<tr>`+
+      `<td>${codigo}</td>`+
+      `<td>${fechaP}</td>`+
+      `<td>${peligro}</td>`+
+      `<td>${ubic}</td>`+
+      `<td>${hechos}</td>`+
+      `<td>${daniosOtros}</td>`+
+      `<td>${acciones}</td>`+
+    `</tr>`;
+  });
+
+  const html = `<!DOCTYPE html>
+<html xmlns:o='urn:schemas-microsoft-com:office:office'
+      xmlns:w='urn:schemas-microsoft-com:office:word'
+      xmlns='http://www.w3.org/TR/REC-html40'>
+<head>
+<meta charset='utf-8'>
+<title>${titulo}</title>
+<style>
+  body{font-family:Calibri; font-size:11pt;}
+  h2{color:#1F4E79; margin:0 0 8px 0;}
+  table{border-collapse:collapse; width:100%;}
+  th,td{border:1px solid #000; padding:6px; vertical-align:top;}
+  th{background:#FEE599; color:#1F4E79; font-weight:bold; text-align:center;}
+</style>
+</head>
+<body>
+  <h2>${titulo}</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Código</th>
+        <th>Fecha del Peligro</th>
+        <th>Peligro</th>
+        <th>Ubicación</th>
+        <th>Hechos</th>
+        <th>Daños en otros sectores</th>
+        <th>Acciones del Sector Desarrollo e Inclusión Social (Preliminar)</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${rows}
+    </tbody>
+  </table>
+</body>
+</html>`;
+
+  const blob = new Blob(["\ufeff", html], {type: "application/msword"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `Emergencias_activas_del_dia_${ymd}.doc`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url), 1500);
+}
+
+function __dashRenderActivasHoy(){
+  const tbody = document.getElementById("dashActivasTbody");
+  tbody.innerHTML = "";
+
+  __dashGetActivasHoyList().forEach(e=>{
     const st = __dashGetStatus(e);
     const badge = `<span class="badge" style="background:${st.color}"> </span>`;
 
@@ -4878,6 +5069,8 @@ document.addEventListener("DOMContentLoaded", ()=>{
   const btnHoy = document.getElementById("dashBtnHoy");
   const btnAplicar = document.getElementById("dashBtnAplicar");
   const soloMidis = document.getElementById("dashSoloMidis");
+  const btnWordActivas = document.getElementById("dashBtnWordActivas");
+
 
   if(btnHoy) btnHoy.addEventListener("click", ()=>{
     const hoy = new Date().toISOString().slice(0,10);
@@ -4888,6 +5081,8 @@ document.addEventListener("DOMContentLoaded", ()=>{
 
   if(btnAplicar) btnAplicar.addEventListener("click", dashboardRefresh);
   if(soloMidis) soloMidis.addEventListener("change", dashboardRefresh);
+
+  if(btnWordActivas) btnWordActivas.addEventListener("click", __dashExportActivasHoyWord);
 
   // Cambio de clasificación para los 3 gráficos de impacto MIDIS
   document.querySelectorAll('input[name="dashImpactoClasif"]').forEach(el=>{
@@ -5134,6 +5329,7 @@ function __setNetBadge(){
 
 function __updateSyncUI(pending){
   __setNetBadge();
+  __listInitSort();
   const b = document.getElementById("syncPendBadge");
   const btn = document.getElementById("btnSync");
 
@@ -6684,192 +6880,6 @@ function __segInit(){
 }
 
 
-
-
-// ===================== EXPORTAR WORD DESDE LISTA (RANGO) =====================
-function __escHtml(v){
-  return String(v ?? "").replace(/[&<>\"']/g, function(ch){
-    return ({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[ch]) || ch;
-  });
-}
-
-function __fmtMultilineHtml(v){
-  return __escHtml(v).replace(/\r?\n/g, "<br>");
-}
-
-function __fmtAccionesHtml(arr){
-  if(!Array.isArray(arr) || arr.length===0) return "";
-  const lines = [];
-  arr.forEach((a, i)=>{
-    if(a==null) return;
-    if(typeof a === 'string'){
-      lines.push((i+1) + '. ' + __escHtml(a));
-      return;
-    }
-    const f = a.fecha ? ('[' + __escHtml(a.fecha) + '] ') : '';
-    const d = a.descripcion ?? a.desc ?? a.texto ?? '';
-    const line = (i+1) + '. ' + f + __escHtml(d);
-    lines.push(line);
-  });
-  return lines.join('<br>');
-}
-
-function __getAccionesRCList(e){
-  try{
-    if(Array.isArray(e?.accionesRCGlobal) && e.accionesRCGlobal.length) return e.accionesRCGlobal;
-  }catch(_e){}
-  try{
-    if(Array.isArray(e?.rcReportes) && e.rcReportes.length){
-      const last = e.rcReportes[e.rcReportes.length-1];
-      if(last && Array.isArray(last.acciones)) return last.acciones;
-    }
-  }catch(_e){}
-  return [];
-}
-
-function __getFechaElaboracionDateOnly(e){
-  // Preferencia: fechaHora (registro), luego createdAt/updatedAt; como última opción, fechaPeligro.
-  return __dashParseDateOnly(e?.fechaHora) || __dashParseDateOnly(e?.createdAt) || __dashParseDateOnly(e?.updatedAt) || __dashParseDateOnly(e?.fechaPeligro);
-}
-
-function __downloadWordFromHtml(filename, htmlBody){
-  const full = '\ufeff' + `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${__escHtml(filename)}</title>
-  <style>
-    body{font-family:Calibri, Arial, sans-serif; font-size:11pt;}
-    h2{color:#1F4E79; margin:0 0 10px 0;}
-    .meta{font-size:9pt; color:#555; margin-bottom:10px;}
-    table{border-collapse:collapse; width:100%;}
-    th,td{border:1px solid #000; padding:6px; vertical-align:top;}
-    th{background:#D9E1F2;}
-  </style></head><body>${htmlBody}</body></html>`;
-
-  const blob = new Blob([full], { type: 'application/msword' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  setTimeout(()=>{ try{ URL.revokeObjectURL(url); }catch(e){} }, 1500);
-}
-
-function __exportListadoWordRango(){
-  const desdeStr = (document.getElementById('expListaDesde')?.value || '').trim();
-  const hastaStr = (document.getElementById('expListaHasta')?.value || '').trim();
-
-  if(!desdeStr || !hastaStr){
-    alert('Ingrese Fecha inicial de elaboración y Fecha final de elaboración.');
-    return;
-  }
-
-  const dDesde = __dashParseDateOnly(desdeStr);
-  const dHasta = __dashParseDateOnly(hastaStr);
-  if(!dDesde || !dHasta){
-    alert('Fechas inválidas. Use el selector de fecha.');
-    return;
-  }
-  if(dDesde.getTime() > dHasta.getTime()){
-    alert('La Fecha inicial de elaboración no puede ser mayor a la Fecha final de elaboración.');
-    return;
-  }
-
-  const arr = Array.isArray(emergencias) ? emergencias : (typeof __loadEmergencias==='function' ? __loadEmergencias() : []);
-  const data = (arr||[]).filter(e=>{
-    const fd = __getFechaElaboracionDateOnly(e);
-    if(!fd) return false;
-    return fd.getTime() >= dDesde.getTime() && fd.getTime() <= dHasta.getTime();
-  });
-
-  // Orden por fecha de elaboración ascendente (estable)
-  data.sort((a,b)=>{
-    const da = __getFechaElaboracionDateOnly(a); const db = __getFechaElaboracionDateOnly(b);
-    const ta = da ? da.getTime() : 0; const tb = db ? db.getTime() : 0;
-    if(ta !== tb) return ta - tb;
-    return String(a?.codigo||'').localeCompare(String(b?.codigo||''));
-  });
-
-  const now = new Date();
-  const nowStr = now.toISOString().slice(0,19).replace('T',' ');
-
-  let body = `
-    <h2>Listado de Emergencias</h2>
-    <div class="meta"><b>Rango de elaboración:</b> ${__escHtml(desdeStr)} al ${__escHtml(hastaStr)} &nbsp;|&nbsp; <b>Generado:</b> ${__escHtml(nowStr)}</div>
-    <table>
-      <thead>
-        <tr>
-          <th>Código</th>
-          <th>Fecha del Peligro</th>
-          <th>Peligro</th>
-          <th>Ubicación</th>
-          <th>Hechos</th>
-          <th>Daños en otros sectores</th>
-          <th>Acciones del Sector Desarrollo e Inclusión Social (Preliminar)</th>
-          <th>Acciones del Sector Desarrollo e Inclusión Social (Preliminar)</th>
-          <th>Acciones RC</th>
-        </tr>
-      </thead>
-      <tbody>
-  `;
-
-  data.forEach(e=>{
-    const ub = `${e?.departamento||''} / ${e?.provincia||''} / ${e?.distrito||''}`;
-    const accionesRP = __fmtAccionesHtml(e?.accionesPreliminar);
-    const accionesRC = __fmtAccionesHtml(__getAccionesRCList(e));
-
-    body += `
-      <tr>
-        <td>${__escHtml(e?.codigo||'')}</td>
-        <td>${__escHtml(e?.fechaPeligro||'')}</td>
-        <td>${__escHtml(e?.peligro||'')}</td>
-        <td>${__escHtml(ub)}</td>
-        <td>${__fmtMultilineHtml(e?.hechos||'')}</td>
-        <td>${__fmtMultilineHtml(e?.daniosOtros||'')}</td>
-        <td>${accionesRP || ''}</td>
-        <td>${accionesRP || ''}</td>
-        <td>${accionesRC || ''}</td>
-      </tr>
-    `;
-  });
-
-  if(data.length === 0){
-    body += `
-      <tr>
-        <td colspan="9"><em>Sin registros en el rango seleccionado.</em></td>
-      </tr>
-    `;
-  }
-
-  body += `</tbody></table>`;
-
-  const ymd = (s)=>String(s||'').replace(/-/g,'');
-  const filename = `Listado_Emergencias_${ymd(desdeStr)}_${ymd(hastaStr)}.doc`;
-  __downloadWordFromHtml(filename, body);
-
-  // Cerrar modal
-  try{
-    const el = document.getElementById('modalExportListaWord');
-    const inst = el ? bootstrap.Modal.getInstance(el) : null;
-    if(inst) inst.hide();
-  }catch(e){}
-}
-
-function __openModalExportListaWord(){
-  const el = document.getElementById('modalExportListaWord');
-  if(!el) return;
-  // Defaults: hoy
-  const today = new Date().toISOString().slice(0,10);
-  const d1 = document.getElementById('expListaDesde');
-  const d2 = document.getElementById('expListaHasta');
-  if(d1 && !d1.value) d1.value = today;
-  if(d2 && !d2.value) d2.value = today;
-
-  try{
-    const inst = bootstrap.Modal.getOrCreateInstance(el);
-    inst.show();
-  }catch(e){}
-}
-
 // ---- Hook DOMContentLoaded (extra) ----
 document.addEventListener('DOMContentLoaded', async function(){
   __ensureSyncControls();
@@ -6880,12 +6890,6 @@ document.addEventListener('DOMContentLoaded', async function(){
 
   const btn = document.getElementById('btnSync');
   if(btn) btn.addEventListener('click', __syncAll);
-
-  // Listado: Exportar Word (rango por fecha de elaboración)
-  const bExpLista = document.getElementById('btnExportWordLista');
-  if(bExpLista) bExpLista.addEventListener('click', __openModalExportListaWord);
-  const bDoExpLista = document.getElementById('btnDoExportListaWord');
-  if(bDoExpLista) bDoExpLista.addEventListener('click', __exportListadoWordRango);
 
   // Admin modal: manejado en el bloque de INIT AUTH UI (arriba)
 
@@ -6923,6 +6927,195 @@ document.addEventListener('DOMContentLoaded', async function(){
 
     </div><!-- /container -->
   </div><!-- /appScreen -->
+
+
+
+<!-- LISTADO_EXPORT_WORD_RANGO_ADDED -->
+<script>
+(function(){
+  // Escape / multiline (reusa helpers del Dashboard si existen)
+  function __esc(s){
+    if(typeof window.__dashHtmlEscape === 'function') return window.__dashHtmlEscape(s);
+    return String(s ?? '')
+      .replace(/&/g,'&amp;')
+      .replace(/</g,'&lt;')
+      .replace(/>/g,'&gt;')
+      .replace(/"/g,'&quot;')
+      .replace(/'/g,'&#039;');
+  }
+  function __ml(s){
+    if(typeof window.__dashFmtMultiline === 'function') return window.__dashFmtMultiline(s);
+    return __esc(s).replace(/\r?\n/g,'<br>');
+  }
+
+  // Formateo de acciones (mismo estilo que Dashboard)
+  function __fmtAcc(acciones){
+    if(typeof window.__dashFmtAccionesPreliminar === 'function') return window.__dashFmtAccionesPreliminar(acciones);
+    if(!acciones) return '';
+    if(Array.isArray(acciones)){
+      const lines = [];
+      acciones.forEach((a,i)=>{
+        if(a && typeof a==='object'){
+          const f = String(a.fecha||'').trim();
+          const d = String(a.descripcion||'');
+          const pre = f ? `${i+1}. [${f}] ` : `${i+1}. `;
+          lines.push(pre + d);
+        }else{
+          lines.push(`${i+1}. ` + String(a));
+        }
+      });
+      return __ml(lines.join('\n'));
+    }
+    return __ml(String(acciones));
+  }
+
+  // Fecha de elaboración (YYYY-MM-DD) desde varios posibles campos
+  function __getElabYMD(e){
+    const keys = ['fechaHora','fechaElaboracion','fechaRegistro','fechaHoraRP','fechaElaboracionRP'];
+    for(const k of keys){
+      const v = (e && e[k]) ? String(e[k]).trim() : '';
+      if(v){
+        if(v.includes('T')) return v.slice(0,10);
+        const m = v.match(/^(\d{4}-\d{2}-\d{2})/);
+        return m ? m[1] : '';
+      }
+    }
+    return '';
+  }
+
+  function __getUbic(e){
+    const dep = String(e?.departamento || '').trim();
+    const prov = String(e?.provincia || '').trim();
+    const dist = String(e?.distrito || '').trim();
+    return [dep, prov, dist].filter(Boolean).join(' / ');
+  }
+
+  function __getLastRCActions(e){
+    try{
+      if(Array.isArray(e?.rcReportes) && e.rcReportes.length>0){
+        const last = e.rcReportes[e.rcReportes.length-1];
+        if(Array.isArray(last?.acciones)) return last.acciones;
+      }
+    }catch(_e){}
+    if(Array.isArray(e?.accionesRCGlobal)) return e.accionesRCGlobal;
+    if(Array.isArray(e?.accionesRC)) return e.accionesRC;
+    return [];
+  }
+
+  function __validYMD(s){ return /^\d{4}-\d{2}-\d{2}$/.test(String(s||'').trim()); }
+
+  function __exportListadoWordRango(){
+    const desde0 = prompt('Fecha inicial de elaboración (YYYY-MM-DD):');
+    if(desde0 === null) return;
+    const desde = String(desde0||'').trim();
+    if(!desde) return;
+
+    const hasta0 = prompt('Fecha final de elaboración (YYYY-MM-DD):', desde);
+    if(hasta0 === null) return;
+    const hasta = String(hasta0||'').trim();
+    if(!hasta) return;
+
+    if(!__validYMD(desde) || !__validYMD(hasta)){
+      alert('Formato inválido. Use YYYY-MM-DD (ej.: 2026-01-15).');
+      return;
+    }
+    if(desde > hasta){
+      alert('La fecha inicial no puede ser mayor que la fecha final.');
+      return;
+    }
+
+    const data = Array.isArray(window.emergencias) ? window.emergencias : [];
+    const list = data.filter(e=>{
+      const d = __getElabYMD(e);
+      return d && d >= desde && d <= hasta;
+    });
+
+    if(!list.length){
+      alert('No hay emergencias con fecha de elaboración entre ' + desde + ' y ' + hasta + '.');
+      return;
+    }
+
+    // Orden sugerido: por fecha elaboración y luego código
+    list.sort((a,b)=>{
+      const da = __getElabYMD(a) || '';
+      const db = __getElabYMD(b) || '';
+      if(da < db) return -1;
+      if(da > db) return 1;
+      return String(a?.codigo||'').localeCompare(String(b?.codigo||''));
+    });
+
+    let rows = '';
+    for(const e of list){
+      const codigo = __esc(e?.codigo||'');
+      const fechaP = __esc(e?.fechaPeligro||'');
+      const peligro = __esc(e?.peligro||'');
+      const ubic = __esc(__getUbic(e));
+      const hechos = __ml(e?.hechos||'');
+      const danios = __ml(e?.daniosOtros||'');
+      const accPre = __fmtAcc(e?.accionesPreliminar||[]);
+      const accPre2 = accPre; // repetido como solicitado
+      const accRC = __fmtAcc(__getLastRCActions(e));
+
+      rows += `
+<tr>`+
+        `<td>${codigo}</td>`+
+        `<td>${fechaP}</td>`+
+        `<td>${peligro}</td>`+
+        `<td>${ubic}</td>`+
+        `<td>${hechos}</td>`+
+        `<td>${danios}</td>`+
+        `<td>${accPre}</td>`+
+        `<td>${accPre2}</td>`+
+        `<td>${accRC}</td>`+
+      `</tr>`;
+    }
+
+    const now = new Date();
+    const meta = `${desde} a ${hasta} | Total: ${list.length} | Generado: ${now.toLocaleString()}`;
+
+    const doc = `<!DOCTYPE html><html><head><meta charset='utf-8'>
+<title>Listado de Emergencias</title>
+<style>
+  body{font-family:Calibri, Arial, sans-serif; font-size:11pt;}
+  h2{color:#1F4E79; margin:0 0 6px 0;}
+  .meta{font-size:10pt; color:#444; margin:0 0 10px 0;}
+  table{border-collapse:collapse; width:100%;}
+  th, td{border:1px solid #000; padding:6px; vertical-align:top;}
+  th{background:#D9E1F2;}
+</style></head><body>
+<h2>Listado de Emergencias</h2>
+<div class='meta'><b>Rango de elaboración:</b> ${__esc(meta)}</div>
+<table><thead><tr>
+<th>Código</th>
+<th>Fecha del Peligro</th>
+<th>Peligro</th>
+<th>Ubicación</th>
+<th>Hechos</th>
+<th>Daños en otros sectores</th>
+<th>Acciones del Sector Desarrollo e Inclusión Social (Preliminar)</th>
+<th>Acciones del Sector Desarrollo e Inclusión Social (Preliminar)</th>
+<th>Acciones RC</th>
+</tr></thead><tbody>${rows}
+</tbody></table>
+</body></html>`;
+
+    const filename = `Listado_Emergencias_Elab_${desde}_${hasta}.doc`;
+    const blob = new Blob(['\ufeff', doc], {type:'application/msword'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(()=>{ try{URL.revokeObjectURL(url);}catch(e){} try{a.remove();}catch(e){} }, 1200);
+  }
+
+  // Exponer y enganchar botón
+  window.__exportListadoWordRangoElab = __exportListadoWordRango;
+  const btn = document.getElementById('btnExportWordLista');
+  if(btn) btn.addEventListener('click', __exportListadoWordRango);
+})();
+</script>
 
 </body>
 </html>
