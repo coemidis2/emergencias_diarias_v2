@@ -193,6 +193,9 @@ body { background: #f5f5f5; }
       <!-- Botón Nuevo (migrado desde Registro Preliminar) -->
       <button id="btnNuevoRP" class="btn btn-sm btn-secondary mb-2 ms-2" type="button">Nuevo</button>
 
+      <!-- Botón Exportar Word (Listado) -->
+      <button id="btnExportWordLista" class="btn btn-sm btn-success mb-2 ms-2" type="button">Exportar Word</button>
+
       <!-- Bloque desplegable de búsqueda -->
       <div class="collapse show" id="filtrosBusqueda">
         <!-- Filtros de búsqueda -->
@@ -6924,6 +6927,195 @@ document.addEventListener('DOMContentLoaded', async function(){
 
     </div><!-- /container -->
   </div><!-- /appScreen -->
+
+
+
+<!-- LISTADO_EXPORT_WORD_RANGO_ADDED -->
+<script>
+(function(){
+  // Escape / multiline (reusa helpers del Dashboard si existen)
+  function __esc(s){
+    if(typeof window.__dashHtmlEscape === 'function') return window.__dashHtmlEscape(s);
+    return String(s ?? '')
+      .replace(/&/g,'&amp;')
+      .replace(/</g,'&lt;')
+      .replace(/>/g,'&gt;')
+      .replace(/"/g,'&quot;')
+      .replace(/'/g,'&#039;');
+  }
+  function __ml(s){
+    if(typeof window.__dashFmtMultiline === 'function') return window.__dashFmtMultiline(s);
+    return __esc(s).replace(/\r?\n/g,'<br>');
+  }
+
+  // Formateo de acciones (mismo estilo que Dashboard)
+  function __fmtAcc(acciones){
+    if(typeof window.__dashFmtAccionesPreliminar === 'function') return window.__dashFmtAccionesPreliminar(acciones);
+    if(!acciones) return '';
+    if(Array.isArray(acciones)){
+      const lines = [];
+      acciones.forEach((a,i)=>{
+        if(a && typeof a==='object'){
+          const f = String(a.fecha||'').trim();
+          const d = String(a.descripcion||'');
+          const pre = f ? `${i+1}. [${f}] ` : `${i+1}. `;
+          lines.push(pre + d);
+        }else{
+          lines.push(`${i+1}. ` + String(a));
+        }
+      });
+      return __ml(lines.join('\n'));
+    }
+    return __ml(String(acciones));
+  }
+
+  // Fecha de elaboración (YYYY-MM-DD) desde varios posibles campos
+  function __getElabYMD(e){
+    const keys = ['fechaHora','fechaElaboracion','fechaRegistro','fechaHoraRP','fechaElaboracionRP'];
+    for(const k of keys){
+      const v = (e && e[k]) ? String(e[k]).trim() : '';
+      if(v){
+        if(v.includes('T')) return v.slice(0,10);
+        const m = v.match(/^(\d{4}-\d{2}-\d{2})/);
+        return m ? m[1] : '';
+      }
+    }
+    return '';
+  }
+
+  function __getUbic(e){
+    const dep = String(e?.departamento || '').trim();
+    const prov = String(e?.provincia || '').trim();
+    const dist = String(e?.distrito || '').trim();
+    return [dep, prov, dist].filter(Boolean).join(' / ');
+  }
+
+  function __getLastRCActions(e){
+    try{
+      if(Array.isArray(e?.rcReportes) && e.rcReportes.length>0){
+        const last = e.rcReportes[e.rcReportes.length-1];
+        if(Array.isArray(last?.acciones)) return last.acciones;
+      }
+    }catch(_e){}
+    if(Array.isArray(e?.accionesRCGlobal)) return e.accionesRCGlobal;
+    if(Array.isArray(e?.accionesRC)) return e.accionesRC;
+    return [];
+  }
+
+  function __validYMD(s){ return /^\d{4}-\d{2}-\d{2}$/.test(String(s||'').trim()); }
+
+  function __exportListadoWordRango(){
+    const desde0 = prompt('Fecha inicial de elaboración (YYYY-MM-DD):');
+    if(desde0 === null) return;
+    const desde = String(desde0||'').trim();
+    if(!desde) return;
+
+    const hasta0 = prompt('Fecha final de elaboración (YYYY-MM-DD):', desde);
+    if(hasta0 === null) return;
+    const hasta = String(hasta0||'').trim();
+    if(!hasta) return;
+
+    if(!__validYMD(desde) || !__validYMD(hasta)){
+      alert('Formato inválido. Use YYYY-MM-DD (ej.: 2026-01-15).');
+      return;
+    }
+    if(desde > hasta){
+      alert('La fecha inicial no puede ser mayor que la fecha final.');
+      return;
+    }
+
+    const data = Array.isArray(window.emergencias) ? window.emergencias : [];
+    const list = data.filter(e=>{
+      const d = __getElabYMD(e);
+      return d && d >= desde && d <= hasta;
+    });
+
+    if(!list.length){
+      alert('No hay emergencias con fecha de elaboración entre ' + desde + ' y ' + hasta + '.');
+      return;
+    }
+
+    // Orden sugerido: por fecha elaboración y luego código
+    list.sort((a,b)=>{
+      const da = __getElabYMD(a) || '';
+      const db = __getElabYMD(b) || '';
+      if(da < db) return -1;
+      if(da > db) return 1;
+      return String(a?.codigo||'').localeCompare(String(b?.codigo||''));
+    });
+
+    let rows = '';
+    for(const e of list){
+      const codigo = __esc(e?.codigo||'');
+      const fechaP = __esc(e?.fechaPeligro||'');
+      const peligro = __esc(e?.peligro||'');
+      const ubic = __esc(__getUbic(e));
+      const hechos = __ml(e?.hechos||'');
+      const danios = __ml(e?.daniosOtros||'');
+      const accPre = __fmtAcc(e?.accionesPreliminar||[]);
+      const accPre2 = accPre; // repetido como solicitado
+      const accRC = __fmtAcc(__getLastRCActions(e));
+
+      rows += `
+<tr>`+
+        `<td>${codigo}</td>`+
+        `<td>${fechaP}</td>`+
+        `<td>${peligro}</td>`+
+        `<td>${ubic}</td>`+
+        `<td>${hechos}</td>`+
+        `<td>${danios}</td>`+
+        `<td>${accPre}</td>`+
+        `<td>${accPre2}</td>`+
+        `<td>${accRC}</td>`+
+      `</tr>`;
+    }
+
+    const now = new Date();
+    const meta = `${desde} a ${hasta} | Total: ${list.length} | Generado: ${now.toLocaleString()}`;
+
+    const doc = `<!DOCTYPE html><html><head><meta charset='utf-8'>
+<title>Listado de Emergencias</title>
+<style>
+  body{font-family:Calibri, Arial, sans-serif; font-size:11pt;}
+  h2{color:#1F4E79; margin:0 0 6px 0;}
+  .meta{font-size:10pt; color:#444; margin:0 0 10px 0;}
+  table{border-collapse:collapse; width:100%;}
+  th, td{border:1px solid #000; padding:6px; vertical-align:top;}
+  th{background:#D9E1F2;}
+</style></head><body>
+<h2>Listado de Emergencias</h2>
+<div class='meta'><b>Rango de elaboración:</b> ${__esc(meta)}</div>
+<table><thead><tr>
+<th>Código</th>
+<th>Fecha del Peligro</th>
+<th>Peligro</th>
+<th>Ubicación</th>
+<th>Hechos</th>
+<th>Daños en otros sectores</th>
+<th>Acciones del Sector Desarrollo e Inclusión Social (Preliminar)</th>
+<th>Acciones del Sector Desarrollo e Inclusión Social (Preliminar)</th>
+<th>Acciones RC</th>
+</tr></thead><tbody>${rows}
+</tbody></table>
+</body></html>`;
+
+    const filename = `Listado_Emergencias_Elab_${desde}_${hasta}.doc`;
+    const blob = new Blob(['\ufeff', doc], {type:'application/msword'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(()=>{ try{URL.revokeObjectURL(url);}catch(e){} try{a.remove();}catch(e){} }, 1200);
+  }
+
+  // Exponer y enganchar botón
+  window.__exportListadoWordRangoElab = __exportListadoWordRango;
+  const btn = document.getElementById('btnExportWordLista');
+  if(btn) btn.addEventListener('click', __exportListadoWordRango);
+})();
+</script>
 
 </body>
 </html>
