@@ -603,11 +603,51 @@ body { background: #f5f5f5; }
         <div class="tab-content">
           <div class="tab-pane fade show active" id="dashHistEvento" role="tabpanel">
             <h5 class="text-primary">Distribución por tipo de evento</h5>
-            <canvas id="dashChartEvento"></canvas>
+
+            <!-- Total + gráfico circular (3D) -->
+            <div class="row g-2 mb-2">
+              <div class="col-md-3 col-sm-6">
+                <div class="card border-primary">
+                  <div class="card-body p-2">
+                    <div class="small text-muted">Total de emergencias</div>
+                    <div class="fs-4 fw-bold text-primary" id="dashTotalEvento">0</div>
+                  </div>
+                </div>
+              </div>
+              <div class="col-md-9 col-sm-6">
+                <div class="card">
+                  <div class="card-body p-2">
+                    <div style="height:260px">
+                      <canvas id="dashChartEvento"></canvas>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
           <div class="tab-pane fade" id="dashHistRegion" role="tabpanel">
             <h5 class="text-primary">Distribución por región (Departamento)</h5>
-            <canvas id="dashChartRegion"></canvas>
+
+            <!-- Total + gráfico circular (3D) -->
+            <div class="row g-2 mb-2">
+              <div class="col-md-3 col-sm-6">
+                <div class="card border-primary">
+                  <div class="card-body p-2">
+                    <div class="small text-muted">Total de emergencias</div>
+                    <div class="fs-4 fw-bold text-primary" id="dashTotalRegion">0</div>
+                  </div>
+                </div>
+              </div>
+              <div class="col-md-9 col-sm-6">
+                <div class="card">
+                  <div class="card-body p-2">
+                    <div style="height:260px">
+                      <canvas id="dashChartRegion"></canvas>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -4658,6 +4698,106 @@ function __dashGetFiltered(){
   });
 }
 
+
+
+// ======= DASH: Utilidades para gráficos circulares (3D) + etiquetas numéricas =======
+function __dashAutoColors(n){
+  // Colores consistentes y suficientemente distintos (HSL con ángulo dorado)
+  n = Math.max(1, Number(n||0));
+  const out = [];
+  const phi = 137.508; // golden angle
+  for(let i=0;i<n;i++){
+    const h = (i * phi) % 360;
+    out.push(`hsl(${h} 70% 55%)`);
+  }
+  return out;
+}
+
+const __DASH_PIE3D_PLUGIN = {
+  id: 'dashPie3D',
+  // Dibuja “grosor” hacia abajo antes de pintar el dataset
+  beforeDatasetDraw(chart, args, pluginOptions){
+    try{
+      const depth = Math.max(0, Number(pluginOptions?.depth ?? 10));
+      if(depth <= 0) return;
+
+      const meta = chart.getDatasetMeta(args.index);
+      if(!meta || !meta.data || !meta.data.length) return;
+
+      const ds = chart.data?.datasets?.[args.index];
+      const bg = ds?.backgroundColor;
+      const ctx = chart.ctx;
+      ctx.save();
+
+      // Deja el borde inferior un poco “más oscuro” por acumulación (alpha)
+      for(let z = depth; z >= 1; z--){
+        ctx.globalAlpha = 0.20;
+        meta.data.forEach((arc, i)=>{
+          const p = arc.getProps(['x','y','startAngle','endAngle','outerRadius','innerRadius'], true);
+          if(!p || p.outerRadius <= 0) return;
+
+          // Pie (innerRadius ~ 0). Si por alguna razón es donut, igual se pinta aceptable.
+          const c = Array.isArray(bg) ? (bg[i] || bg[0]) : (bg || undefined);
+          if(c) ctx.fillStyle = c;
+
+          ctx.beginPath();
+          // Arco exterior
+          ctx.moveTo(p.x, p.y + z);
+          ctx.arc(p.x, p.y + z, p.outerRadius, p.startAngle, p.endAngle);
+          // Arco interior (si existiera)
+          if(p.innerRadius && p.innerRadius > 0){
+            ctx.arc(p.x, p.y + z, p.innerRadius, p.endAngle, p.startAngle, true);
+          }
+          ctx.closePath();
+          ctx.fill();
+        });
+      }
+
+      ctx.restore();
+    }catch(e){ /* silencio */ }
+  }
+};
+
+const __DASH_PIE_VALUE_LABELS_PLUGIN = {
+  id: 'dashPieValueLabels',
+  afterDatasetsDraw(chart, args, pluginOptions){
+    try{
+      const ctx = chart.ctx;
+      const meta = chart.getDatasetMeta(0);
+      const ds = chart.data?.datasets?.[0];
+      if(!meta || !meta.data || !ds) return;
+
+      const data = Array.isArray(ds.data) ? ds.data : [];
+      const minAngle = Number(pluginOptions?.minAngle ?? 0.15); // evita texto en rebanadas muy pequeñas
+
+      ctx.save();
+      ctx.font = 'bold 12px Calibri';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+
+      meta.data.forEach((arc, i)=>{
+        const v = Number(data[i] || 0);
+        if(!v) return;
+
+        const p = arc.getProps(['startAngle','endAngle'], true);
+        if(p && (p.endAngle - p.startAngle) < minAngle) return;
+
+        const pos = arc.tooltipPosition();
+        const txt = String(v);
+
+        // Texto blanco con borde oscuro para que se lea sobre cualquier color
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = 'rgba(0,0,0,0.55)';
+        ctx.fillStyle = '#fff';
+        ctx.strokeText(txt, pos.x, pos.y);
+        ctx.fillText(txt, pos.x, pos.y);
+      });
+
+      ctx.restore();
+    }catch(e){ /* silencio */ }
+  }
+};
+
 function __dashInitIfNeeded(){
   // Mapa (solo si Leaflet está disponible)
   if(!dashMap){
@@ -4688,8 +4828,39 @@ function __dashInitIfNeeded(){
     options:{responsive:true}
   });
 
-  if(!dashChartEvento) dashChartEvento = mkBar(document.getElementById("dashChartEvento"), "Emergencias");
-  if(!dashChartRegion) dashChartRegion = mkBar(document.getElementById("dashChartRegion"), "Emergencias");
+  // Pie (3D) con etiquetas numéricas
+  const mkPie3D = (el, label) => new Chart(el, {
+    type:"pie",
+    data:{labels:[], datasets:[{label, data:[], backgroundColor:[]}]},
+    options:{
+      responsive:true,
+      maintainAspectRatio:false,
+      plugins:{
+        legend:{position:'bottom'},
+        tooltip:{
+          callbacks:{
+            label:(ctx)=>{
+              const lbl = ctx.label || '';
+              const val = (ctx.parsed ?? 0);
+              return ` ${lbl}: ${val}`;
+            }
+          }
+        },
+        dashPie3D:{ depth: 10 },
+        dashPieValueLabels:{ minAngle: 0.15 }
+      }
+    },
+    plugins:[__DASH_PIE3D_PLUGIN, __DASH_PIE_VALUE_LABELS_PLUGIN]
+  });
+
+  if(!dashChartEvento){
+    const el = document.getElementById("dashChartEvento");
+    if(el) dashChartEvento = mkPie3D(el, "Emergencias");
+  }
+  if(!dashChartRegion){
+    const el = document.getElementById("dashChartRegion");
+    if(el) dashChartRegion = mkPie3D(el, "Emergencias");
+  }
   if(!dashChartActivasDepHoy){
       const el = document.getElementById("dashChartActivasDepHoy");
       if(el){
@@ -4941,25 +5112,52 @@ function __dashRenderActivasHoy(){
 }
 
 function __dashRenderHistogramas(data){
-  // Por evento
+  // Totales (cuadritos)
+  const tot = Array.isArray(data) ? data.length : 0;
+  const tEv = document.getElementById("dashTotalEvento");
+  if(tEv) tEv.textContent = String(tot);
+  const tReg = document.getElementById("dashTotalRegion");
+  if(tReg) tReg.textContent = String(tot);
+
+  // Por evento (pie)
   const byEvento = {};
-  data.forEach(e=>{
-    const k = e.peligro || "Sin dato";
+  (data || []).forEach(e=>{
+    const k = e?.peligro ? String(e.peligro) : "Sin dato";
     byEvento[k] = (byEvento[k]||0) + 1;
   });
-  dashChartEvento.data.labels = Object.keys(byEvento);
-  dashChartEvento.data.datasets[0].data = Object.values(byEvento);
-  dashChartEvento.update();
+  const evEntries = Object.entries(byEvento).sort((a,b)=> (b[1]||0) - (a[1]||0));
+  const evLabels = evEntries.map(x=>x[0]);
+  const evValues = evEntries.map(x=>x[1]);
 
-  // Por región
+  if(dashChartEvento){
+    dashChartEvento.data.labels = evLabels;
+    if(!dashChartEvento.data.datasets || !dashChartEvento.data.datasets[0]){
+      dashChartEvento.data.datasets = [{label:"Emergencias", data:[], backgroundColor:[]}];
+    }
+    dashChartEvento.data.datasets[0].data = evValues;
+    dashChartEvento.data.datasets[0].backgroundColor = __dashAutoColors(evLabels.length);
+    dashChartEvento.update();
+  }
+
+  // Por región (Departamento) (pie)
   const byDep = {};
-  data.forEach(e=>{
-    const k = e.departamento || "Sin dato";
+  (data || []).forEach(e=>{
+    const k = e?.departamento ? String(e.departamento) : "Sin dato";
     byDep[k] = (byDep[k]||0) + 1;
   });
-  dashChartRegion.data.labels = Object.keys(byDep);
-  dashChartRegion.data.datasets[0].data = Object.values(byDep);
-  dashChartRegion.update();
+  const depEntries = Object.entries(byDep).sort((a,b)=> (b[1]||0) - (a[1]||0));
+  const depLabels = depEntries.map(x=>x[0]);
+  const depValues = depEntries.map(x=>x[1]);
+
+  if(dashChartRegion){
+    dashChartRegion.data.labels = depLabels;
+    if(!dashChartRegion.data.datasets || !dashChartRegion.data.datasets[0]){
+      dashChartRegion.data.datasets = [{label:"Emergencias", data:[], backgroundColor:[]}];
+    }
+    dashChartRegion.data.datasets[0].data = depValues;
+    dashChartRegion.data.datasets[0].backgroundColor = __dashAutoColors(depLabels.length);
+    dashChartRegion.update();
+  }
 }
 
 function __dashGetImpactoGroupBy(){
