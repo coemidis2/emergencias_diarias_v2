@@ -42,21 +42,27 @@ body { background: #f5f5f5; }
 .badge-orange{ background:#fd7e14 !important; color:#fff !important; }
 .cons-hide{ display:none !important; }
 
-/* ======= Dashboard mini total (histogramas) ======= */
+/* ======= DASH: Total mini en histogramas ======= */
 .dash-mini-total{
   display:inline-flex;
   align-items:center;
-  justify-content:center;
-  min-width:42px;
-  height:28px;
-  padding:0 10px;
+  gap:6px;
+  padding:2px 8px;
+  border:1px solid #1f4e79;
   border-radius:6px;
-  border:1px solid rgba(31,78,121,.35);
-  background:#FEE599;
-  color:#1F4E79;
-  font-weight:700;
-  font-size:13px;
+  background:#fff;
   line-height:1;
+}
+.dash-mini-total .t{
+  font-size:10px;
+  letter-spacing:.6px;
+  font-weight:700;
+  color:#1f4e79;
+}
+.dash-mini-total .n{
+  font-size:14px;
+  font-weight:800;
+  color:#1f4e79;
 }
 
 
@@ -620,16 +626,16 @@ body { background: #f5f5f5; }
         <div class="tab-content">
           <div class="tab-pane fade show active" id="dashHistEvento" role="tabpanel">
             <div class="d-flex align-items-center justify-content-between mb-1">
-              <h5 class="text-primary mb-0">Distribución por tipo de evento</h5>
-              <span class="dash-mini-total" title="Total de emergencias" id="dashTotalEmergenciasEvento">0</span>
-            </div>
+  <h5 class="text-primary mb-0">Distribución por tipo de evento</h5>
+  <span class="dash-mini-total" title="Total de emergencias"><span class="t">TOTAL</span><span class="n" id="dashTotalEmergenciasEvento">0</span></span>
+</div>
             <canvas id="dashChartEvento"></canvas>
           </div>
           <div class="tab-pane fade" id="dashHistRegion" role="tabpanel">
             <div class="d-flex align-items-center justify-content-between mb-1">
-              <h5 class="text-primary mb-0">Distribución por región (Departamento)</h5>
-              <span class="dash-mini-total" title="Total de emergencias" id="dashTotalEmergenciasRegion">0</span>
-            </div>
+  <h5 class="text-primary mb-0">Distribución por región (Departamento)</h5>
+  <span class="dash-mini-total" title="Total de emergencias"><span class="t">TOTAL</span><span class="n" id="dashTotalEmergenciasRegion">0</span></span>
+</div>
             <canvas id="dashChartRegion"></canvas>
           </div>
         </div>
@@ -4964,15 +4970,6 @@ function __dashRenderActivasHoy(){
 }
 
 function __dashRenderHistogramas(data){
-  // Total (para los cuadritos)
-  const total = Array.isArray(data) ? data.length : 0;
-  document.getElementById("dashTotalEmergenciasEvento")?.textContent = String(total);
-  document.getElementById("dashTotalEmergenciasRegion")?.textContent = String(total);
-
-  // Evitar errores si Chart.js no llegó a inicializar
-  if(!dashChartEvento || !dashChartRegion) return;
-  data = Array.isArray(data) ? data : [];
-
   // Por evento
   const byEvento = {};
   data.forEach(e=>{
@@ -4992,6 +4989,14 @@ function __dashRenderHistogramas(data){
   dashChartRegion.data.labels = Object.keys(byDep);
   dashChartRegion.data.datasets[0].data = Object.values(byDep);
   dashChartRegion.update();
+
+
+  // Total de emergencias (cuadrito)
+  const total = Array.isArray(data) ? data.length : 0;
+  const elTotEv = document.getElementById("dashTotalEmergenciasEvento");
+  if(elTotEv) elTotEv.textContent = String(total);
+  const elTotReg = document.getElementById("dashTotalEmergenciasRegion");
+  if(elTotReg) elTotReg.textContent = String(total);
 }
 
 function __dashGetImpactoGroupBy(){
@@ -5481,15 +5486,36 @@ async function __calcPending(){
   }
 }
 
+// ---- AUTH local fallback (si el Worker falla) ----
+async function __loginLocalFallback(rawEmail, password){
+  try{
+    const u = __getUserByEmail(rawEmail);
+    if(!u) return { ok:false, msg:"Usuario o password incorrecto." };
+    if(!u.active) return { ok:false, msg:"Usuario inactivo." };
+    const h = await __sha256(String(password || ""));
+    if(h !== u.passwordHash) return { ok:false, msg:"Usuario o password incorrecto." };
+
+    currentUser = u;
+    __sessionSave({ user: u, token: null, at: __nowIso(), mode: "local" });
+    try{ __audit("LOGIN_LOCAL", "session", u.email, { local:true }); }catch(e){}
+    return { ok:true, user: u, token: null, local:true };
+  }catch(e){
+    return { ok:false, msg:"No se pudo validar usuario local." };
+  }
+}
+
 // ---- AUTH: override ----
 async function __login(email, password){
+  const normEmail = String(email || "").trim().toLowerCase();
+  const rawEmail  = String(email || "").trim();
+
   if(!__isApiConfigured()){
+    // Sin servidor: permite autenticación local (localStorage)
+    const lf = await __loginLocalFallback(rawEmail, password);
+    if(lf && lf.ok) return lf;
     const b = (__API_CFG && __API_CFG.baseUrl) ? String(__API_CFG.baseUrl) : "";
     return { ok:false, msg:"Servidor no configurado. Revisa __API_CFG.baseUrl (patch_cf_sync.js). Base actual: " + b };
   }
-
-  const normEmail = String(email || "").trim().toLowerCase();
-  const rawEmail  = String(email || "").trim();
 
   // OFFLINE
   if(!navigator.onLine){
@@ -5504,6 +5530,8 @@ async function __login(email, password){
         return { ok:true, user: currentUser, token: null, offline:true, healthMode:true, healthDiag: (sess.mode === "health_diag") };
       }
     }
+    const lf = await __loginLocalFallback(rawEmail, password);
+    if(lf && lf.ok) return lf;
     return { ok:false, msg:"Sin conexión. Conéctate a internet para iniciar sesión." };
   }
 
@@ -5566,6 +5594,8 @@ async function __login(email, password){
     const data = out.data;
 
     if(!res){
+      const lf = await __loginLocalFallback(rawEmail, password);
+      if(lf && lf.ok) return lf;
       return { ok:false, msg:"No se pudo conectar al Worker (CORS/red). Revisa /health primero." };
     }
 
@@ -5573,6 +5603,8 @@ async function __login(email, password){
       const err = data && data.error ? String(data.error) : "";
       if(err === "invalid_credentials") return { ok:false, msg:"Usuario o password incorrecto." };
       if(res.status === 404 || err === "not_found"){
+        const lf = await __loginLocalFallback(rawEmail, password);
+        if(lf && lf.ok) return lf;
         return { ok:false, msg:"El Worker no expone /auth/login. (Este usuario requiere AUTH)." };
       }
       return { ok:false, msg:"No se pudo iniciar sesión (" + (err || ("HTTP " + res.status)) + ")." };
@@ -5599,6 +5631,7 @@ async function __login(email, password){
 }
 
 async function __bootstrapAuth(){
+  try{ await __ensureDefaultAdmin(); }catch(e){}
   __ensureSyncControls();
   __setNetBadge();
   try{ __segInit(); }catch(e){}
