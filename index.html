@@ -250,8 +250,11 @@ body { background: #f5f5f5; }
               <option value="Incendios Urbanos">Incendios Urbanos</option>
               <option value="Incendios Forestales">Incendios Forestales</option>
               <option value="Tsunamis">Tsunamis</option>
+              <option value="Tormenta eléctrica">Tormenta eléctrica</option>
               <option value="Vulcanismo">Vulcanismo</option>
               <option value="Deslizamiento">Deslizamiento</option>
+              <option value="Deflagración">Deflagración</option>
+              <option value="Derrumbe">Derrumbe</option>
               <option value="Reptación">Reptación</option>
               <option value="Oleajes">Oleajes</option>
               <option value="Sequía">Sequía</option>
@@ -377,8 +380,11 @@ body { background: #f5f5f5; }
             <option>Incendios Urbanos</option>
             <option>Incendios Forestales</option>
 	    <option>Tsunamis</option>
+	    <option>Tormenta eléctrica</option>
 	    <option>Vulcanismo</option>
 	    <option>Deslizamiento</option>
+	    <option>Deflagración</option>
+	    <option>Derrumbe</option>
 	    <option>Reptación</option>              
 	    <option>Oleajes</option>
 	    <option>Sequía</option>
@@ -4607,6 +4613,13 @@ document.getElementById("btnWordRC").onclick = () => {
   em.numeroGlobal = rc.numeroGlobal || rc.numeroReporteRC;
   em.accionesRC = rc.acciones;
   em.daniosMIDIS = rc.daniosMIDIS;
+
+  // Fecha de elaboración del Word RC = momento actual (hora local del equipo)
+  try{
+    const __now = new Date();
+    const __nowLocal = new Date(__now.getTime() - (__now.getTimezoneOffset()*60000)).toISOString().slice(0,16);
+    em.fechaHoraRC = __nowLocal;
+  }catch(e){}
 
   // --- Word (seguro): usa Worker si está configurado y hay internet; si no, intenta servicio local ---
   const __apiOkRC = (typeof __isApiConfigured === "function") ? __isApiConfigured() : false;
