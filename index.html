@@ -2613,6 +2613,16 @@ document.addEventListener("DOMContentLoaded", ()=>{
     __aprobar({kind:"rp", codigo});
     __saveEmergencias();
     cargarTablaEmergencias();
+
+    // Al aprobar, dejar el RP en solo lectura (solo Retornar activo)
+    try{
+      const apr = document.getElementById("aprobadoRP");
+      if(apr) apr.value = em.rpAprobadoPor || __getCurrentUserName();
+      const btnApr = document.getElementById("btnAprobarRPAdmin");
+      if(btnApr) btnApr.disabled = true;
+      __lockRPFormAdminApproved?.();
+    }catch(e){}
+
     alert("RP aprobado.");
   });
 
@@ -3172,6 +3182,28 @@ function __lockRPForm(locked){
       if(keep.has(b.id)) return;
       b.disabled = !!locked;
     });
+  }catch(e){}
+}
+
+// Admin: cuando el RP ya fue aprobado, dejar todo el RP en solo lectura
+// (solo se mantiene activo el botón "Retornar").
+function __lockRPFormAdminApproved(){
+  try{
+    document.querySelectorAll("#rpTab input, #rpTab textarea, #rpTab select, #rpTab button").forEach(el=>{
+      if(!el) return;
+      if(el.id === "btnRetornarRP"){
+        el.disabled = false;
+        return;
+      }
+      // Para inputs, dejar visible pero no editable
+      el.disabled = true;
+    });
+
+    // Asegurar readonly en campos de trazabilidad
+    const elab = document.getElementById("elaboradoRP");
+    if(elab) elab.readOnly = true;
+    const apr = document.getElementById("aprobadoRP");
+    if(apr) apr.readOnly = true;
   }catch(e){}
 }
 
@@ -4060,11 +4092,15 @@ function abrirRP(obj){
   const elab = document.getElementById("elaboradoRP");
   if(elab){
     elab.value = obj.elaboradoPor || "";
+    // si venimos de un RP aprobado (bloqueado), asegurar que se restablezca el control
+    elab.disabled = false;
   }
   const apr = document.getElementById("aprobadoRP");
   if(apr){
     // mostrar aprobador real si existe
     apr.value = obj.rpAprobadoPor || obj.aprobadoPor || "";
+    // si venimos de un RP aprobado (bloqueado), asegurar que se restablezca el control
+    apr.disabled = false;
   }
 
   // Cargar daños MIDIS al formulario RP
@@ -4098,6 +4134,13 @@ try{
   if(btnApr){
     btnApr.disabled = !(__isAdmin() && obj.rpAprobEstado === "Pendiente");
   }
+
+  // Admin: si el RP ya está aprobado, bloquear todos los campos (solo Retornar activo)
+  try{
+    if(__isAdmin && __isAdmin() && obj.rpAprobEstado === "Aprobado"){
+      __lockRPFormAdminApproved?.();
+    }
+  }catch(e){}
 
   // Ir a pestaña RP
   const tabLink = document.querySelector('a[href="#rpTab"]');
@@ -4195,6 +4238,26 @@ try{
     }
   }catch(e){}
 
+  // En RC, mostrar también datos clave del RP
+  let accionesPrevHtml = "<span class=\"text-muted\">—</span>";
+  try{
+    const acc = Array.isArray(obj.accionesPreliminar) ? obj.accionesPreliminar : [];
+    if(acc.length>0){
+      accionesPrevHtml = "<ul class=\"mb-0 small\">" + acc.map(a=>{
+        const f = (a && a.fecha) ? a.fecha : "";
+        const d = (a && a.descripcion) ? a.descripcion : "";
+        return `<li>[${f}] ${d}</li>`;
+      }).join("") + "</ul>";
+    }
+  }catch(e){}
+
+  const hechosHtml = (String(obj.hechos||"").trim())
+    ? `<div class="p-2 bg-light border rounded small">${obj.hechos}</div>`
+    : "<span class=\"text-muted\">—</span>";
+  const daniosHtml = (String(obj.daniosOtros||"").trim())
+    ? `<div class="p-2 bg-light border rounded small">${obj.daniosOtros}</div>`
+    : "<span class=\"text-muted\">—</span>";
+
   document.getElementById("datosBasicosRC").innerHTML = `
 <b>Código:</b> ${obj.codigo}<br>
 <b>N° Global:</b> ${numeroGlobalMostrar}<br>
@@ -4202,6 +4265,10 @@ try{
 <b>Peligro:</b> ${obj.peligro}<br>
 <b>Ubicación:</b> ${obj.departamento} / ${obj.provincia} / ${obj.distrito}<br>
 <b>Fecha del peligro:</b> ${obj.fechaPeligro}<br>
+<b>Fecha de elaboración:</b> ${obj.fechaHora || ""}<br>
+<div class="mt-2"><b>Hechos:</b> ${hechosHtml}</div>
+<div class="mt-2"><b>Daños de otros sectores:</b> ${daniosHtml}</div>
+<div class="mt-2"><b>Acciones del Sector Desarrollo e Inclusión Social (Preliminar):</b> ${accionesPrevHtml}</div>
 `;
   cargarTablaDaniosRC(obj);
   cargarAccionesRC();
@@ -4311,6 +4378,26 @@ function __guardarRCCore(opts={}){
   cargarTablaEmergencias();
 
   // Actualizar cabecera RC con el N° Global del RC que acabo de crear
+  // (incluye información clave del RP)
+  let accionesPrevHtml = "<span class=\"text-muted\">—</span>";
+  try{
+    const acc = Array.isArray(em.accionesPreliminar) ? em.accionesPreliminar : [];
+    if(acc.length>0){
+      accionesPrevHtml = "<ul class=\"mb-0 small\">" + acc.map(a=>{
+        const f = (a && a.fecha) ? a.fecha : "";
+        const d = (a && a.descripcion) ? a.descripcion : "";
+        return `<li>[${f}] ${d}</li>`;
+      }).join("") + "</ul>";
+    }
+  }catch(e){}
+
+  const hechosHtml = (String(em.hechos||"").trim())
+    ? `<div class="p-2 bg-light border rounded small">${em.hechos}</div>`
+    : "<span class=\"text-muted\">—</span>";
+  const daniosHtml = (String(em.daniosOtros||"").trim())
+    ? `<div class="p-2 bg-light border rounded small">${em.daniosOtros}</div>`
+    : "<span class=\"text-muted\">—</span>";
+
   document.getElementById("datosBasicosRC").innerHTML = `
 <b>Código:</b> ${em.codigo}<br>
 <b>N° Global:</b> ${numRC}<br>
@@ -4318,6 +4405,10 @@ function __guardarRCCore(opts={}){
 <b>Peligro:</b> ${em.peligro}<br>
 <b>Ubicación:</b> ${em.departamento} / ${em.provincia} / ${em.distrito}<br>
 <b>Fecha del peligro:</b> ${em.fechaPeligro}<br>
+<b>Fecha de elaboración:</b> ${em.fechaHora || ""}<br>
+<div class="mt-2"><b>Hechos:</b> ${hechosHtml}</div>
+<div class="mt-2"><b>Daños de otros sectores:</b> ${daniosHtml}</div>
+<div class="mt-2"><b>Acciones del Sector Desarrollo e Inclusión Social (Preliminar):</b> ${accionesPrevHtml}</div>
 `;
 
   if(!suppress) alert("RC guardado con N° de Reporte " + numRC + ".");
