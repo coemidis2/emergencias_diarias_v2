@@ -3900,14 +3900,68 @@ function __listInitSort(){
 
 
 // === Helpers (Listado): fecha y usuarios registradores ===
-function __listNowLocalDT(){
-  // YYYY-MM-DDTHH:mm en hora local del equipo
+
+// === Zona horaria Perú (America/Lima) ===
+const __TZ_PERU = "America/Lima";
+
+function __peruParts(dateObj){
+  // Devuelve {year, month, day, hour, minute, second} en hora Perú
   try{
-    const d = new Date();
-    return new Date(d.getTime() - (d.getTimezoneOffset()*60000)).toISOString().slice(0,16);
+    const fmt = new Intl.DateTimeFormat("en-CA", {
+      timeZone: __TZ_PERU,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false
+    });
+    const parts = fmt.formatToParts(dateObj || new Date());
+    const o = {};
+    parts.forEach(p=>{ if(p.type !== "literal") o[p.type] = p.value; });
+    return o;
   }catch(e){
-    return "";
+    // Fallback: hora local del equipo
+    const d = (dateObj instanceof Date) ? dateObj : new Date();
+    const pad2 = (n)=>String(n).padStart(2,"0");
+    return {
+      year: String(d.getFullYear()),
+      month: pad2(d.getMonth()+1),
+      day: pad2(d.getDate()),
+      hour: pad2(d.getHours()),
+      minute: pad2(d.getMinutes()),
+      second: pad2(d.getSeconds())
+    };
   }
+}
+
+function __peruYMD(dateObj){
+  const p = __peruParts(dateObj || new Date());
+  return `${p.year}-${p.month}-${p.day}`;
+}
+
+function __peruNowDTLocal(){
+  // YYYY-MM-DDTHH:mm (hora Perú) para inputs datetime-local
+  const p = __peruParts(new Date());
+  return `${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}`;
+}
+
+function __ymdToDate(ymd){
+  // Crea Date local (00:00) desde "YYYY-MM-DD" sin el bug UTC de new Date("YYYY-MM-DD")
+  try{
+    if(!ymd) return null;
+    const m = String(ymd).trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if(!m) return null;
+    const yy = Number(m[1]), mm = Number(m[2]) - 1, dd = Number(m[3]);
+    const d = new Date(yy, mm, dd);
+    if(isNaN(d.getTime())) return null;
+    return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  }catch(e){ return null; }
+}
+function __listNowLocalDT(){
+  // YYYY-MM-DDTHH:mm en hora Perú (America/Lima)
+  return __peruNowDTLocal();
 }
 
 function __listDateOnly(v){
@@ -4599,7 +4653,7 @@ function __guardarRCCore(opts={}){
     numeroReporteRC: numRC,
     numeroGlobal: numRC,
     fechaHoraRC: __listNowLocalDT(),
-    fechaRegistro: __listDateOnly(__listNowLocalDT()) || new Date().toISOString().slice(0, 10),
+    fechaRegistro: __listDateOnly(__listNowLocalDT()) || __peruYMD(),
     acciones: [...accionesRCTemp],
     daniosMIDIS: JSON.parse(JSON.stringify(em.daniosMIDIS)),
     // Aprobación RC
@@ -4947,9 +5001,24 @@ function __dashParseDateOnly(v){
   if(!v) return null;
   v = String(v).trim();
 
-  // ISO / datetime-local (YYYY-MM-DD o YYYY-MM-DDTHH:mm)
+  // Caso input type="date": "YYYY-MM-DD" (evita el bug UTC de new Date("YYYY-MM-DD"))
+  const mYMD = v.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if(mYMD){
+    return __ymdToDate(`${mYMD[1]}-${mYMD[2]}-${mYMD[3]}`);
+  }
+
+  // datetime-local: "YYYY-MM-DDTHH:mm" o "YYYY-MM-DD HH:mm" (tomamos solo la fecha)
+  const mDT = v.match(/^(\d{4})-(\d{2})-(\d{2})[T\s](\d{2}):(\d{2})/);
+  if(mDT){
+    return __ymdToDate(`${mDT[1]}-${mDT[2]}-${mDT[3]}`);
+  }
+
+  // ISO con zona (ej: ...Z o +00:00): tomamos la fecha en hora Perú
   const iso = new Date(v);
-  if(!isNaN(iso.getTime())) return new Date(iso.getFullYear(), iso.getMonth(), iso.getDate());
+  if(!isNaN(iso.getTime())){
+    const ymdPe = __peruYMD(iso);
+    return __ymdToDate(ymdPe);
+  }
 
   // dd/mm/yyyy o dd-mm-yyyy (con o sin hora)
   const m = v.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
@@ -4970,7 +5039,7 @@ function __dashGetStatus(e){
   if(e && e.cerrada) return {name:"Cerrada", color:"#198754"};
 
   // Activo = registrado hoy (fechaHora)
-  const hoy = new Date(); const hoyD = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate());
+  const hoyD = __ymdToDate(__peruYMD());
   const fr = __dashParseDateOnly(e?.fechaHora) || __dashParseDateOnly(e?.fechaPeligro);
   if(__dashIsSameDay(fr, hoyD)) return {name:"Activo", color:"#dc3545"};
 
@@ -5123,8 +5192,7 @@ function __dashRenderMap(data){
 }
 
 function __dashGetActivasHoyList(){
-  const hoy = new Date();
-  const hoyD = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate());
+  const hoyD = __ymdToDate(__peruYMD());
   const out = [];
 
   // Activas del día = NO cerradas y registradas hoy (fechaHora). Si no hay fechaHora, usa fechaPeligro.
@@ -5182,8 +5250,7 @@ function __dashExportActivasHoyWord(){
     return;
   }
 
-  const hoy = new Date();
-  const ymd = hoy.toISOString().slice(0,10);
+  const ymd = __peruYMD();
   const titulo = `EMERGENCIAS ACTIVAS DEL DIA - ${__dashFmtDateDDMMYYYY(ymd)}`;
 
   let rows = "";
@@ -5540,7 +5607,7 @@ document.addEventListener("DOMContentLoaded", ()=>{
 
 
   if(btnHoy) btnHoy.addEventListener("click", ()=>{
-    const hoy = new Date().toISOString().slice(0,10);
+    const hoy = __peruYMD();
     document.getElementById("dashDesde").value = hoy;
     document.getElementById("dashHasta").value = hoy;
     dashboardRefresh();
