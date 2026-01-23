@@ -276,6 +276,29 @@ body { background: #f5f5f5; }
           </div>
         </div>
 
+
+        <!-- Filtros adicionales: Usuario registrador / Fecha elaboración / Tipo (RP o RC) -->
+        <div class="row g-2 mb-2">
+          <div class="col-md-3">
+            <label class="form-label">Usuario registrador</label>
+            <select id="filtroRegistrador" class="form-control">
+              <option value="">(Todos)</option>
+            </select>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Fecha de elaboración</label>
+            <input type="date" id="filtroFechaElaboracion" class="form-control">
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Tipo de reporte</label>
+            <select id="filtroTipoReporte" class="form-control">
+              <option value="">(Todos)</option>
+              <option value="RP">RP</option>
+              <option value="RC">RC</option>
+            </select>
+          </div>
+        </div>
+
         <!-- Leyenda de colores -->
         <div class="mb-3" style="font-family: Calibri, Arial, sans-serif; font-size:9pt;">
           <strong>Leyenda:</strong>
@@ -2894,7 +2917,10 @@ document.addEventListener("DOMContentLoaded", function () {
     "filtroEstado",
     "filtroPeligro",
     "filtroDepartamento",
-    "filtroProvincia"
+    "filtroProvincia",
+    "filtroRegistrador",
+    "filtroFechaElaboracion",
+    "filtroTipoReporte"
   ];
   filtros.forEach(id => {
     const el = document.getElementById(id);
@@ -3872,10 +3898,83 @@ function __listInitSort(){
 }
 
 
+
+// === Helpers (Listado): fecha y usuarios registradores ===
+function __listNowLocalDT(){
+  // YYYY-MM-DDTHH:mm en hora local del equipo
+  try{
+    const d = new Date();
+    return new Date(d.getTime() - (d.getTimezoneOffset()*60000)).toISOString().slice(0,16);
+  }catch(e){
+    return "";
+  }
+}
+
+function __listDateOnly(v){
+  if(!v) return "";
+  const s = String(v).trim();
+  // YYYY-MM-DD o YYYY-MM-DDTHH:mm o ISO
+  const m = s.match(/^(\d{4}-\d{2}-\d{2})/);
+  if(m) return m[1];
+
+  // dd/mm/yyyy o dd-mm-yyyy
+  const m2 = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+  if(m2){
+    const dd = String(m2[1]).padStart(2,"0");
+    const mm = String(m2[2]).padStart(2,"0");
+    const yy = m2[3];
+    return `${yy}-${mm}-${dd}`;
+  }
+
+  // Fallback
+  try{
+    const d = new Date(s);
+    if(!isNaN(d.getTime())){
+      const yy = d.getFullYear();
+      const mm = String(d.getMonth()+1).padStart(2,"0");
+      const dd = String(d.getDate()).padStart(2,"0");
+      return `${yy}-${mm}-${dd}`;
+    }
+  }catch(e){}
+  return "";
+}
+
+function __listRefreshRegistradorOptions(){
+  const sel = document.getElementById("filtroRegistrador");
+  if(!sel) return;
+
+  const prev = sel.value || "";
+  const namesSet = new Set();
+
+  try{
+    (Array.isArray(emergencias) ? emergencias : []).forEach(e=>{
+      if(e && e.elaboradoPor) namesSet.add(String(e.elaboradoPor).trim());
+      const rcs = (typeof __getRCList === "function") ? __getRCList(e) : [];
+      if(Array.isArray(rcs)){
+        rcs.forEach(rc=>{
+          if(rc && rc.elaboradoPor) namesSet.add(String(rc.elaboradoPor).trim());
+        });
+      }
+    });
+  }catch(e){}
+
+  const names = [...namesSet].filter(n=>n).sort((a,b)=> String(a).localeCompare(String(b), "es", { sensitivity:"base" }));
+
+  // Re-armar opciones sin perder selección (si existe)
+  while(sel.options.length) sel.remove(0);
+  sel.add(new Option("(Todos)", ""));
+  names.forEach(n=> sel.add(new Option(n, n)));
+
+  if(prev && names.includes(prev)) sel.value = prev;
+}
+
 // ===================== TABLA EMERGENCIAS =====================
 function cargarTablaEmergencias() {
   let body = document.querySelector("#tablaEmergencias tbody");
   body.innerHTML = "";
+
+  // Refrescar lista de usuarios (sin perder selección)
+  __listRefreshRegistradorOptions();
 
   // Leer filtros
   const fCodigo = normalizarTexto(document.getElementById("filtroCodigo")?.value || "");
@@ -3884,6 +3983,10 @@ function cargarTablaEmergencias() {
   const fPeligro = document.getElementById("filtroPeligro")?.value || "";
   const fDep = normalizarTexto(document.getElementById("filtroDepartamento")?.value || "");
   const fProv = normalizarTexto(document.getElementById("filtroProvincia")?.value || "");
+
+  const fRegistrador = normalizarTexto(document.getElementById("filtroRegistrador")?.value || "");
+  const fFechaElab = document.getElementById("filtroFechaElaboracion")?.value || "";
+  const fTipoRep = document.getElementById("filtroTipoReporte")?.value || "";
 
   // 1) Filtrar
   const filtered = [];
@@ -3899,6 +4002,36 @@ function cargarTablaEmergencias() {
     if (fDep && !normalizarTexto(e.departamento).includes(fDep)) return;
     if (fProv && !normalizarTexto(e.provincia).includes(fProv)) return;
 
+    // Filtro Tipo (RP/RC): RP = solo RP (sin RC), RC = con RC
+    const rcList = (typeof __getRCList === "function") ? __getRCList(e) : [];
+    const hasRC = Array.isArray(rcList) && rcList.length > 0;
+    if (fTipoRep === "RP" && hasRC) return;
+    if (fTipoRep === "RC" && !hasRC) return;
+
+    // Filtro usuario registrador (nombre visible)
+    if (fRegistrador) {
+      let nameToCheck = "";
+      if (fTipoRep === "RC") {
+        const last = hasRC ? rcList[rcList.length - 1] : null;
+        nameToCheck = (last && last.elaboradoPor) ? String(last.elaboradoPor) : "";
+      } else {
+        nameToCheck = (e && e.elaboradoPor) ? String(e.elaboradoPor) : "";
+      }
+      if (!normalizarTexto(nameToCheck).includes(fRegistrador)) return;
+    }
+
+    // Filtro fecha de elaboración (día): aplica al tipo seleccionado (por defecto RP)
+    if (fFechaElab) {
+      let dateToCheck = "";
+      if (fTipoRep === "RC") {
+        const last = hasRC ? rcList[rcList.length - 1] : null;
+        dateToCheck = __listDateOnly((last && (last.fechaHoraRC || last.fechaRegistro || last.createdAt || last.updatedAt)) ? (last.fechaHoraRC || last.fechaRegistro || last.createdAt || last.updatedAt) : "");
+      } else {
+        dateToCheck = __listDateOnly((e && (e.fechaHora || e.createdAt || e.updatedAt)) ? (e.fechaHora || e.createdAt || e.updatedAt) : "");
+      }
+      if (!dateToCheck || dateToCheck !== fFechaElab) return;
+    }
+
     filtered.push(e);
   });
 
@@ -3907,7 +4040,7 @@ function cargarTablaEmergencias() {
 
   // 2.1) Paginación: reset de página si cambian los filtros
   try{
-    const filterKey = JSON.stringify({ fCodigo, fFechaPeligro, fEstado, fPeligro, fDep, fProv });
+    const filterKey = JSON.stringify({ fCodigo, fFechaPeligro, fEstado, fPeligro, fDep, fProv, fRegistrador, fFechaElab, fTipoRep });
     if(__LIST_PAGER.lastFilterKey !== filterKey){
       __LIST_PAGER.page = 1;
       __LIST_PAGER.lastFilterKey = filterKey;
@@ -4465,7 +4598,8 @@ function __guardarRCCore(opts={}){
   em.rcReportes.push({
     numeroReporteRC: numRC,
     numeroGlobal: numRC,
-    fechaRegistro: new Date().toISOString().slice(0, 10),
+    fechaHoraRC: __listNowLocalDT(),
+    fechaRegistro: __listDateOnly(__listNowLocalDT()) || new Date().toISOString().slice(0, 10),
     acciones: [...accionesRCTemp],
     daniosMIDIS: JSON.parse(JSON.stringify(em.daniosMIDIS)),
     // Aprobación RC
