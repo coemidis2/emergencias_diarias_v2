@@ -216,21 +216,6 @@ body { background: #f5f5f5; }
       <!-- Botón Nuevo (migrado desde Registro Preliminar) -->
       <button id="btnNuevoRP" class="btn btn-sm btn-secondary mb-2 ms-2" type="button">Nuevo</button>
 
-      <!-- Búsquedas rápidas (Listado de Emergencias) -->
-      <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
-        <button id="btnBuscarUsuario" class="btn btn-sm btn-outline-dark" type="button">Buscar usuario</button>
-        <button id="btnBuscarFechaElab" class="btn btn-sm btn-outline-dark" type="button">Buscar fecha elaboración</button>
-        <button id="btnSoloRP" class="btn btn-sm btn-outline-primary" type="button" title="Visualizar emergencias que solo tienen RP (sin RC)">Solo RP</button>
-        <button id="btnSoloRC" class="btn btn-sm btn-outline-primary" type="button" title="Visualizar emergencias que tienen RC">Solo RC</button>
-        <span class="small text-muted" id="listFiltrosExtraResumen"></span>
-
-        <!-- Valores de filtros extra (interno) -->
-        <input type="hidden" id="listFiltroUsuario" value="">
-        <input type="hidden" id="listFiltroElabDesde" value="">
-        <input type="hidden" id="listFiltroElabHasta" value="">
-        <input type="hidden" id="listFiltroTipoReporte" value="">
-      </div>
-
       <!-- Bloque desplegable de búsqueda -->
       <div class="collapse show" id="filtrosBusqueda">
         <!-- Filtros de búsqueda -->
@@ -2948,85 +2933,6 @@ document.addEventListener("DOMContentLoaded", function () {
       });
     }
   }catch(e){}
-
-	  // Búsquedas rápidas (Listado de Emergencias)
-	  try{
-	    const btnUser = document.getElementById("btnBuscarUsuario");
-	    const btnFecha = document.getElementById("btnBuscarFechaElab");
-	    const btnSoloRP = document.getElementById("btnSoloRP");
-	    const btnSoloRC = document.getElementById("btnSoloRC");
-
-	    const inpUser = document.getElementById("listFiltroUsuario");
-	    const inpD1 = document.getElementById("listFiltroElabDesde");
-	    const inpD2 = document.getElementById("listFiltroElabHasta");
-	    const inpTipo = document.getElementById("listFiltroTipoReporte");
-
-	    if(btnUser && inpUser){
-	      btnUser.addEventListener("click", ()=>{
-	        const v = prompt("Buscar por usuario (nombre visible):", inpUser.value || "");
-	        if(v === null) return;
-	        inpUser.value = String(v || "").trim();
-	        __LIST_PAGER.page = 1;
-	        __listUpdateExtraFiltersUI();
-	        cargarTablaEmergencias();
-	      });
-	    }
-
-	    if(btnFecha && inpD1 && inpD2){
-	      btnFecha.addEventListener("click", ()=>{
-	        const desde = prompt("Fecha inicial de creación (RP/RC) (YYYY-MM-DD). Vacío = sin inicio:", inpD1.value || "");
-	        if(desde === null) return;
-	        const hasta = prompt("Fecha final de creación (RP/RC) (YYYY-MM-DD). Vacío = sin fin:", inpD2.value || "");
-	        if(hasta === null) return;
-
-	        const d1 = String(desde || "").trim();
-	        const d2 = String(hasta || "").trim();
-
-	        if(d1 && !__listParseDateYYYYMMDD(d1)){
-	          alert("Fecha inicial inválida. Use YYYY-MM-DD.");
-	          return;
-	        }
-	        if(d2 && !__listParseDateYYYYMMDD(d2)){
-	          alert("Fecha final inválida. Use YYYY-MM-DD.");
-	          return;
-	        }
-	        if(d1 && d2){
-	          const a = __listParseDateYYYYMMDD(d1);
-	          const b = __listParseDateYYYYMMDD(d2);
-	          if(a && b && a.getTime() > b.getTime()){
-	            alert("La fecha inicial no puede ser mayor que la final.");
-	            return;
-	          }
-	        }
-
-	        inpD1.value = d1;
-	        inpD2.value = d2;
-	        __LIST_PAGER.page = 1;
-	        __listUpdateExtraFiltersUI();
-	        cargarTablaEmergencias();
-	      });
-	    }
-
-	    if(btnSoloRP && inpTipo){
-	      btnSoloRP.addEventListener("click", ()=>{
-	        inpTipo.value = (inpTipo.value === "RP") ? "" : "RP";
-	        __LIST_PAGER.page = 1;
-	        __listUpdateExtraFiltersUI();
-	        cargarTablaEmergencias();
-	      });
-	    }
-
-	    if(btnSoloRC && inpTipo){
-	      btnSoloRC.addEventListener("click", ()=>{
-	        inpTipo.value = (inpTipo.value === "RC") ? "" : "RC";
-	        __LIST_PAGER.page = 1;
-	        __listUpdateExtraFiltersUI();
-	        cargarTablaEmergencias();
-	      });
-	    }
-
-	    __listUpdateExtraFiltersUI();
-	  }catch(e){}
 });
 
 // ===================== FUNCIÓN CÓDIGO RP =====================
@@ -3895,155 +3801,6 @@ function __listUpdatePagerButtons({page, total, size}){
   if(next) next.disabled = (page >= maxPage) || total <= 0;
 }
 
-// ===================== FILTROS EXTRA (LISTA EMERGENCIAS) =====================
-function __listDateOnly(d){
-  if(!d) return null;
-  try{ return new Date(d.getFullYear(), d.getMonth(), d.getDate()); }catch(e){ return null; }
-}
-
-function __listGetRpRcCreateDates(em){
-  try{
-    const out = [];
-    const consider = (x)=>{
-      const d = __safeParseDate(x);
-      if(!d) return;
-      const dd = __listDateOnly(d);
-      if(dd) out.push(dd);
-    };
-
-    // RP: creación del registro (RP)
-    consider(em?.createdAt);
-    consider(em?.__serverCreatedAt);
-
-    // Fallbacks antiguos (si no existía createdAt)
-    if(out.length === 0){
-      consider(em?.rpEnviadoEn);
-      consider(em?.fechaHora);
-      consider(em?.fechaRegistro);
-    }
-
-    // RC(s): fecha de creación de cada RC
-    try{
-      const rcs = (typeof __getRCList === "function") ? __getRCList(em) : (Array.isArray(em?.rcReportes) ? em.rcReportes : []);
-      (Array.isArray(rcs) ? rcs : []).forEach(rc=>{
-        consider(rc?.createdAt);
-        consider(rc?.__serverCreatedAt);
-
-        // fallback si solo tiene fechaRegistro (YYYY-MM-DD)
-        if((!rc?.createdAt || !__safeParseDate(rc?.createdAt)) && rc?.fechaRegistro){
-          const d0 = __listParseDateYYYYMMDD(rc.fechaRegistro);
-          if(d0) out.push(d0);
-        }
-      });
-    }catch(e){}
-
-    return out.filter(Boolean);
-  }catch(e){
-    return [];
-  }
-}
-
-function __listGetUsuarioVisibleText(em){
-  try{
-    const names = [];
-
-    const add = (v)=>{
-      const s = (v===null || v===undefined) ? "" : String(v).trim();
-      if(s) names.push(s);
-    };
-
-    // Nombres visibles guardados en el RP
-    add(em?.elaboradoPor);
-    add(em?.rpEnviadoPor);
-
-    // Nombres visibles en RCs
-    try{
-      const rcs = (typeof __getRCList === "function") ? __getRCList(em) : (Array.isArray(em?.rcReportes) ? em.rcReportes : []);
-      (Array.isArray(rcs) ? rcs : []).forEach(rc=>{
-        add(rc?.elaboradoPor);
-        add(rc?.enviadoPor);
-        add(rc?.aprobadoPor);
-        add(rc?.observadoPor);
-      });
-    }catch(e){}
-
-    // Si solo hay correos, intentar mapear a nombre visible
-    const emails = [];
-    const addEmail = (x)=>{
-      const s = (x===null || x===undefined) ? "" : String(x).trim();
-      if(s && !emails.includes(s)) emails.push(s);
-    };
-    addEmail(em?.ownerEmail);
-    addEmail(em?.createdByEmail);
-    addEmail(em?.rpEnviadoPorEmail);
-    addEmail(em?.updatedByEmail);
-
-    try{
-      const rcs = (typeof __getRCList === "function") ? __getRCList(em) : (Array.isArray(em?.rcReportes) ? em.rcReportes : []);
-      (Array.isArray(rcs) ? rcs : []).forEach(rc=>{
-        addEmail(rc?.createdByEmail);
-        addEmail(rc?.updatedByEmail);
-      });
-    }catch(e){}
-
-    emails.forEach(mail=>{
-      try{
-        if(typeof __getUserByEmail === "function"){
-          const u = __getUserByEmail(mail);
-          if(u && u.fullName) add(u.fullName);
-        }
-      }catch(e){}
-    });
-
-    // Último recurso: si no hay nombres, usar correo para no dejar “ciego” el filtro
-    if(!names.length && emails.length) names.push(emails[0]);
-
-    return names.join(" ");
-  }catch(e){
-    return "";
-  }
-}
-
-function __listGetExtraFilters(){
-  const usuario = normalizarTexto(document.getElementById("listFiltroUsuario")?.value || "");
-  const desde = (document.getElementById("listFiltroElabDesde")?.value || "").trim();
-  const hasta = (document.getElementById("listFiltroElabHasta")?.value || "").trim();
-  const tipo  = (document.getElementById("listFiltroTipoReporte")?.value || "").trim(); // RP | RC | ""
-  return { usuario, desde, hasta, tipo };
-}
-
-function __listUpdateExtraFiltersUI(){
-  try{
-    const uRaw = (document.getElementById("listFiltroUsuario")?.value || "").trim();
-    const d1 = (document.getElementById("listFiltroElabDesde")?.value || "").trim();
-    const d2 = (document.getElementById("listFiltroElabHasta")?.value || "").trim();
-    const t  = (document.getElementById("listFiltroTipoReporte")?.value || "").trim();
-
-    const parts = [];
-    if(uRaw) parts.push("Usuario: " + uRaw);
-    if(d1 || d2) parts.push("Creación (RP/RC): " + (d1 || "—") + " a " + (d2 || "—"));
-    if(t === "RP") parts.push("Solo RP");
-    if(t === "RC") parts.push("Solo RC");
-
-    const sum = document.getElementById("listFiltrosExtraResumen");
-    if(sum) sum.textContent = parts.length ? ("| " + parts.join(" | ")) : "";
-
-    const bRP = document.getElementById("btnSoloRP");
-    const bRC = document.getElementById("btnSoloRC");
-
-    if(bRP){
-      const active = (t === "RP");
-      bRP.classList.toggle("btn-primary", active);
-      bRP.classList.toggle("btn-outline-primary", !active);
-    }
-    if(bRC){
-      const active = (t === "RC");
-      bRC.classList.toggle("btn-primary", active);
-      bRC.classList.toggle("btn-outline-primary", !active);
-    }
-  }catch(e){}
-}
-
 function __listParseDateYYYYMMDD(s){
   if(!s) return null;
   const str = String(s).trim();
@@ -4128,18 +3885,6 @@ function cargarTablaEmergencias() {
   const fDep = normalizarTexto(document.getElementById("filtroDepartamento")?.value || "");
   const fProv = normalizarTexto(document.getElementById("filtroProvincia")?.value || "");
 
-  // Filtros extra (búsqueda rápida)
-  const __extra = (typeof __listGetExtraFilters === "function") ? __listGetExtraFilters() : { usuario:"", desde:"", hasta:"", tipo:"" };
-  const fUsuario = __extra.usuario || "";
-  const fElabDesde = __extra.desde || "";
-  const fElabHasta = __extra.hasta || "";
-  const fTipoRep = __extra.tipo || ""; // RP | RC | ""
-
-  const dElabDesde = __listParseDateYYYYMMDD(fElabDesde);
-  const dElabHasta = __listParseDateYYYYMMDD(fElabHasta);
-
-  try{ __listUpdateExtraFiltersUI(); }catch(_e){}
-
   // 1) Filtrar
   const filtered = [];
   emergencias.forEach(e => {
@@ -4154,32 +3899,6 @@ function cargarTablaEmergencias() {
     if (fDep && !normalizarTexto(e.departamento).includes(fDep)) return;
     if (fProv && !normalizarTexto(e.provincia).includes(fProv)) return;
 
-    // --- Extra: buscar por usuario (registrador) ---
-    if (fUsuario) {
-      const vis = normalizarTexto((typeof __listGetUsuarioVisibleText === "function") ? __listGetUsuarioVisibleText(e) : (e?.elaboradoPor || e?.rpEnviadoPor || ""));
-      if (!vis.includes(fUsuario)) return;
-    }
-
-    // --- Extra: buscar por fecha de elaboración (rango) ---
-    if (dElabDesde || dElabHasta) {
-      const dates = (typeof __listGetRpRcCreateDates === "function") ? __listGetRpRcCreateDates(e) : [];
-      const ok = (Array.isArray(dates) ? dates : []).some(d=>{
-        if(!d) return false;
-        if(dElabDesde && d.getTime() < dElabDesde.getTime()) return false;
-        if(dElabHasta && d.getTime() > dElabHasta.getTime()) return false;
-        return true;
-      });
-      if(!ok) return;
-    }
-
-    // --- Extra: Solo RP / Solo RC ---
-    if (fTipoRep === "RP") {
-      if (__getRCList(e).length > 0) return;
-    }
-    if (fTipoRep === "RC") {
-      if (__getRCList(e).length === 0) return;
-    }
-
     filtered.push(e);
   });
 
@@ -4188,7 +3907,7 @@ function cargarTablaEmergencias() {
 
   // 2.1) Paginación: reset de página si cambian los filtros
   try{
-    const filterKey = JSON.stringify({ fCodigo, fFechaPeligro, fEstado, fPeligro, fDep, fProv, fUsuario, fElabDesde, fElabHasta, fTipoRep });
+    const filterKey = JSON.stringify({ fCodigo, fFechaPeligro, fEstado, fPeligro, fDep, fProv });
     if(__LIST_PAGER.lastFilterKey !== filterKey){
       __LIST_PAGER.page = 1;
       __LIST_PAGER.lastFilterKey = filterKey;
