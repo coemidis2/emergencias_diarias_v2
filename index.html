@@ -1276,8 +1276,8 @@ function __lsRemove(key){
 let currentUser = null;
 
 function __nowIso(){
-  const d = new Date();
-  return d.toISOString();
+  // Timestamp “hora Perú” (ISO con offset -05:00) para evitar desfases por UTC
+  return __peruNowIso();
 }
 
 function __normCoord(v){
@@ -1876,37 +1876,37 @@ function __admApplyUsersFilter(){
 }
 
 function __pad2(n){ return String(n).padStart(2,"0"); }
-function __formatLocalIso(iso){
+function __formatLocalIso(input){
+  // Formatea cualquier fecha/ISO en hora Perú
   try{
-    const d = new Date(iso);
-    if(isNaN(d)) return String(iso||"");
-    const y = d.getFullYear();
-    const m = __pad2(d.getMonth()+1);
-    const da = __pad2(d.getDate());
-    const hh = __pad2(d.getHours());
-    const mm = __pad2(d.getMinutes());
-    const ss = __pad2(d.getSeconds());
-    return `${y}-${m}-${da} ${hh}:${mm}:${ss}`;
+    const d = (input instanceof Date) ? input : new Date(input);
+    if(isNaN(d.getTime())) return String(input||"");
+    const p = __peruParts(d);
+    return `${p.year}-${p.month}-${p.day} ${p.hour}:${p.minute}:${p.second}`;
   }catch(e){
-    return String(iso||"");
+    return String(input||"");
   }
 }
 
 function __dateStartIso(dateStr){
+  // Convierte YYYY-MM-DD a ISO (Z) equivalente a 00:00:00 hora Perú
   try{
     if(!dateStr) return "";
-    const parts = String(dateStr).split("-");
-    if(parts.length!==3) return "";
-    const d = new Date(Number(parts[0]), Number(parts[1])-1, Number(parts[2]), 0,0,0);
+    const s = String(dateStr).trim();
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(s)) return "";
+    const d = new Date(`${s}T00:00:00-05:00`);
+    if(isNaN(d.getTime())) return "";
     return d.toISOString();
   }catch(e){ return ""; }
 }
 function __dateEndIso(dateStr){
+  // Convierte YYYY-MM-DD a ISO (Z) equivalente a 23:59:59 hora Perú
   try{
     if(!dateStr) return "";
-    const parts = String(dateStr).split("-");
-    if(parts.length!==3) return "";
-    const d = new Date(Number(parts[0]), Number(parts[1])-1, Number(parts[2]), 23,59,59);
+    const s = String(dateStr).trim();
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(s)) return "";
+    const d = new Date(`${s}T23:59:59-05:00`);
+    if(isNaN(d.getTime())) return "";
     return d.toISOString();
   }catch(e){ return ""; }
 }
@@ -2528,7 +2528,7 @@ function __enviarRC(opts={}){
 
   rc.aprobEstado = "Pendiente";
   rc.enviadoPor = __getCurrentUserName();
-  rc.enviadoEn = new Date().toISOString();
+  rc.enviadoEn = __nowIso();
   rc.enviadoPorEmail = currentUser ? currentUser.email : null;
   __histPush(em, "RC_ENVIADO_APROBACION", {idx: idx});
   __touch(em);
@@ -3832,7 +3832,8 @@ function __listParseDateYYYYMMDD(s){
   const str = String(s).trim();
   const m = str.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if(!m) return null;
-  const d = new Date(Number(m[1]), Number(m[2])-1, Number(m[3]));
+  const ymd = `${m[1]}-${m[2]}-${m[3]}`;
+  const d = new Date(`${ymd}T00:00:00-05:00`);
   if(isNaN(d.getTime())) return null;
   return d;
 }
@@ -3947,16 +3948,23 @@ function __peruNowDTLocal(){
   return `${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}`;
 }
 
+function __peruNowIso(){
+  // ISO con offset -05:00 (Perú no usa DST actualmente)
+  const p = __peruParts(new Date());
+  const ms = String(new Date().getMilliseconds()).padStart(3,"0");
+  return `${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}:${p.second}.${ms}-05:00`;
+}
+
+
 function __ymdToDate(ymd){
-  // Crea Date local (00:00) desde "YYYY-MM-DD" sin el bug UTC de new Date("YYYY-MM-DD")
+  // Crea Date representando 00:00 en Perú para un YYYY-MM-DD (independiente de la zona horaria del equipo)
   try{
     if(!ymd) return null;
-    const m = String(ymd).trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
-    if(!m) return null;
-    const yy = Number(m[1]), mm = Number(m[2]) - 1, dd = Number(m[3]);
-    const d = new Date(yy, mm, dd);
+    const s = String(ymd).trim();
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
+    const d = new Date(`${s}T00:00:00-05:00`);
     if(isNaN(d.getTime())) return null;
-    return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    return d;
   }catch(e){ return null; }
 }
 function __listNowLocalDT(){
@@ -3967,9 +3975,20 @@ function __listNowLocalDT(){
 function __listDateOnly(v){
   if(!v) return "";
   const s = String(v).trim();
-  // YYYY-MM-DD o YYYY-MM-DDTHH:mm o ISO
-  const m = s.match(/^(\d{4}-\d{2}-\d{2})/);
-  if(m) return m[1];
+
+  // YYYY-MM-DD (solo fecha)
+  if(/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+
+  // datetime-local o texto sin zona: YYYY-MM-DDTHH:mm (tomamos la fecha literal)
+  const mLocal = s.match(/^(\d{4}-\d{2}-\d{2})[T\s]\d{2}:\d{2}(?!.*(Z|[\+\-]\d{2}:\d{2}))/);
+  if(mLocal) return mLocal[1];
+
+  // ISO con zona (Z o +hh:mm/-hh:mm): calculamos la fecha en Perú
+  const mIsoTz = s.match(/^\d{4}-\d{2}-\d{2}T.*(Z|[\+\-]\d{2}:\d{2})$/);
+  if(mIsoTz){
+    const d = new Date(s);
+    if(!isNaN(d.getTime())) return __peruYMD(d);
+  }
 
   // dd/mm/yyyy o dd-mm-yyyy
   const m2 = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
@@ -3980,14 +3999,11 @@ function __listDateOnly(v){
     return `${yy}-${mm}-${dd}`;
   }
 
-  // Fallback
+  // Fallback: parse y tomar fecha Perú
   try{
     const d = new Date(s);
     if(!isNaN(d.getTime())){
-      const yy = d.getFullYear();
-      const mm = String(d.getMonth()+1).padStart(2,"0");
-      const dd = String(d.getDate()).padStart(2,"0");
-      return `${yy}-${mm}-${dd}`;
+      return __peruYMD(d);
     }
   }catch(e){}
   return "";
@@ -4914,9 +4930,7 @@ document.getElementById("btnWordRC").onclick = () => {
 
   // Fecha de elaboración del Word RC = momento actual (hora local del equipo)
   try{
-    const __now = new Date();
-    const __nowLocal = new Date(__now.getTime() - (__now.getTimezoneOffset()*60000)).toISOString().slice(0,16);
-    em.fechaHoraRC = __nowLocal;
+    em.fechaHoraRC = __peruNowDTLocal();
   }catch(e){}
 
   // --- Word (seguro): usa Worker si está configurado y hay internet; si no, intenta servicio local ---
