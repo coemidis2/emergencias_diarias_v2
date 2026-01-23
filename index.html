@@ -288,6 +288,18 @@ body { background: #f5f5f5; }
         </div>
       </div>
 
+      <!-- Selector de cantidad de registros a visualizar -->
+      <div class="d-flex justify-content-end align-items-center gap-2 mb-2">
+        <span class="small text-muted">Mostrar</span>
+        <select id="listPageSize" class="form-select form-select-sm" style="width:auto;">
+          <option value="10">10</option>
+          <option value="25">25</option>
+          <option value="50">50</option>
+          <option value="100">100</option>
+        </select>
+        <span class="small text-muted">registros</span>
+      </div>
+
       <table class="table table-striped" id="tablaEmergencias">
         <thead>
           <tr>
@@ -306,6 +318,15 @@ body { background: #f5f5f5; }
         </thead>
         <tbody></tbody>
       </table>
+
+      <!-- Pie de tabla: rango mostrado y navegación -->
+      <div class="d-flex flex-wrap justify-content-between align-items-center mt-2 gap-2">
+        <div class="small text-muted" id="listRangeInfo">0 a 0 de 0 registros</div>
+        <div class="btn-group btn-group-sm" role="group" aria-label="Paginación">
+          <button id="listPrevPage" type="button" class="btn btn-outline-secondary">Anterior</button>
+          <button id="listNextPage" type="button" class="btn btn-outline-secondary">Siguiente</button>
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -2882,6 +2903,36 @@ document.addEventListener("DOMContentLoaded", function () {
       el.addEventListener("change", cargarTablaEmergencias);
     }
   });
+
+  // Paginación (Listado de Emergencias): tamaño de página y navegación
+  try{
+    const sel = document.getElementById("listPageSize");
+    if(sel){
+      sel.value = String(__LIST_PAGER.size || 10);
+      sel.addEventListener("change", ()=>{
+        __LIST_PAGER.page = 1;
+        __LIST_PAGER.size = __listGetPageSize();
+        cargarTablaEmergencias();
+      });
+    }
+
+    const prev = document.getElementById("listPrevPage");
+    const next = document.getElementById("listNextPage");
+    if(prev){
+      prev.addEventListener("click", ()=>{
+        if(__LIST_PAGER.page > 1){
+          __LIST_PAGER.page -= 1;
+          cargarTablaEmergencias();
+        }
+      });
+    }
+    if(next){
+      next.addEventListener("click", ()=>{
+        __LIST_PAGER.page += 1;
+        cargarTablaEmergencias();
+      });
+    }
+  }catch(e){}
 });
 
 // ===================== FUNCIÓN CÓDIGO RP =====================
@@ -3720,6 +3771,36 @@ function __printRC_PDF(idxOpt){
 // ===================== ORDENAMIENTO (LISTA EMERGENCIAS) =====================
 const __LIST_SORT = { key: null, dir: 1 }; // dir: 1 asc, -1 desc
 
+// ===================== PAGINACIÓN (LISTA EMERGENCIAS) =====================
+const __LIST_PAGER = {
+  page: 1,
+  size: 10,
+  lastFilterKey: null
+};
+
+function __listGetPageSize(){
+  try{
+    const sel = document.getElementById("listPageSize");
+    const v = Number(sel && sel.value ? sel.value : __LIST_PAGER.size);
+    return ([10,25,50,100].includes(v) ? v : 10);
+  }catch(e){
+    return 10;
+  }
+}
+
+function __listSetRangeInfo(text){
+  const el = document.getElementById("listRangeInfo");
+  if(el) el.textContent = text;
+}
+
+function __listUpdatePagerButtons({page, total, size}){
+  const prev = document.getElementById("listPrevPage");
+  const next = document.getElementById("listNextPage");
+  const maxPage = Math.max(1, Math.ceil((total || 0) / (size || 10)));
+  if(prev) prev.disabled = (page <= 1);
+  if(next) next.disabled = (page >= maxPage) || total <= 0;
+}
+
 function __listParseDateYYYYMMDD(s){
   if(!s) return null;
   const str = String(s).trim();
@@ -3822,7 +3903,34 @@ function cargarTablaEmergencias() {
   });
 
   // 2) Ordenar (si el usuario hizo clic en cabecera)
-  const list = (typeof __listApplySort === "function") ? __listApplySort(filtered) : filtered;
+  const listAll = (typeof __listApplySort === "function") ? __listApplySort(filtered) : filtered;
+
+  // 2.1) Paginación: reset de página si cambian los filtros
+  try{
+    const filterKey = JSON.stringify({ fCodigo, fFechaPeligro, fEstado, fPeligro, fDep, fProv });
+    if(__LIST_PAGER.lastFilterKey !== filterKey){
+      __LIST_PAGER.page = 1;
+      __LIST_PAGER.lastFilterKey = filterKey;
+    }
+  }catch(e){}
+
+  const size = __listGetPageSize();
+  __LIST_PAGER.size = size;
+  const total = Array.isArray(listAll) ? listAll.length : 0;
+  const maxPage = Math.max(1, Math.ceil(total / size));
+  if(__LIST_PAGER.page > maxPage) __LIST_PAGER.page = maxPage;
+  if(__LIST_PAGER.page < 1) __LIST_PAGER.page = 1;
+  const startIdx = (__LIST_PAGER.page - 1) * size;
+  const endIdx = Math.min(total, startIdx + size);
+  const list = (Array.isArray(listAll) ? listAll : []).slice(startIdx, endIdx);
+
+  // Rango mostrado (parte inferior)
+  if(total <= 0){
+    __listSetRangeInfo("0 a 0 de 0 registros");
+  }else{
+    __listSetRangeInfo(`${startIdx + 1} a ${endIdx} de ${total} registros`);
+  }
+  __listUpdatePagerButtons({ page: __LIST_PAGER.page, total, size });
 
   // 3) Render
   list.forEach(e => {
