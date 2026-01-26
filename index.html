@@ -299,6 +299,28 @@ body { background: #f5f5f5; }
           </div>
         </div>
 
+
+
+        <!-- Filtros adicionales: Seguimiento de descargas Word -->
+        <div class="row g-2 mb-2">
+          <div class="col-md-3">
+            <label class="form-label">Word RP</label>
+            <select id="filtroWordRP" class="form-control">
+              <option value="">(Todos)</option>
+              <option value="desc">Descargados</option>
+              <option value="pend">Pendientes</option>
+            </select>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Word RC</label>
+            <select id="filtroWordRC" class="form-control">
+              <option value="">(Todos)</option>
+              <option value="desc">Descargados</option>
+              <option value="pend">Pendientes</option>
+            </select>
+          </div>
+        </div>
+
         <!-- Leyenda de colores -->
         <div class="mb-3" style="font-family: Calibri, Arial, sans-serif; font-size:9pt;">
           <strong>Leyenda:</strong>
@@ -336,6 +358,8 @@ body { background: #f5f5f5; }
             <th>RP Estado</th>
             <th class="col-rp">RP</th>
             <th class="col-rc">RC</th>
+            <th>Word RP</th>
+            <th>Word RC</th>
             <th>Ver</th>
           </tr>
         </thead>
@@ -1941,7 +1965,7 @@ function __renderAuditTable(logs){
   const arr = Array.isArray(logs) ? logs : [];
   tbody.innerHTML = "";
   if(arr.length === 0){
-    tbody.innerHTML = '<tr><td colspan="8" class="text-muted">Sin registros para el filtro seleccionado.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="13" class="text-muted">Sin registros para el filtro seleccionado.</td></tr>';
     return;
   }
 
@@ -2920,7 +2944,9 @@ document.addEventListener("DOMContentLoaded", function () {
     "filtroProvincia",
     "filtroRegistrador",
     "filtroFechaElaboracion",
-    "filtroTipoReporte"
+    "filtroTipoReporte",
+    "filtroWordRP",
+    "filtroWordRC"
   ];
   filtros.forEach(id => {
     const el = document.getElementById(id);
@@ -4091,6 +4117,61 @@ function __listRefreshRegistradorOptions(){
 }
 
 // ===================== TABLA EMERGENCIAS =====================
+
+// ===== Seguimiento de descargas Word (RP/RC) =====
+function __escAttr(s){
+  return String(s||"")
+    .replace(/&/g,"&amp;")
+    .replace(/</g,"&lt;")
+    .replace(/>/g,"&gt;")
+    .replace(/"/g,"&quot;")
+    .replace(/'/g,"&#39;");
+}
+
+function __wordStatusRP(em){
+  try{
+    const en = em?.rpWordDescargadoUltEn || em?.rpWordDescargadoEn || "";
+    const por = em?.rpWordDescargadoPor || "";
+    const email = em?.rpWordDescargadoPorEmail || "";
+    const ok = !!en;
+    const t = ok ? ("Último: " + __formatLocalIso(en) + (por ? (" — " + por) : "") + (email ? (" (" + email + ")") : "")) : "Pendiente";
+    const c = Number(em?.rpWordDescargasCount || 0);
+    return { ok, na:false, title:t + (ok && c ? (" | Descargas: " + c) : ""), count:c };
+  }catch(e){
+    return { ok:false, na:false, title:"Pendiente" };
+  }
+}
+
+function __wordStatusRC(em){
+  try{
+    const rcs = __getRCList(em);
+    if(!rcs || rcs.length===0) return { ok:false, na:true, title:"Sin RC" };
+    const last = rcs[rcs.length-1];
+    const en = last?.wordDescargadoUltEn || last?.wordDescargadoEn || "";
+    const por = last?.wordDescargadoPor || "";
+    const email = last?.wordDescargadoPorEmail || "";
+    const ok = !!en;
+    const t = ok ? ("Último: " + __formatLocalIso(en) + (por ? (" — " + por) : "") + (email ? (" (" + email + ")") : "")) : "Pendiente";
+    const c = Number(last?.wordDescargasCount || 0);
+    return { ok, na:false, title:t + (ok && c ? (" | Descargas: " + c) : ""), count:c };
+  }catch(e){
+    return { ok:false, na:true, title:"Sin RC" };
+  }
+}
+
+function __wordBadge(st){
+  try{
+    if(st && st.na) return `<span class="text-muted" title="${__escAttr(st.title)}">—</span>`;
+    const ok = !!(st && st.ok);
+    const cls = ok ? "text-bg-success" : "text-bg-warning";
+    const c = Number(st && st.count ? st.count : 0);
+    const txt = ok ? (c ? ("Descargado (" + c + ")") : "Descargado") : "Pendiente";
+    return `<span class="badge ${cls}" title="${__escAttr(st && st.title ? st.title : txt)}">${txt}</span>`;
+  }catch(e){
+    return '<span class="badge text-bg-warning" title="Pendiente">Pendiente</span>';
+  }
+}
+
 function cargarTablaEmergencias() {
   let body = document.querySelector("#tablaEmergencias tbody");
   body.innerHTML = "";
@@ -4109,6 +4190,9 @@ function cargarTablaEmergencias() {
   const fRegistrador = normalizarTexto(document.getElementById("filtroRegistrador")?.value || "");
   const fFechaElab = document.getElementById("filtroFechaElaboracion")?.value || "";
   const fTipoRep = document.getElementById("filtroTipoReporte")?.value || "";
+
+  const fWordRP = document.getElementById("filtroWordRP")?.value || "";
+  const fWordRC = document.getElementById("filtroWordRC")?.value || "";
 
   // 1) Filtrar
   const filtered = [];
@@ -4154,6 +4238,23 @@ function cargarTablaEmergencias() {
       if (!dateToCheck || dateToCheck !== fFechaElab) return;
     }
 
+
+
+    // Word RP/RC (seguimiento de descargas)
+    if(fWordRP){
+      const okRP = !!(e && (e.rpWordDescargadoUltEn || e.rpWordDescargadoEn));
+      if(fWordRP === "desc" && !okRP) return;
+      if(fWordRP === "pend" && okRP) return;
+    }
+    if(fWordRC){
+      const rcList2 = (typeof __getRCList === "function") ? __getRCList(e) : [];
+      if(!rcList2 || rcList2.length === 0) return;
+      const last2 = rcList2[rcList2.length-1] || {};
+      const okRC = !!(last2.wordDescargadoUltEn || last2.wordDescargadoEn);
+      if(fWordRC === "desc" && !okRC) return;
+      if(fWordRC === "pend" && okRC) return;
+    }
+
     filtered.push(e);
   });
 
@@ -4162,7 +4263,7 @@ function cargarTablaEmergencias() {
 
   // 2.1) Paginación: reset de página si cambian los filtros
   try{
-    const filterKey = JSON.stringify({ fCodigo, fFechaPeligro, fEstado, fPeligro, fDep, fProv, fRegistrador, fFechaElab, fTipoRep });
+    const filterKey = JSON.stringify({ fCodigo, fFechaPeligro, fEstado, fPeligro, fDep, fProv, fRegistrador, fFechaElab, fTipoRep, fWordRP, fWordRC });
     if(__LIST_PAGER.lastFilterKey !== filterKey){
       __LIST_PAGER.page = 1;
       __LIST_PAGER.lastFilterKey = filterKey;
@@ -4189,6 +4290,8 @@ function cargarTablaEmergencias() {
 
   // 3) Render
   list.forEach(e => {
+    const stWordRP = (typeof __wordStatusRP === "function") ? __wordStatusRP(e) : {ok:false, na:false, title:"Pendiente"};
+    const stWordRC = (typeof __wordStatusRC === "function") ? __wordStatusRC(e) : {ok:false, na:true, title:"Sin RC"};
     let tr = document.createElement("tr");
     tr.innerHTML = `
 <td>${e.codigo}</td>
@@ -4201,6 +4304,8 @@ function cargarTablaEmergencias() {
 <td>${__rpEstadoEtiqueta(e)}</td>
 <td class="col-rp"><button class="btn btn-sm btn-outline-primary btnRP" ${(__isRegistrador() && e.cerrada) ? "disabled" : ""}>RP</button></td>
 <td class="col-rc"><button class="btn btn-sm btn-primary btnRC" ${ (e.cerrada || (__isRegistrador() && String(e.rpAprobEstado||"Borrador")!=="Aprobado")) ? "disabled" : ""}>RC</button></td>
+<td>${__wordBadge(stWordRP)}</td>
+<td>${__wordBadge(stWordRC)}</td>
 <td><button class="btn btn-sm btn-outline-secondary btnVer" title="Ver detalle">👁</button></td>
 `;
 
@@ -4866,6 +4971,44 @@ document.getElementById("btnRetornarRP").onclick = () => {
   }
 };
 
+
+
+// Marcar descargas (para seguimiento en el Listado de emergencias)
+function __markRPWordDownloaded(em){
+  try{
+    if(!em) return;
+    const now = __nowIso();
+    if(!em.rpWordDescargadoEn) em.rpWordDescargadoEn = now;
+    em.rpWordDescargadoUltEn = now;
+    em.rpWordDescargadoPor = currentUser ? currentUser.fullName : "";
+    em.rpWordDescargadoPorEmail = currentUser ? currentUser.email : null;
+    em.rpWordDescargasCount = Number(em.rpWordDescargasCount || 0) + 1;
+    __touch(em);
+    __saveEmergencias();
+    try{ cargarTablaEmergencias(); }catch(e){}
+  }catch(e){}
+}
+
+function __markRCWordDownloaded(emBase){
+  try{
+    if(!emBase) return;
+    if(!Array.isArray(emBase.rcReportes) || emBase.rcReportes.length === 0) return;
+    const rc = emBase.rcReportes[emBase.rcReportes.length - 1];
+    if(!rc) return;
+    const now = __nowIso();
+    if(!rc.wordDescargadoEn) rc.wordDescargadoEn = now;
+    rc.wordDescargadoUltEn = now;
+    rc.wordDescargadoPor = currentUser ? currentUser.fullName : "";
+    rc.wordDescargadoPorEmail = currentUser ? currentUser.email : null;
+    rc.wordDescargasCount = Number(rc.wordDescargasCount || 0) + 1;
+    rc.updatedAt = __nowIso();
+    rc.updatedByEmail = currentUser ? currentUser.email : null;
+    __touch(emBase);
+    __saveEmergencias();
+    try{ cargarTablaEmergencias(); }catch(e){}
+  }catch(e){}
+}
+
 // ===================== WORD RP (solo una vez) =====================
 document.getElementById("btnWordRP").onclick = () => {
   if (!rpGrabado) {
@@ -4940,6 +5083,7 @@ document.getElementById("btnWordRP").onclick = () => {
     document.body.appendChild(a);
     a.click();
     setTimeout(()=>{ try{ URL.revokeObjectURL(url); }catch(e){} try{ a.remove(); }catch(e){} }, 1500);
+    try{ __markRPWordDownloaded(em); }catch(e){}
     rpWordGenerado = true;
   })
   .catch(err => {
@@ -5027,6 +5171,7 @@ document.getElementById("btnWordRC").onclick = () => {
     document.body.appendChild(a);
     a.click();
     setTimeout(()=>{ try{ URL.revokeObjectURL(url); }catch(e){} try{ a.remove(); }catch(e){} }, 1500);
+    try{ __markRCWordDownloaded(emergenciaSeleccionada); }catch(e){}
     rcWordGenerado = true;
   })
   .catch(err => {
