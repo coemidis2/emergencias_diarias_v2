@@ -276,6 +276,51 @@ body { background: #f5f5f5; }
           </div>
         </div>
 
+
+        <!-- Filtros adicionales: Usuario registrador / Fecha elaboración / Tipo (RP o RC) -->
+        <div class="row g-2 mb-2">
+          <div class="col-md-3">
+            <label class="form-label">Usuario registrador</label>
+            <select id="filtroRegistrador" class="form-control">
+              <option value="">(Todos)</option>
+            </select>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Fecha de elaboración</label>
+            <input type="date" id="filtroFechaElaboracion" class="form-control">
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Tipo de reporte</label>
+            <select id="filtroTipoReporte" class="form-control">
+              <option value="">(Todos)</option>
+              <option value="RP">RP</option>
+              <option value="RC">RC</option>
+            </select>
+          </div>
+        </div>
+
+
+
+        <!-- Filtros adicionales: Seguimiento de descargas Word -->
+        <div class="row g-2 mb-2">
+          <div class="col-md-3">
+            <label class="form-label">Word RP</label>
+            <select id="filtroWordRP" class="form-control">
+              <option value="">(Todos)</option>
+              <option value="desc">Descargados</option>
+              <option value="pend">Pendientes</option>
+            </select>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Word RC</label>
+            <select id="filtroWordRC" class="form-control">
+              <option value="">(Todos)</option>
+              <option value="desc">Descargados</option>
+              <option value="pend">Pendientes</option>
+            </select>
+          </div>
+        </div>
+
         <!-- Leyenda de colores -->
         <div class="mb-3" style="font-family: Calibri, Arial, sans-serif; font-size:9pt;">
           <strong>Leyenda:</strong>
@@ -286,6 +331,18 @@ body { background: #f5f5f5; }
           – Cerrada :
           <span style="background-color:#00B050; padding:0 8px; display:inline-block; min-width:30px;">&nbsp;</span>
         </div>
+      </div>
+
+      <!-- Selector de cantidad de registros a visualizar -->
+      <div class="d-flex justify-content-end align-items-center gap-2 mb-2">
+        <span class="small text-muted">Mostrar</span>
+        <select id="listPageSize" class="form-select form-select-sm" style="width:auto;">
+          <option value="10">10</option>
+          <option value="25">25</option>
+          <option value="50">50</option>
+          <option value="100">100</option>
+        </select>
+        <span class="small text-muted">registros</span>
       </div>
 
       <table class="table table-striped" id="tablaEmergencias">
@@ -301,11 +358,22 @@ body { background: #f5f5f5; }
             <th>RP Estado</th>
             <th class="col-rp">RP</th>
             <th class="col-rc">RC</th>
+            <th>Word RP</th>
+            <th>Word RC</th>
             <th>Ver</th>
           </tr>
         </thead>
         <tbody></tbody>
       </table>
+
+      <!-- Pie de tabla: rango mostrado y navegación -->
+      <div class="d-flex flex-wrap justify-content-between align-items-center mt-2 gap-2">
+        <div class="small text-muted" id="listRangeInfo">0 a 0 de 0 registros</div>
+        <div class="btn-group btn-group-sm" role="group" aria-label="Paginación">
+          <button id="listPrevPage" type="button" class="btn btn-outline-secondary">Anterior</button>
+          <button id="listNextPage" type="button" class="btn btn-outline-secondary">Siguiente</button>
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -465,7 +533,6 @@ body { background: #f5f5f5; }
       <div class="mt-4 text-end">
         <!-- ORDEN: Grabar → Word → Retornar -->
         <button id="btnGuardarRP" class="btn btn-success me-2">Grabar RP</button>
-        <button id="btnGrabarAprobarRPAdmin" class="btn btn-warning me-2 d-none">Grabar y aprobar RP</button>
         <button id="btnGuardarEnviarRP" class="btn btn-success me-2 d-none">Grabar y enviar a aprobación</button>
         <button id="btnWordRP" class="btn btn-primary me-2">Word RP</button>
         <button id="btnEnviarAprobRP" class="btn btn-outline-success me-2">Enviar a aprobación</button>
@@ -1595,7 +1662,7 @@ function __applyRoleAccess(){
   // Admin: asegurar que en RP estén activos 'Agregar acción' y 'Grabar RP'
   if(isAdmin){
     const b1 = document.getElementById("btnAddAccionRP");
-    const b2 = document.getElementById("btnGrabarAprobarRPAdmin") || document.getElementById("btnGuardarRP");
+    const b2 = document.getElementById("btnGuardarRP");
     if(b1) b1.disabled = false;
     if(b2) b2.disabled = false;
   }
@@ -1604,9 +1671,8 @@ function __applyRoleAccess(){
 const btnGRP = document.getElementById("btnGuardarRP");
 const btnERP = document.getElementById("btnEnviarAprobRP");
 const btnGERP = document.getElementById("btnGuardarEnviarRP");
-const btnGARP = document.getElementById("btnGrabarAprobarRPAdmin");
 const isReg = currentUser?.role === __ROLES.REG;
-    // (removed duplicate isAdmin declaration)
+
 
 // RP: ocultar todo el contenido para REGISTRADOR (solo muestra el título)
 const rpContentWrap = document.getElementById("rpContentWrap");
@@ -1616,9 +1682,8 @@ if(rpContentWrap){
 }
 
 if(btnGERP) btnGERP.classList.toggle("d-none", !isReg);
-if(btnGARP) btnGARP.classList.toggle("d-none", !isAdmin);
-if(btnGRP)  btnGRP.classList.toggle("d-none", isReg || isAdmin);
-if(btnERP)  btnERP.classList.toggle("d-none", isReg || isAdmin);
+if(btnGRP)  btnGRP.classList.toggle("d-none", isReg);
+if(btnERP)  btnERP.classList.toggle("d-none", isReg);
 
 // RC: para Registrador, un solo botón "Guardar y enviar a aprobación"
 const btnGRC = document.getElementById("btnGuardarRC");
@@ -1643,7 +1708,7 @@ if(isReg){
 
   const btnAprRp = document.getElementById("btnAprobarRPAdmin");
   const btnAprRc = document.getElementById("btnAprobarRCAdmin");
-  if(btnAprRp) { btnAprRp.classList.add("d-none"); btnAprRp.disabled = true; }
+  if(btnAprRp) { btnAprRp.classList.toggle("d-none", !isAdmin); btnAprRp.disabled = !isAdmin; }
   if(btnAprRc) { btnAprRc.classList.toggle("d-none", !isAdmin); btnAprRc.disabled = !isAdmin; }
 
   // Tabs visibles
@@ -1669,7 +1734,7 @@ if(isReg){
 
   // Bloqueos de edición
   const disableIdsConsulta = [
-    "btnGuardarRP","btnGrabarAprobarRPAdmin","btnGuardarEnviarRP","btnWordRP","btnNuevoRP","btnAddAccionRP","btnEnviarAprobRP",
+    "btnGuardarRP","btnGuardarEnviarRP","btnWordRP","btnNuevoRP","btnAddAccionRP","btnEnviarAprobRP",
     "btnGuardarRC","btnGuardarEnviarRC","btnWordRC","btnCerrarEmergencia","btnRetornarRC","btnAddAccionRC","btnEnviarAprobRC"
   ];
 
@@ -1900,7 +1965,7 @@ function __renderAuditTable(logs){
   const arr = Array.isArray(logs) ? logs : [];
   tbody.innerHTML = "";
   if(arr.length === 0){
-    tbody.innerHTML = '<tr><td colspan="8" class="text-muted">Sin registros para el filtro seleccionado.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="13" class="text-muted">Sin registros para el filtro seleccionado.</td></tr>';
     return;
   }
 
@@ -2876,7 +2941,12 @@ document.addEventListener("DOMContentLoaded", function () {
     "filtroEstado",
     "filtroPeligro",
     "filtroDepartamento",
-    "filtroProvincia"
+    "filtroProvincia",
+    "filtroRegistrador",
+    "filtroFechaElaboracion",
+    "filtroTipoReporte",
+    "filtroWordRP",
+    "filtroWordRC"
   ];
   filtros.forEach(id => {
     const el = document.getElementById(id);
@@ -2885,6 +2955,36 @@ document.addEventListener("DOMContentLoaded", function () {
       el.addEventListener("change", cargarTablaEmergencias);
     }
   });
+
+  // Paginación (Listado de Emergencias): tamaño de página y navegación
+  try{
+    const sel = document.getElementById("listPageSize");
+    if(sel){
+      sel.value = String(__LIST_PAGER.size || 10);
+      sel.addEventListener("change", ()=>{
+        __LIST_PAGER.page = 1;
+        __LIST_PAGER.size = __listGetPageSize();
+        cargarTablaEmergencias();
+      });
+    }
+
+    const prev = document.getElementById("listPrevPage");
+    const next = document.getElementById("listNextPage");
+    if(prev){
+      prev.addEventListener("click", ()=>{
+        if(__LIST_PAGER.page > 1){
+          __LIST_PAGER.page -= 1;
+          cargarTablaEmergencias();
+        }
+      });
+    }
+    if(next){
+      next.addEventListener("click", ()=>{
+        __LIST_PAGER.page += 1;
+        cargarTablaEmergencias();
+      });
+    }
+  }catch(e){}
 });
 
 // ===================== FUNCIÓN CÓDIGO RP =====================
@@ -3229,10 +3329,132 @@ function __findEmergIdxByCodigo(codigo){
   return idx;
 }
 
+// ===================== VALIDACIÓN RP (REGISTRADOR) =====================
+// Reglas: el Registrador solo puede grabar el RP si estos campos tienen datos:
+// "Fecha y hora de elaboración", "Hechos", "Fecha del peligro", "Departamento", "Provincia", "Distrito", "Daños en otros sectores".
+function __rpMarkInvalid(id, on){
+  try{
+    const el = document.getElementById(id);
+    if(!el) return;
+    if(on) el.classList.add("is-invalid");
+    else el.classList.remove("is-invalid");
+  }catch(e){}
+}
+
+function __rpParseDateTimePeru(v){
+  try{
+    const s = String(v || "").trim();
+    if(!s) return null;
+
+    // datetime-local típico: YYYY-MM-DDTHH:MM  (sin zona)
+    if(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(s)){
+      const d = new Date(s + ":00-05:00");
+      return isNaN(d.getTime()) ? null : d;
+    }
+    // datetime-local con segundos: YYYY-MM-DDTHH:MM:SS
+    if(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/.test(s)){
+      const d = new Date(s + "-05:00");
+      return isNaN(d.getTime()) ? null : d;
+    }
+
+    // ISO con zona o cualquier otro formato parseable
+    const d = new Date(s);
+    return isNaN(d.getTime()) ? null : d;
+  }catch(e){
+    return null;
+  }
+}
+
+function __validateRPRequiredForSave(){
+  const req = [
+    {id:"fechaHoraRP",   label:"Fecha y hora de elaboración", kind:"dt"},
+    {id:"hechosRP",      label:"Hechos", kind:"text"},
+    {id:"fechaPeligroRP",label:"Fecha del peligro", kind:"date"},
+    {id:"departamentoRP",label:"Departamento", kind:"sel"},
+    {id:"provinciaRP",   label:"Provincia", kind:"sel"},
+    {id:"distritoRP",    label:"Distrito", kind:"sel"},
+    {id:"daniosOtrosRP", label:"Daños en otros sectores", kind:"text"}
+  ];
+
+  // limpiar marcas previas
+  req.forEach(r=> __rpMarkInvalid(r.id, false));
+
+  const missing = [];
+  const invalid  = [];
+
+  // validar presencia
+  for(const r of req){
+    const el = document.getElementById(r.id);
+    const raw = el ? (el.value ?? "") : "";
+    const val = String(raw).trim();
+
+    let ok = true;
+
+    if(r.kind === "text"){
+      ok = val.length > 0;
+    }else if(r.kind === "sel"){
+      ok = val !== "";
+    }else if(r.kind === "date"){
+      ok = !!val && !!(__listParseDateYYYYMMDD ? __listParseDateYYYYMMDD(val) : new Date(val));
+    }else if(r.kind === "dt"){
+      ok = !!val && !!__rpParseDateTimePeru(val);
+    }
+
+    if(!ok){
+      __rpMarkInvalid(r.id, true);
+      missing.push(r.label);
+    }
+  }
+
+  // consistencia adicional: Fecha del peligro no puede ser posterior a la fecha/hora de elaboración
+  const dtElab = __rpParseDateTimePeru(document.getElementById("fechaHoraRP")?.value || "");
+  const dPeligro = (__listParseDateYYYYMMDD ? __listParseDateYYYYMMDD(document.getElementById("fechaPeligroRP")?.value || "") : null);
+
+  if(dtElab && dPeligro){
+    if(dPeligro.getTime() > dtElab.getTime()){
+      __rpMarkInvalid("fechaPeligroRP", true);
+      __rpMarkInvalid("fechaHoraRP", true);
+      invalid.push("La 'Fecha del peligro' no puede ser posterior a la 'Fecha y hora de elaboración'.");
+    }
+  }
+
+  if(missing.length || invalid.length){
+    let msg = "No se puede grabar el Reporte Preliminar.\n\nCompleta obligatoriamente:\n";
+    for(const f of missing){
+      msg += `- ${f}\n`;
+    }
+    if(invalid.length){
+      msg += "\nCorrige lo siguiente:\n";
+      for(const it of invalid){
+        msg += `- ${it}\n`;
+      }
+    }
+    alert(msg);
+
+    // enfocar el primer campo marcado
+    const first = req.find(r=>{
+      const el = document.getElementById(r.id);
+      return el && el.classList.contains("is-invalid");
+    });
+    if(first){
+      try{ document.getElementById(first.id)?.focus(); }catch(e){}
+    }
+    return false;
+  }
+
+  return true;
+}
+
 function __saveRP(opts){
   const submit = !!(opts && opts.submit);
 
   if(!currentUser || currentUser.role === __ROLES.CONS) return null;
+
+  // Validación obligatoria para REGISTRADOR: no grabar si faltan campos clave
+  if(currentUser.role === __ROLES.REG){
+    if(!__validateRPRequiredForSave()) return null;
+  }
+
 
   let codigoActual = (document.getElementById("codigoRP")?.value || "").trim();
 
@@ -3294,13 +3516,8 @@ function __saveRP(opts){
     daniosMIDIS[prog][field] = val;
   });
 
-  const __currName = (__getCurrentUserName ? __getCurrentUserName() : "") || (currentUser ? (currentUser.fullName||"") : "");
-  const __isAdm = (currentUser && currentUser.role === __ROLES.ADMIN);
-  // Admin: mantener el Registrador como "Elaborado por" si ya existía
-  const elaborado = (__isAdm && existing && existing.elaboradoPor) ? String(existing.elaboradoPor) : String((document.getElementById("elaboradoRP")?.value || __currName || "")).trim();
-  // Admin: "Aprobado por" debe ser el propio Admin al guardar
-  let aprobadoUI = String((document.getElementById("aprobadoRP")?.value || "")).trim();
-  if(__isAdm){ aprobadoUI = String(__currName || aprobadoUI || "").trim(); }
+  const elaborado = (__getCurrentUserName ? __getCurrentUserName() : "") || (document.getElementById("elaboradoRP")?.value || "");
+  const aprobadoUI = (document.getElementById("aprobadoRP")?.value || "");
 
   // Base record (mantener RC y demás si ya existía)
   const base = existing ? existing : {
@@ -3344,16 +3561,6 @@ function __saveRP(opts){
   base.accionesPreliminar = [...accionesRPTemp];
   base.elaboradoPor = elaborado;
   base.aprobadoPor  = aprobadoUI;
-
-  // Reflejar en el formulario lo guardado (evita que el Admin vea datos distintos tras guardar)
-  try{
-    if(__isAdm){
-      const _el = document.getElementById("elaboradoRP");
-      if(_el) _el.value = base.elaboradoPor || "";
-      const _ap = document.getElementById("aprobadoRP");
-      if(_ap) _ap.value = base.aprobadoPor || "";
-    }
-  }catch(e){}
 
   // Enviar a aprobación en la misma acción (Registrador)
   if(submit){
@@ -3414,63 +3621,6 @@ document.getElementById("btnGuardarRP").onclick = async () => {
     alert("Reporte Preliminar guardado.");
   }
 };
-
-
-// Botón Admin: grabar + enviar a aprobación + aprobar (1 solo botón)
-(function(){
-  const __btnGA = document.getElementById("btnGrabarAprobarRPAdmin");
-  if(!__btnGA) return;
-  __btnGA.onclick = async ()=>{
-    if(!__isAdmin || !__isAdmin()) return;
-    try{
-      if(__isApiConfigured && __isApiConfigured() && navigator.onLine){
-        await __syncPullAuto();
-      }
-    }catch(e){}
-
-    const saved = __saveRP({submit:false});
-    if(!saved) return;
-
-    const codigo = (saved.codigo || document.getElementById("codigoRP")?.value || "").trim();
-    const em = (Array.isArray(emergencias)?emergencias:[]).find(e=>e.codigo===codigo);
-    if(!em){ alert("No se encontró la emergencia."); return; }
-
-    if(em.rpAprobEstado === "Aprobado"){
-      try{ __lockRPFormAdminApproved?.(); }catch(e){}
-      alert("RP guardado. Ya estaba aprobado.");
-      return;
-    }
-
-    if(em.rpAprobEstado !== "Pendiente"){
-      em.rpAprobEstado = "Pendiente";
-      em.rpEnviadoPor = __getCurrentUserName();
-      em.rpEnviadoPorEmail = currentUser ? currentUser.email : null;
-      em.rpEnviadoEn = __nowIso();
-      em.rpObs = null;
-      __audit("ENVIAR_RP_APROBACION", "emergencia", em.codigo, {auto:true});
-      __histPush(em, "RP_ENVIADO_APROBACION", {auto:true});
-    }
-
-    __aprobar({kind:"rp", codigo: em.codigo});
-    __saveEmergencias();
-    cargarTablaEmergencias();
-
-    try{
-      const apr = document.getElementById("aprobadoRP");
-      if(apr) apr.value = em.rpAprobadoPor || __getCurrentUserName();
-      __lockRPFormAdminApproved?.();
-      __btnGA.disabled = true;
-    }catch(e){}
-
-    try{
-      if(__isApiConfigured && __isApiConfigured() && navigator.onLine){
-        await __syncPush();
-      }
-    }catch(e){}
-
-    alert("RP guardado y aprobado.");
-  };
-})();
 
 // Botón Registrador: guarda y envía a aprobación (1 solo botón)
 document.getElementById("btnGuardarEnviarRP").onclick = async () => {
@@ -3795,6 +3945,36 @@ function __printRC_PDF(idxOpt){
 // ===================== ORDENAMIENTO (LISTA EMERGENCIAS) =====================
 const __LIST_SORT = { key: null, dir: 1 }; // dir: 1 asc, -1 desc
 
+// ===================== PAGINACIÓN (LISTA EMERGENCIAS) =====================
+const __LIST_PAGER = {
+  page: 1,
+  size: 10,
+  lastFilterKey: null
+};
+
+function __listGetPageSize(){
+  try{
+    const sel = document.getElementById("listPageSize");
+    const v = Number(sel && sel.value ? sel.value : __LIST_PAGER.size);
+    return ([10,25,50,100].includes(v) ? v : 10);
+  }catch(e){
+    return 10;
+  }
+}
+
+function __listSetRangeInfo(text){
+  const el = document.getElementById("listRangeInfo");
+  if(el) el.textContent = text;
+}
+
+function __listUpdatePagerButtons({page, total, size}){
+  const prev = document.getElementById("listPrevPage");
+  const next = document.getElementById("listNextPage");
+  const maxPage = Math.max(1, Math.ceil((total || 0) / (size || 10)));
+  if(prev) prev.disabled = (page <= 1);
+  if(next) next.disabled = (page >= maxPage) || total <= 0;
+}
+
 function __listParseDateYYYYMMDD(s){
   if(!s) return null;
   const str = String(s).trim();
@@ -3866,10 +4046,138 @@ function __listInitSort(){
 }
 
 
+
+// === Helpers (Listado): fecha y usuarios registradores ===
+function __listNowLocalDT(){
+  // YYYY-MM-DDTHH:mm en hora local del equipo
+  try{
+    const d = new Date();
+    return new Date(d.getTime() - (d.getTimezoneOffset()*60000)).toISOString().slice(0,16);
+  }catch(e){
+    return "";
+  }
+}
+
+function __listDateOnly(v){
+  if(!v) return "";
+  const s = String(v).trim();
+  // YYYY-MM-DD o YYYY-MM-DDTHH:mm o ISO
+  const m = s.match(/^(\d{4}-\d{2}-\d{2})/);
+  if(m) return m[1];
+
+  // dd/mm/yyyy o dd-mm-yyyy
+  const m2 = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+  if(m2){
+    const dd = String(m2[1]).padStart(2,"0");
+    const mm = String(m2[2]).padStart(2,"0");
+    const yy = m2[3];
+    return `${yy}-${mm}-${dd}`;
+  }
+
+  // Fallback
+  try{
+    const d = new Date(s);
+    if(!isNaN(d.getTime())){
+      const yy = d.getFullYear();
+      const mm = String(d.getMonth()+1).padStart(2,"0");
+      const dd = String(d.getDate()).padStart(2,"0");
+      return `${yy}-${mm}-${dd}`;
+    }
+  }catch(e){}
+  return "";
+}
+
+function __listRefreshRegistradorOptions(){
+  const sel = document.getElementById("filtroRegistrador");
+  if(!sel) return;
+
+  const prev = sel.value || "";
+  const namesSet = new Set();
+
+  try{
+    (Array.isArray(emergencias) ? emergencias : []).forEach(e=>{
+      if(e && e.elaboradoPor) namesSet.add(String(e.elaboradoPor).trim());
+      const rcs = (typeof __getRCList === "function") ? __getRCList(e) : [];
+      if(Array.isArray(rcs)){
+        rcs.forEach(rc=>{
+          if(rc && rc.elaboradoPor) namesSet.add(String(rc.elaboradoPor).trim());
+        });
+      }
+    });
+  }catch(e){}
+
+  const names = [...namesSet].filter(n=>n).sort((a,b)=> String(a).localeCompare(String(b), "es", { sensitivity:"base" }));
+
+  // Re-armar opciones sin perder selección (si existe)
+  while(sel.options.length) sel.remove(0);
+  sel.add(new Option("(Todos)", ""));
+  names.forEach(n=> sel.add(new Option(n, n)));
+
+  if(prev && names.includes(prev)) sel.value = prev;
+}
+
 // ===================== TABLA EMERGENCIAS =====================
+
+// ===== Seguimiento de descargas Word (RP/RC) =====
+function __escAttr(s){
+  return String(s||"")
+    .replace(/&/g,"&amp;")
+    .replace(/</g,"&lt;")
+    .replace(/>/g,"&gt;")
+    .replace(/"/g,"&quot;")
+    .replace(/'/g,"&#39;");
+}
+
+function __wordStatusRP(em){
+  try{
+    const en = em?.rpWordDescargadoUltEn || em?.rpWordDescargadoEn || "";
+    const por = em?.rpWordDescargadoPor || "";
+    const email = em?.rpWordDescargadoPorEmail || "";
+    const ok = !!en;
+    const t = ok ? ("Último: " + __formatLocalIso(en) + (por ? (" — " + por) : "") + (email ? (" (" + email + ")") : "")) : "Pendiente";
+    const c = Number(em?.rpWordDescargasCount || 0);
+    return { ok, na:false, title:t + (ok && c ? (" | Descargas: " + c) : ""), count:c };
+  }catch(e){
+    return { ok:false, na:false, title:"Pendiente" };
+  }
+}
+
+function __wordStatusRC(em){
+  try{
+    const rcs = __getRCList(em);
+    if(!rcs || rcs.length===0) return { ok:false, na:true, title:"Sin RC" };
+    const last = rcs[rcs.length-1];
+    const en = last?.wordDescargadoUltEn || last?.wordDescargadoEn || "";
+    const por = last?.wordDescargadoPor || "";
+    const email = last?.wordDescargadoPorEmail || "";
+    const ok = !!en;
+    const t = ok ? ("Último: " + __formatLocalIso(en) + (por ? (" — " + por) : "") + (email ? (" (" + email + ")") : "")) : "Pendiente";
+    const c = Number(last?.wordDescargasCount || 0);
+    return { ok, na:false, title:t + (ok && c ? (" | Descargas: " + c) : ""), count:c };
+  }catch(e){
+    return { ok:false, na:true, title:"Sin RC" };
+  }
+}
+
+function __wordBadge(st){
+  try{
+    if(st && st.na) return `<span class="text-muted" title="${__escAttr(st.title)}">—</span>`;
+    const ok = !!(st && st.ok);
+    const cls = ok ? "text-bg-success" : "text-bg-warning";
+    const c = Number(st && st.count ? st.count : 0);
+    const txt = ok ? (c ? ("Descargado (" + c + ")") : "Descargado") : "Pendiente";
+    return `<span class="badge ${cls}" title="${__escAttr(st && st.title ? st.title : txt)}">${txt}</span>`;
+  }catch(e){
+    return '<span class="badge text-bg-warning" title="Pendiente">Pendiente</span>';
+  }
+}
+
 function cargarTablaEmergencias() {
   let body = document.querySelector("#tablaEmergencias tbody");
   body.innerHTML = "";
+
+  // Refrescar lista de usuarios (sin perder selección)
+  __listRefreshRegistradorOptions();
 
   // Leer filtros
   const fCodigo = normalizarTexto(document.getElementById("filtroCodigo")?.value || "");
@@ -3878,6 +4186,13 @@ function cargarTablaEmergencias() {
   const fPeligro = document.getElementById("filtroPeligro")?.value || "";
   const fDep = normalizarTexto(document.getElementById("filtroDepartamento")?.value || "");
   const fProv = normalizarTexto(document.getElementById("filtroProvincia")?.value || "");
+
+  const fRegistrador = normalizarTexto(document.getElementById("filtroRegistrador")?.value || "");
+  const fFechaElab = document.getElementById("filtroFechaElaboracion")?.value || "";
+  const fTipoRep = document.getElementById("filtroTipoReporte")?.value || "";
+
+  const fWordRP = document.getElementById("filtroWordRP")?.value || "";
+  const fWordRC = document.getElementById("filtroWordRC")?.value || "";
 
   // 1) Filtrar
   const filtered = [];
@@ -3893,14 +4208,90 @@ function cargarTablaEmergencias() {
     if (fDep && !normalizarTexto(e.departamento).includes(fDep)) return;
     if (fProv && !normalizarTexto(e.provincia).includes(fProv)) return;
 
+    // Filtro Tipo (RP/RC): RP = solo RP (sin RC), RC = con RC
+    const rcList = (typeof __getRCList === "function") ? __getRCList(e) : [];
+    const hasRC = Array.isArray(rcList) && rcList.length > 0;
+    if (fTipoRep === "RP" && hasRC) return;
+    if (fTipoRep === "RC" && !hasRC) return;
+
+    // Filtro usuario registrador (nombre visible)
+    if (fRegistrador) {
+      let nameToCheck = "";
+      if (fTipoRep === "RC") {
+        const last = hasRC ? rcList[rcList.length - 1] : null;
+        nameToCheck = (last && last.elaboradoPor) ? String(last.elaboradoPor) : "";
+      } else {
+        nameToCheck = (e && e.elaboradoPor) ? String(e.elaboradoPor) : "";
+      }
+      if (!normalizarTexto(nameToCheck).includes(fRegistrador)) return;
+    }
+
+    // Filtro fecha de elaboración (día): aplica al tipo seleccionado (por defecto RP)
+    if (fFechaElab) {
+      let dateToCheck = "";
+      if (fTipoRep === "RC") {
+        const last = hasRC ? rcList[rcList.length - 1] : null;
+        dateToCheck = __listDateOnly((last && (last.fechaHoraRC || last.fechaRegistro || last.createdAt || last.updatedAt)) ? (last.fechaHoraRC || last.fechaRegistro || last.createdAt || last.updatedAt) : "");
+      } else {
+        dateToCheck = __listDateOnly((e && (e.fechaHora || e.createdAt || e.updatedAt)) ? (e.fechaHora || e.createdAt || e.updatedAt) : "");
+      }
+      if (!dateToCheck || dateToCheck !== fFechaElab) return;
+    }
+
+
+
+    // Word RP/RC (seguimiento de descargas)
+    if(fWordRP){
+      const okRP = !!(e && (e.rpWordDescargadoUltEn || e.rpWordDescargadoEn));
+      if(fWordRP === "desc" && !okRP) return;
+      if(fWordRP === "pend" && okRP) return;
+    }
+    if(fWordRC){
+      const rcList2 = (typeof __getRCList === "function") ? __getRCList(e) : [];
+      if(!rcList2 || rcList2.length === 0) return;
+      const last2 = rcList2[rcList2.length-1] || {};
+      const okRC = !!(last2.wordDescargadoUltEn || last2.wordDescargadoEn);
+      if(fWordRC === "desc" && !okRC) return;
+      if(fWordRC === "pend" && okRC) return;
+    }
+
     filtered.push(e);
   });
 
   // 2) Ordenar (si el usuario hizo clic en cabecera)
-  const list = (typeof __listApplySort === "function") ? __listApplySort(filtered) : filtered;
+  const listAll = (typeof __listApplySort === "function") ? __listApplySort(filtered) : filtered;
+
+  // 2.1) Paginación: reset de página si cambian los filtros
+  try{
+    const filterKey = JSON.stringify({ fCodigo, fFechaPeligro, fEstado, fPeligro, fDep, fProv, fRegistrador, fFechaElab, fTipoRep, fWordRP, fWordRC });
+    if(__LIST_PAGER.lastFilterKey !== filterKey){
+      __LIST_PAGER.page = 1;
+      __LIST_PAGER.lastFilterKey = filterKey;
+    }
+  }catch(e){}
+
+  const size = __listGetPageSize();
+  __LIST_PAGER.size = size;
+  const total = Array.isArray(listAll) ? listAll.length : 0;
+  const maxPage = Math.max(1, Math.ceil(total / size));
+  if(__LIST_PAGER.page > maxPage) __LIST_PAGER.page = maxPage;
+  if(__LIST_PAGER.page < 1) __LIST_PAGER.page = 1;
+  const startIdx = (__LIST_PAGER.page - 1) * size;
+  const endIdx = Math.min(total, startIdx + size);
+  const list = (Array.isArray(listAll) ? listAll : []).slice(startIdx, endIdx);
+
+  // Rango mostrado (parte inferior)
+  if(total <= 0){
+    __listSetRangeInfo("0 a 0 de 0 registros");
+  }else{
+    __listSetRangeInfo(`${startIdx + 1} a ${endIdx} de ${total} registros`);
+  }
+  __listUpdatePagerButtons({ page: __LIST_PAGER.page, total, size });
 
   // 3) Render
   list.forEach(e => {
+    const stWordRP = (typeof __wordStatusRP === "function") ? __wordStatusRP(e) : {ok:false, na:false, title:"Pendiente"};
+    const stWordRC = (typeof __wordStatusRC === "function") ? __wordStatusRC(e) : {ok:false, na:true, title:"Sin RC"};
     let tr = document.createElement("tr");
     tr.innerHTML = `
 <td>${e.codigo}</td>
@@ -3913,6 +4304,8 @@ function cargarTablaEmergencias() {
 <td>${__rpEstadoEtiqueta(e)}</td>
 <td class="col-rp"><button class="btn btn-sm btn-outline-primary btnRP" ${(__isRegistrador() && e.cerrada) ? "disabled" : ""}>RP</button></td>
 <td class="col-rc"><button class="btn btn-sm btn-primary btnRC" ${ (e.cerrada || (__isRegistrador() && String(e.rpAprobEstado||"Borrador")!=="Aprobado")) ? "disabled" : ""}>RC</button></td>
+<td>${__wordBadge(stWordRP)}</td>
+<td>${__wordBadge(stWordRC)}</td>
 <td><button class="btn btn-sm btn-outline-secondary btnVer" title="Ver detalle">👁</button></td>
 `;
 
@@ -4218,12 +4611,6 @@ try{
     btnApr.disabled = !(__isAdmin() && obj.rpAprobEstado === "Pendiente");
   }
 
-  // Botón combo (admin): grabar y aprobar
-  const btnGA = document.getElementById("btnGrabarAprobarRPAdmin");
-  if(btnGA){
-    btnGA.disabled = !(__isAdmin() && obj.rpAprobEstado !== "Aprobado");
-  }
-
   // Admin: si el RP ya está aprobado, bloquear todos los campos (solo Retornar activo)
   try{
     if(__isAdmin && __isAdmin() && obj.rpAprobEstado === "Aprobado"){
@@ -4438,7 +4825,8 @@ function __guardarRCCore(opts={}){
   em.rcReportes.push({
     numeroReporteRC: numRC,
     numeroGlobal: numRC,
-    fechaRegistro: new Date().toISOString().slice(0, 10),
+    fechaHoraRC: __listNowLocalDT(),
+    fechaRegistro: __listDateOnly(__listNowLocalDT()) || new Date().toISOString().slice(0, 10),
     acciones: [...accionesRCTemp],
     daniosMIDIS: JSON.parse(JSON.stringify(em.daniosMIDIS)),
     // Aprobación RC
@@ -4583,6 +4971,44 @@ document.getElementById("btnRetornarRP").onclick = () => {
   }
 };
 
+
+
+// Marcar descargas (para seguimiento en el Listado de emergencias)
+function __markRPWordDownloaded(em){
+  try{
+    if(!em) return;
+    const now = __nowIso();
+    if(!em.rpWordDescargadoEn) em.rpWordDescargadoEn = now;
+    em.rpWordDescargadoUltEn = now;
+    em.rpWordDescargadoPor = currentUser ? currentUser.fullName : "";
+    em.rpWordDescargadoPorEmail = currentUser ? currentUser.email : null;
+    em.rpWordDescargasCount = Number(em.rpWordDescargasCount || 0) + 1;
+    __touch(em);
+    __saveEmergencias();
+    try{ cargarTablaEmergencias(); }catch(e){}
+  }catch(e){}
+}
+
+function __markRCWordDownloaded(emBase){
+  try{
+    if(!emBase) return;
+    if(!Array.isArray(emBase.rcReportes) || emBase.rcReportes.length === 0) return;
+    const rc = emBase.rcReportes[emBase.rcReportes.length - 1];
+    if(!rc) return;
+    const now = __nowIso();
+    if(!rc.wordDescargadoEn) rc.wordDescargadoEn = now;
+    rc.wordDescargadoUltEn = now;
+    rc.wordDescargadoPor = currentUser ? currentUser.fullName : "";
+    rc.wordDescargadoPorEmail = currentUser ? currentUser.email : null;
+    rc.wordDescargasCount = Number(rc.wordDescargasCount || 0) + 1;
+    rc.updatedAt = __nowIso();
+    rc.updatedByEmail = currentUser ? currentUser.email : null;
+    __touch(emBase);
+    __saveEmergencias();
+    try{ cargarTablaEmergencias(); }catch(e){}
+  }catch(e){}
+}
+
 // ===================== WORD RP (solo una vez) =====================
 document.getElementById("btnWordRP").onclick = () => {
   if (!rpGrabado) {
@@ -4657,6 +5083,7 @@ document.getElementById("btnWordRP").onclick = () => {
     document.body.appendChild(a);
     a.click();
     setTimeout(()=>{ try{ URL.revokeObjectURL(url); }catch(e){} try{ a.remove(); }catch(e){} }, 1500);
+    try{ __markRPWordDownloaded(em); }catch(e){}
     rpWordGenerado = true;
   })
   .catch(err => {
@@ -4744,6 +5171,7 @@ document.getElementById("btnWordRC").onclick = () => {
     document.body.appendChild(a);
     a.click();
     setTimeout(()=>{ try{ URL.revokeObjectURL(url); }catch(e){} try{ a.remove(); }catch(e){} }, 1500);
+    try{ __markRCWordDownloaded(emergenciaSeleccionada); }catch(e){}
     rcWordGenerado = true;
   })
   .catch(err => {
