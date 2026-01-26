@@ -1606,7 +1606,7 @@ const btnERP = document.getElementById("btnEnviarAprobRP");
 const btnGERP = document.getElementById("btnGuardarEnviarRP");
 const btnGARP = document.getElementById("btnGrabarAprobarRPAdmin");
 const isReg = currentUser?.role === __ROLES.REG;
-const isAdmin = currentUser?.role === __ROLES.ADMIN;
+    // (removed duplicate isAdmin declaration)
 
 // RP: ocultar todo el contenido para REGISTRADOR (solo muestra el título)
 const rpContentWrap = document.getElementById("rpContentWrap");
