@@ -533,6 +533,7 @@ body { background: #f5f5f5; }
       <div class="mt-4 text-end">
         <!-- ORDEN: Grabar → Word → Retornar -->
         <button id="btnGuardarRP" class="btn btn-success me-2">Grabar RP</button>
+        <button id="btnGuardarAprobarRPAdmin" class="btn btn-success me-2 d-none">Grabar y aprobar RP</button>
         <button id="btnGuardarEnviarRP" class="btn btn-success me-2 d-none">Grabar y enviar a aprobación</button>
         <button id="btnWordRP" class="btn btn-primary me-2">Word RP</button>
         <button id="btnEnviarAprobRP" class="btn btn-outline-success me-2">Enviar a aprobación</button>
@@ -1659,19 +1660,20 @@ function __applyRoleAccess(){
   if(btnAdmin) btnAdmin.classList.toggle("d-none", !isAdmin);
   if(btnAprob) btnAprob.classList.toggle("d-none", !isAdmin);
 
-  // Admin: asegurar que en RP estén activos 'Agregar acción' y 'Grabar RP'
+  // Admin: asegurar que en RP estén activos 'Agregar acción' y 'Grabar y aprobar RP'
   if(isAdmin){
     const b1 = document.getElementById("btnAddAccionRP");
-    const b2 = document.getElementById("btnGuardarRP");
+    const b2 = document.getElementById("btnGuardarAprobarRPAdmin");
     if(b1) b1.disabled = false;
     if(b2) b2.disabled = false;
   }
 
 // RP: para Registrador, un solo botón "Grabar y enviar a aprobación"
-const btnGRP = document.getElementById("btnGuardarRP");
-const btnERP = document.getElementById("btnEnviarAprobRP");
+const btnGRP  = document.getElementById("btnGuardarRP");
+const btnERP  = document.getElementById("btnEnviarAprobRP");
 const btnGERP = document.getElementById("btnGuardarEnviarRP");
-const isReg = currentUser?.role === __ROLES.REG;
+const btnGARP = document.getElementById("btnGuardarAprobarRPAdmin");
+const isReg   = currentUser?.role === __ROLES.REG;
 
 
 // RP: ocultar todo el contenido para REGISTRADOR (solo muestra el título)
@@ -1682,8 +1684,9 @@ if(rpContentWrap){
 }
 
 if(btnGERP) btnGERP.classList.toggle("d-none", !isReg);
-if(btnGRP)  btnGRP.classList.toggle("d-none", isReg);
-if(btnERP)  btnERP.classList.toggle("d-none", isReg);
+if(btnGARP) btnGARP.classList.toggle("d-none", !isAdmin);
+if(btnGRP)  btnGRP.classList.toggle("d-none", (isReg || isAdmin));
+if(btnERP)  btnERP.classList.toggle("d-none", (isReg || isAdmin));
 
 // RC: para Registrador, un solo botón "Guardar y enviar a aprobación"
 const btnGRC = document.getElementById("btnGuardarRC");
@@ -1708,7 +1711,8 @@ if(isReg){
 
   const btnAprRp = document.getElementById("btnAprobarRPAdmin");
   const btnAprRc = document.getElementById("btnAprobarRCAdmin");
-  if(btnAprRp) { btnAprRp.classList.toggle("d-none", !isAdmin); btnAprRp.disabled = !isAdmin; }
+  // RP: el Admin usa el botón unificado (Grabar y aprobar), por eso se oculta este botón.
+  if(btnAprRp) { btnAprRp.classList.add("d-none"); btnAprRp.disabled = true; }
   if(btnAprRc) { btnAprRc.classList.toggle("d-none", !isAdmin); btnAprRc.disabled = !isAdmin; }
 
   // Tabs visibles
@@ -3620,7 +3624,61 @@ document.getElementById("btnGuardarRP").onclick = async () => {
     }catch(e){}
     alert("Reporte Preliminar guardado.");
   }
-};
+}
+
+// Botón Admin unificado: Grabar + Enviar a aprobación + Aprobar (en un solo click)
+document.getElementById("btnGuardarAprobarRPAdmin")?.addEventListener("click", async () => {
+  if(!(__isAdmin && __isAdmin())) return;
+
+  try{
+    // Antes de grabar/aprobar, jalar lo último del servidor (si está configurado y hay internet)
+    if(__isApiConfigured && __isApiConfigured() && navigator.onLine){
+      await __syncPullAuto();
+    }
+  }catch(e){}
+
+  const saved = __saveRP({submit:false});
+  if(!saved) return;
+
+  const codigo = (document.getElementById("codigoRP")?.value || "").trim();
+  if(!codigo){ alert("No hay RP cargado."); return; }
+
+  const em = emergencias.find(e=>e.codigo===codigo);
+  if(!em){ alert("No se encontró la emergencia."); return; }
+
+  // Enviar a aprobación (si aún no está Pendiente/Aprobado)
+  if(em.rpAprobEstado !== "Pendiente" && em.rpAprobEstado !== "Aprobado"){
+    em.rpAprobEstado = "Pendiente";
+    em.rpEnviadoPor  = __getCurrentUserName();
+    em.rpEnviadoEn   = __nowIso();
+    __audit("ENVIAR_RP_APROBACION", "emergencia", em.codigo, null);
+  }
+
+  // Aprobar (si está Pendiente)
+  if(em.rpAprobEstado === "Pendiente"){
+    __aprobar({kind:"rp", codigo});
+  }
+
+  __saveEmergencias();
+  cargarTablaEmergencias();
+
+  try{
+    // Empuja al servidor para que el Registrador lo vea en su Listado
+    if(__isApiConfigured && __isApiConfigured() && navigator.onLine){
+      await __syncPush();
+    }
+  }catch(e){}
+
+  // Al aprobar, dejar el RP en solo lectura (solo Retornar activo)
+  try{
+    const apr = document.getElementById("aprobadoRP");
+    if(apr) apr.value = em.rpAprobadoPor || __getCurrentUserName();
+    __lockRPFormAdminApproved?.();
+  }catch(e){}
+
+  alert("Reporte Preliminar guardado y aprobado.");
+});
+;
 
 // Botón Registrador: guarda y envía a aprobación (1 solo botón)
 document.getElementById("btnGuardarEnviarRP").onclick = async () => {
