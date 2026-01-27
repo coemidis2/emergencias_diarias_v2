@@ -360,6 +360,8 @@ body { background: #f5f5f5; }
             <th class="col-rc">RC</th>
             <th>Word RP</th>
             <th>Word RC</th>
+            <th class="col-admin-edit">Modificar</th>
+            <th class="col-admin-del">Eliminar</th>
             <th>Ver</th>
           </tr>
         </thead>
@@ -1736,7 +1738,14 @@ if(isReg){
     });
   }catch(e){}
 
-  // Bloqueos de edición
+  
+  // Lista de emergencias: columnas solo Admin (Modificar / Eliminar)
+  try{
+    document.querySelectorAll('#tablaEmergencias thead th.col-admin-edit, #tablaEmergencias thead th.col-admin-del').forEach(th=>{
+      th.classList.toggle('cons-hide', !isAdmin);
+    });
+  }catch(e){}
+// Bloqueos de edición
   const disableIdsConsulta = [
     "btnGuardarRP","btnGuardarEnviarRP","btnWordRP","btnNuevoRP","btnAddAccionRP","btnEnviarAprobRP",
     "btnGuardarRC","btnGuardarEnviarRC","btnWordRC","btnCerrarEmergencia","btnRetornarRC","btnAddAccionRC","btnEnviarAprobRC"
@@ -4230,6 +4239,34 @@ function __wordBadge(st){
   }
 }
 
+const __DEL_KEYS = { tombstones: "midis_deleted_tombstones_v1" };
+
+function __getTombstones(){
+  try{ return JSON.parse(__lsGet(__DEL_KEYS.tombstones) || "{}"); }catch(e){ return {}; }
+}
+function __setTombstones(obj){
+  try{ __lsSet(__DEL_KEYS.tombstones, JSON.stringify(obj || {})); }catch(e){}
+}
+function __addTombstone(codigo){
+  try{
+    const c = String(codigo||"").trim();
+    if(!c) return;
+    const t = __getTombstones();
+    t[c] = __nowIso();
+    __setTombstones(t);
+  }catch(e){}
+}
+
+function __isDeleted(em){
+  try{
+    if(em && (em._deleted === true || em.deleted === true)) return true;
+    const c = String(em && em.codigo ? em.codigo : "").trim();
+    if(!c) return false;
+    const t = __getTombstones();
+    return !!t[c];
+  }catch(e){ return false; }
+}
+
 function cargarTablaEmergencias() {
   let body = document.querySelector("#tablaEmergencias tbody");
   body.innerHTML = "";
@@ -4255,6 +4292,7 @@ function cargarTablaEmergencias() {
   // 1) Filtrar
   const filtered = [];
   emergencias.forEach(e => {
+    if(__isDeleted(e)) return;
     if (fCodigo && !normalizarTexto(e.codigo).includes(fCodigo)) return;
     if (fFechaPeligro && (e.fechaPeligro || "") !== fFechaPeligro) return;
 
@@ -4364,6 +4402,13 @@ function cargarTablaEmergencias() {
 <td class="col-rc"><button class="btn btn-sm btn-primary btnRC" ${ (e.cerrada || (__isRegistrador() && String(e.rpAprobEstado||"Borrador")!=="Aprobado")) ? "disabled" : ""}>RC</button></td>
 <td>${__wordBadge(stWordRP)}</td>
 <td>${__wordBadge(stWordRC)}</td>
+<td class="col-admin-edit">
+  <div class="btn-group btn-group-sm" role="group">
+    <button class="btn btn-sm btn-outline-warning btnEditRP" title="Modificar RP">✏️RP</button>
+    <button class="btn btn-sm btn-outline-warning btnEditRC" title="Modificar RC">✏️RC</button>
+  </div>
+</td>
+<td class="col-admin-del"><button class="btn btn-sm btn-outline-danger btnDel" title="Eliminar registro">🗑</button></td>
 <td><button class="btn btn-sm btn-outline-secondary btnVer" title="Ver detalle">👁</button></td>
 `;
 
@@ -4374,14 +4419,29 @@ function cargarTablaEmergencias() {
       const bRC = tr.querySelector(".btnRC");
       const bRP = tr.querySelector(".btnRP");
       const bVer = tr.querySelector(".btnVer");
+      const bDel = tr.querySelector(".btnDel");
+      const bEditRP = tr.querySelector(".btnEditRP");
+      const bEditRC = tr.querySelector(".btnEditRC");
 
       if(isConsulta){
         // Consulta: solo lectura (Lista + Dashboard)
         if (bRC) { bRC.disabled = true; bRC.style.display = "none"; }
         if (bRP) { bRP.disabled = true; bRP.style.display = "none"; }
         try{ tr.querySelectorAll('td.col-rp, td.col-rc').forEach(td=>td.classList.add('cons-hide')); }catch(_e){}
+        try{ tr.querySelectorAll('td.col-admin-edit, td.col-admin-del').forEach(td=>td.classList.add('cons-hide')); }catch(_e){}
+        if (bDel) { bDel.disabled = true; bDel.style.display = "none"; }
+        if (bEditRP) { bEditRP.disabled = true; bEditRP.style.display = "none"; }
+        if (bEditRC) { bEditRC.disabled = true; bEditRC.style.display = "none"; }
         if (bVer) { bVer.disabled = false; bVer.style.display = ""; bVer.title = "Ver detalle"; }
       } else {
+        // Columnas Admin en listado
+        if(!isAdmin){
+          try{ tr.querySelectorAll('td.col-admin-edit, td.col-admin-del').forEach(td=>td.classList.add('cons-hide')); }catch(_e){}
+          if (bDel) { bDel.disabled = true; bDel.style.display = "none"; }
+          if (bEditRP) { bEditRP.disabled = true; bEditRP.style.display = "none"; }
+          if (bEditRC) { bEditRC.disabled = true; bEditRC.style.display = "none"; }
+        }
+
         // Para Admin/Registrador: el ojito siempre disponible (abierta o cerrada)
         if (bVer) {
           bVer.disabled = false;
@@ -4486,9 +4546,77 @@ function cargarTablaEmergencias() {
       btnRC.onclick = () => abrirRC(e);
     }
 
+    // Admin-only: Modificar / Eliminar
+    const btnEditRP = tr.querySelector(".btnEditRP");
+    if(btnEditRP && __isAdmin && __isAdmin()){
+      btnEditRP.onclick = () => abrirRP(e);
+    }
+    const btnEditRC = tr.querySelector(".btnEditRC");
+    if(btnEditRC && __isAdmin && __isAdmin()){
+      btnEditRC.onclick = () => abrirRC(e);
+    }
+    const btnDel = tr.querySelector(".btnDel");
+    if(btnDel && __isAdmin && __isAdmin()){
+      btnDel.onclick = () => __adminDeleteEmergencia(e.codigo);
+    }
+
     body.appendChild(tr);
   });
 }
+
+async function __adminDeleteEmergencia(codigo){
+  try{
+    if(!(__isAdmin && __isAdmin())){ alert("Solo el usuario Administrador puede eliminar registros."); return; }
+    const cod = String(codigo||"").trim();
+    if(!cod) return;
+    const em = (Array.isArray(emergencias)?emergencias:[]).find(x=>String(x.codigo||"").trim()===cod);
+    if(!em){ alert("No se encontró el registro: " + cod); return; }
+
+    if(!confirm("¿Eliminar el registro " + cod + "?
+
+Se ocultará del listado y quedará pendiente de sincronización (se intentará sincronizar si hay conexión).")) return;
+    const conf = prompt("Para confirmar, escriba el código: " + cod, "");
+    if(String(conf||"").trim() !== cod){ alert("Confirmación no coincide. Cancelado."); return; }
+
+    // Delete (marca + tombstone) - compatible con sync por upsert
+    em._deleted = true;
+    em.deleted = true;
+    __addTombstone(cod);
+
+    em.deletedAt = __nowIso();
+    em.deletedBy = (__getCurrentUserName ? __getCurrentUserName() : (currentUser && currentUser.fullName ? currentUser.fullName : "")) || "";
+    em.deletedByEmail = currentUser ? currentUser.email : null;
+
+    em.updatedAt = __nowIso();
+    em.updatedByEmail = currentUser ? currentUser.email : null;
+
+    try{ em.estado_sync = 'Pendiente'; }catch(_e){}
+
+    __saveEmergencias();
+    try{ if(emergenciaSeleccionada && String(emergenciaSeleccionada.codigo||"").trim()===cod) emergenciaSeleccionada = null; }catch(e){}
+    try{ cargarTablaEmergencias(); }catch(e){}
+    try{ dashboardRefresh(); }catch(e){}
+    try{ __calcPending(); }catch(e){}
+
+    // Intento de sincronización inmediata (si procede)
+    try{
+      if(__isApiConfigured && __isApiConfigured() && navigator.onLine){
+        const tok = (__tokenGet ? __tokenGet() : null);
+        if(tok && __isJwtUsableOffline && __isJwtUsableOffline(tok)){
+          await __syncPush();
+          try{ await __syncPullAuto(); }catch(_e){}
+          try{ cargarTablaEmergencias(); }catch(e){}
+          try{ dashboardRefresh(); }catch(e){}
+          try{ __calcPending(); }catch(e){}
+        }
+      }
+    }catch(_e){}
+  }catch(e){
+    alert("No se pudo eliminar el registro.");
+  }
+}
+
+
 
 
 // ===================== RC =====================
@@ -5264,7 +5392,10 @@ const __DASH_PROGRAMAS = [
 
 function __dashGetEmergencias(){
   // Lee la variable real del aplicativo (no window.emergencias)
-  try { return (typeof emergencias !== "undefined" && Array.isArray(emergencias)) ? emergencias : []; }
+  try {
+    const arr = (typeof emergencias !== "undefined" && Array.isArray(emergencias)) ? emergencias : [];
+    return arr.filter(e=>!__isDeleted(e));
+  }
   catch(e){ return []; }
 }
 
