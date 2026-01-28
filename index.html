@@ -82,6 +82,18 @@ body { background: #f5f5f5; }
   opacity:1;
 }
 
+/* ======= ADMIN: marco más ancho en Lista ======= */
+.role-admin #appScreen .container.mt-3{
+  max-width: 98vw !important;
+}
+.role-admin #listaTab .card{
+  border-radius: 12px;
+}
+.role-admin #listaTab .card-body{
+  padding-left: 1.5rem;
+  padding-right: 1.5rem;
+}
+
 </style>
 
  <script src="./patch_cf_sync.js?v=20251225a"></script>
@@ -1659,6 +1671,7 @@ function __applyRoleAccess(){
   const btnAprob = document.getElementById("btnAprob");
 
   const isAdmin = currentUser?.role === __ROLES.ADMIN;
+  try{ document.body.classList.toggle('role-admin', !!isAdmin); }catch(e){}
   if(btnAdmin) btnAdmin.classList.toggle("d-none", !isAdmin);
   if(btnAprob) btnAprob.classList.toggle("d-none", !isAdmin);
 
@@ -4398,7 +4411,7 @@ function cargarTablaEmergencias() {
 <td>${e.fechaPeligro}</td>
 <td>${e.cerrada ? "Cerrada" : "Abierta"}</td>
 <td>${__rpEstadoEtiqueta(e)}</td>
-<td class="col-rp"><button class="btn btn-sm btn-outline-primary btnRP" ${(__isRegistrador() && e.cerrada) ? "disabled" : ""}>RP</button></td>
+<td class="col-rp"><button class="btn btn-sm btn-outline-primary btnRP" ${((__isRegistrador() && e.cerrada) || (__isAdmin && __isAdmin() && String(e.rpAprobEstado||"Borrador")==="Aprobado")) ? "disabled" : ""}>RP</button></td>
 <td class="col-rc"><button class="btn btn-sm btn-primary btnRC" ${ (e.cerrada || (__isRegistrador() && String(e.rpAprobEstado||"Borrador")!=="Aprobado")) ? "disabled" : ""}>RC</button></td>
 <td>${__wordBadge(stWordRP)}</td>
 <td>${__wordBadge(stWordRC)}</td>
@@ -4530,6 +4543,17 @@ function cargarTablaEmergencias() {
     if (btnRP && btnRP.style.display !== "none") {
       const isReg = __isRegistrador();
       const isClosed = !!e.cerrada;
+
+      // Admin: si el RP está Aprobado, bloquear el botón RP en el listado
+      const isAdm = (__isAdmin && __isAdmin());
+      const rpOk = (e && String(e.rpAprobEstado||"Borrador")==="Aprobado");
+      if(isAdm && rpOk){
+        btnRP.disabled = true;
+        btnRP.classList.add("btn-outline-secondary");
+        btnRP.classList.remove("btn-outline-primary");
+        btnRP.title = "RP aprobado: botón RP bloqueado (use 'Modificar RP' si necesita cambios).";
+      }
+
       if (isReg && isClosed) {
         btnRP.disabled = true;
         btnRP.classList.add("btn-outline-secondary");
