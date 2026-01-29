@@ -82,41 +82,36 @@ body { background: #f5f5f5; }
   opacity:1;
 }
 
-/* ======= ADMIN: Lista de Emergencias (compacta y con scroll horizontal) ======= */
-.role-admin #appScreen .container.mt-3{
-  /* Volver a un ancho cómodo (evita que se deforme en pantallas grandes) */
-  max-width: 1320px !important;
-}
+/* ======= ADMIN: Lista de Emergencias (compacta, sin deformar) ======= */
 .role-admin #listaTab .card{
   border-radius: 12px;
+  max-width: 1320px;          /* ancho cómodo (tipo container XL) */
+  margin-left: auto;
+  margin-right: auto;
 }
 .role-admin #listaTab .card-body{
-  padding-left: 1rem;
-  padding-right: 1rem;
+  padding: 1rem 1.25rem;      /* un poco más compacto */
 }
 
-/* Tabla: mantener el card "normal" y dar scroll solo a la tabla */
-.role-admin #listaTab .list-table-wrap{
+/* Scroll horizontal solo dentro de la tabla (no estira el marco) */
+.role-admin #listaTab .admin-list-table-wrap{
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
+
+/* Compactación de columnas y wrap en texto */
 .role-admin #listaTab #tablaEmergencias{
   table-layout: fixed;
   width: 100%;
 }
 .role-admin #listaTab #tablaEmergencias th,
 .role-admin #listaTab #tablaEmergencias td{
-  padding: .35rem .5rem;
+  padding: .35rem .45rem;
   vertical-align: middle;
 }
 .role-admin #listaTab #tablaEmergencias th{
   white-space: nowrap;
 }
-.role-admin #listaTab #tablaEmergencias td{
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-/* Permitir 2-3 líneas en columnas de texto */
 .role-admin #listaTab #tablaEmergencias td:nth-child(2),
 .role-admin #listaTab #tablaEmergencias td:nth-child(3),
 .role-admin #listaTab #tablaEmergencias td:nth-child(4),
@@ -125,37 +120,37 @@ body { background: #f5f5f5; }
   word-break: break-word;
 }
 
-/* Anchos sugeridos (Admin: 15 columnas) */
+/* Ajustes finos de anchos (para no inflar la tabla) */
 .role-admin #listaTab #tablaEmergencias th:nth-child(1),
-.role-admin #listaTab #tablaEmergencias td:nth-child(1){ width: 90px; }   /* Código */
+.role-admin #listaTab #tablaEmergencias td:nth-child(1){ width: 95px; }
 .role-admin #listaTab #tablaEmergencias th:nth-child(2),
-.role-admin #listaTab #tablaEmergencias td:nth-child(2){ width: 130px; }  /* Peligro */
+.role-admin #listaTab #tablaEmergencias td:nth-child(2){ width: 110px; }
 .role-admin #listaTab #tablaEmergencias th:nth-child(3),
-.role-admin #listaTab #tablaEmergencias td:nth-child(3){ width: 130px; }  /* Departamento */
+.role-admin #listaTab #tablaEmergencias td:nth-child(3){ width: 120px; }
 .role-admin #listaTab #tablaEmergencias th:nth-child(4),
-.role-admin #listaTab #tablaEmergencias td:nth-child(4){ width: 120px; }  /* Provincia */
+.role-admin #listaTab #tablaEmergencias td:nth-child(4){ width: 120px; }
 .role-admin #listaTab #tablaEmergencias th:nth-child(5),
-.role-admin #listaTab #tablaEmergencias td:nth-child(5){ width: 140px; }  /* Distrito */
+.role-admin #listaTab #tablaEmergencias td:nth-child(5){ width: 135px; }
 .role-admin #listaTab #tablaEmergencias th:nth-child(6),
-.role-admin #listaTab #tablaEmergencias td:nth-child(6){ width: 110px; }  /* Fecha peligro */
+.role-admin #listaTab #tablaEmergencias td:nth-child(6){ width: 105px; }
 .role-admin #listaTab #tablaEmergencias th:nth-child(7),
-.role-admin #listaTab #tablaEmergencias td:nth-child(7){ width: 90px; }   /* Estado */
+.role-admin #listaTab #tablaEmergencias td:nth-child(7){ width: 85px; }
 .role-admin #listaTab #tablaEmergencias th:nth-child(8),
-.role-admin #listaTab #tablaEmergencias td:nth-child(8){ width: 95px; }   /* RP Estado */
+.role-admin #listaTab #tablaEmergencias td:nth-child(8){ width: 90px; }
 .role-admin #listaTab #tablaEmergencias th:nth-child(9),
-.role-admin #listaTab #tablaEmergencias td:nth-child(9){ width: 55px; }   /* RP */
+.role-admin #listaTab #tablaEmergencias td:nth-child(9){ width: 60px; }
 .role-admin #listaTab #tablaEmergencias th:nth-child(10),
-.role-admin #listaTab #tablaEmergencias td:nth-child(10){ width: 55px; }  /* RC */
+.role-admin #listaTab #tablaEmergencias td:nth-child(10){ width: 60px; }
 .role-admin #listaTab #tablaEmergencias th:nth-child(11),
-.role-admin #listaTab #tablaEmergencias td:nth-child(11){ width: 85px; }  /* Word RP */
+.role-admin #listaTab #tablaEmergencias td:nth-child(11){ width: 80px; }
 .role-admin #listaTab #tablaEmergencias th:nth-child(12),
-.role-admin #listaTab #tablaEmergencias td:nth-child(12){ width: 85px; }  /* Word RC */
+.role-admin #listaTab #tablaEmergencias td:nth-child(12){ width: 80px; }
 .role-admin #listaTab #tablaEmergencias th:nth-child(13),
-.role-admin #listaTab #tablaEmergencias td:nth-child(13){ width: 120px; } /* Modificar */
+.role-admin #listaTab #tablaEmergencias td:nth-child(13){ width: 120px; }
 .role-admin #listaTab #tablaEmergencias th:nth-child(14),
-.role-admin #listaTab #tablaEmergencias td:nth-child(14){ width: 85px; }  /* Eliminar */
+.role-admin #listaTab #tablaEmergencias td:nth-child(14){ width: 90px; }
 .role-admin #listaTab #tablaEmergencias th:nth-child(15),
-.role-admin #listaTab #tablaEmergencias td:nth-child(15){ width: 60px; }  /* Ver */
+.role-admin #listaTab #tablaEmergencias td:nth-child(15){ width: 70px; }
 
 </style>
 
@@ -420,8 +415,7 @@ body { background: #f5f5f5; }
         <span class="small text-muted">registros</span>
       </div>
 
-      <div class="list-table-wrap">
-
+      <div class="admin-list-table-wrap">
       <table class="table table-striped" id="tablaEmergencias">
         <thead>
           <tr>
@@ -444,8 +438,7 @@ body { background: #f5f5f5; }
         </thead>
         <tbody></tbody>
       </table>
-
-    </div>
+      </div>
 
       <!-- Pie de tabla: rango mostrado y navegación -->
       <div class="d-flex flex-wrap justify-content-between align-items-center mt-2 gap-2">
@@ -671,6 +664,7 @@ body { background: #f5f5f5; }
       <div class="text-end mt-3">
         <!-- ORDEN: Guardar → Word → Cerrar → Retornar -->
         <button id="btnGuardarEnviarRC" class="btn btn-success me-2 d-none" disabled>Guardar y enviar a aprobación</button>
+        <button id="btnGuardarAprobarRCAdmin" class="btn btn-success me-2 d-none" disabled>Guardar y aprobar RC</button>
         <button id="btnGuardarRC" class="btn btn-success me-2" disabled>Guardar RC</button>
         <button id="btnWordRC" class="btn btn-primary me-2" disabled>Word RC</button>
         <button id="btnEnviarAprobRC" class="btn btn-outline-success me-2" disabled>Enviar a aprobación</button>
@@ -1770,13 +1764,24 @@ if(btnGARP) btnGARP.classList.toggle("d-none", !isAdmin);
 if(btnGRP)  btnGRP.classList.toggle("d-none", (isReg || isAdmin));
 if(btnERP)  btnERP.classList.toggle("d-none", (isReg || isAdmin));
 
-// RC: para Registrador, un solo botón "Guardar y enviar a aprobación"
+// RC: para Registrador, un solo botón "Guardar y enviar a aprobación"; para Admin, un solo botón "Guardar y aprobar RC"
 const btnGRC = document.getElementById("btnGuardarRC");
 const btnERC = document.getElementById("btnEnviarAprobRC");
 const btnGERC = document.getElementById("btnGuardarEnviarRC");
-if(btnGERC) btnGERC.classList.toggle("d-none", !isReg);
-if(btnGRC)  btnGRC.classList.toggle("d-none", isReg);
-if(btnERC)  btnERC.classList.toggle("d-none", isReg);
+const btnGARC = document.getElementById("btnGuardarAprobarRCAdmin");
+
+if(btnGARC) btnGARC.classList.toggle("d-none", !isAdmin);
+
+if(isAdmin){
+  if(btnGERC) btnGERC.classList.add("d-none");
+  if(btnGRC)  btnGRC.classList.add("d-none");
+  if(btnERC)  btnERC.classList.add("d-none");
+} else {
+  if(btnGERC) btnGERC.classList.toggle("d-none", !isReg);
+  if(btnGRC)  btnGRC.classList.toggle("d-none", isReg);
+  if(btnERC)  btnERC.classList.toggle("d-none", isReg);
+}
+
 
 // Registrador: en RC dejar solo Word RC y Retornar como botones operativos (modo solo lectura)
 if(isReg){
@@ -1784,7 +1789,7 @@ if(isReg){
   document.querySelectorAll("#rcTab input, #rcTab textarea, #rcTab select").forEach(el=>{ el.disabled = true; });
 
   // Deshabilitar botones de edición/flujo del RC
-  ["btnGuardarRC","btnGuardarEnviarRC","btnAddAccionRC","btnEnviarAprobRC","btnCerrarEmergencia"].forEach(id=>{
+  ["btnGuardarRC","btnGuardarAprobarRCAdmin","btnGuardarEnviarRC","btnAddAccionRC","btnEnviarAprobRC","btnCerrarEmergencia"].forEach(id=>{
     const b = document.getElementById(id);
     if(b) b.disabled = true;
   });
@@ -1795,7 +1800,7 @@ if(isReg){
   const btnAprRc = document.getElementById("btnAprobarRCAdmin");
   // RP: el Admin usa el botón unificado (Grabar y aprobar), por eso se oculta este botón.
   if(btnAprRp) { btnAprRp.classList.add("d-none"); btnAprRp.disabled = true; }
-  if(btnAprRc) { btnAprRc.classList.toggle("d-none", !isAdmin); btnAprRc.disabled = !isAdmin; }
+  if(btnAprRc) { btnAprRc.classList.add("d-none"); btnAprRc.disabled = true; }
 
   // Tabs visibles
   const linkRP = document.querySelector('a[href="#rpTab"]')?.closest("li");
@@ -1828,7 +1833,7 @@ if(isReg){
 // Bloqueos de edición
   const disableIdsConsulta = [
     "btnGuardarRP","btnGuardarEnviarRP","btnWordRP","btnNuevoRP","btnAddAccionRP","btnEnviarAprobRP",
-    "btnGuardarRC","btnGuardarEnviarRC","btnWordRC","btnCerrarEmergencia","btnRetornarRC","btnAddAccionRC","btnEnviarAprobRC"
+    "btnGuardarRC","btnGuardarAprobarRCAdmin","btnGuardarEnviarRC","btnWordRC","btnCerrarEmergencia","btnRetornarRC","btnAddAccionRC","btnEnviarAprobRC"
   ];
 
   if(isConsulta){
@@ -1850,7 +1855,7 @@ if(isReg){
     // Registrador/Admin: elaborado por automático y aprobado solo admin
     const elab = document.getElementById("elaboradoRP");
     if(elab){
-      elab.value = __getCurrentUserName();
+      if(!String(elab.value||"").trim()) elab.value = __getCurrentUserName();
       elab.readOnly = true;
     }
     const apr = document.getElementById("aprobadoRP");
@@ -2894,6 +2899,7 @@ function esAnteriorA(fechaStr, refDate) {
 function setRCEnabled(enabled) {
   const ids = [
     "btnGuardarRC",
+    "btnGuardarAprobarRCAdmin",
     "btnGuardarEnviarRC",
     "btnWordRC",
     "btnCerrarEmergencia",
@@ -3609,7 +3615,8 @@ function __saveRP(opts){
     daniosMIDIS[prog][field] = val;
   });
 
-  const elaborado = (__getCurrentUserName ? __getCurrentUserName() : "") || (document.getElementById("elaboradoRP")?.value || "");
+  const elaboradoUI = (document.getElementById("elaboradoRP")?.value || "").trim();
+  const elaborado = elaboradoUI || ((existing && existing.elaboradoPor) ? String(existing.elaboradoPor).trim() : "") || ((__getCurrentUserName ? __getCurrentUserName() : "") || "");
   const aprobadoUI = (document.getElementById("aprobadoRP")?.value || "");
 
   // Base record (mantener RC y demás si ya existía)
@@ -3814,7 +3821,7 @@ function verEmergencia(e) {
 <strong>Aprobado por:</strong> ${e.aprobadoPor || ""}
 </p>`;
 
-    if (!isCerrada && !isConsulta) {
+    if (rcList.length === 0) {
   // Tabla daños MIDIS RP
     html += `<h6 class="mt-2">Daños en el Sector Desarrollo e Inclusión Social</h6>`;
     html += `<div class="table-responsive">
@@ -3872,8 +3879,9 @@ rcList.forEach((rc, idx) => {
       html += `<h6 id="ver_rc_${idx}">RC ${idx + 1} – N° Global: ${rc.numeroGlobal || rc.numeroReporteRC || ""}</h6>`;
       html += `<p><strong>Fecha de registro:</strong> ${rc.fechaRegistro || ""}</p>`;
 
-            if (!isCerrada || idx === lastIdx) {
+            if (idx === lastIdx) {
       // Tabla daños MIDIS RC
+            html += `<h6 class="mt-2">Daños en el Sector Desarrollo e Inclusión Social</h6>`;
             html += `<div class="table-responsive">
       <table class="table table-sm table-bordered">
       <thead>
@@ -4640,7 +4648,7 @@ function cargarTablaEmergencias() {
     // Admin-only: Modificar / Eliminar
     const btnEditRP = tr.querySelector(".btnEditRP");
     if(btnEditRP && __isAdmin && __isAdmin()){
-      btnEditRP.onclick = () => abrirRP(e, { forceEditable:true, source:"adminModify" });
+      btnEditRP.onclick = () => abrirRP(e);
     }
     const btnEditRC = tr.querySelector(".btnEditRC");
     if(btnEditRC && __isAdmin && __isAdmin()){
@@ -4789,9 +4797,7 @@ document.getElementById("btnAddAccionRC").onclick = () => {
 };
 
 
-function abrirRP(obj, opts){
-  opts = opts || {};
-  const forceEditable = !!opts.forceEditable;
+function abrirRP(obj){
   if(!obj) return;
   if(__isConsulta()) return;
 
@@ -4888,29 +4894,10 @@ try{
     btnApr.disabled = !(__isAdmin() && obj.rpAprobEstado === "Pendiente");
   }
 
-  // Admin: si el RP ya está aprobado, por defecto queda en solo lectura (solo Retornar activo).
-  // Si se abrió desde "Modificar RP" (forceEditable), habilitar edición.
+  // Admin: si el RP ya está aprobado, bloquear todos los campos (solo Retornar activo)
   try{
-    if(__isAdmin && __isAdmin() && obj.rpAprobEstado === "Aprobado" && !forceEditable){
+    if(__isAdmin && __isAdmin() && obj.rpAprobEstado === "Aprobado"){
       __lockRPFormAdminApproved?.();
-    }
-
-    // Admin edit (desde Listado > Modificar RP): re-habilitar todo (por si venía de un lock previo)
-    if(__isAdmin && __isAdmin() && forceEditable){
-      try{ __lockRPForm(false); }catch(_e){}
-      try{
-        const elab = document.getElementById("elaboradoRP");
-        if(elab){ elab.disabled = false; elab.readOnly = true; }
-        const apr = document.getElementById("aprobadoRP");
-        if(apr){ apr.disabled = false; apr.readOnly = true; }
-
-        const bSave = document.getElementById("btnGuardarAprobarRPAdmin");
-        if(bSave) bSave.disabled = false;
-        const bWord = document.getElementById("btnWordRP");
-        if(bWord) bWord.disabled = false;
-        const bRet = document.getElementById("btnRetornarRP");
-        if(bRet) bRet.disabled = false;
-      }catch(_e){}
     }
   }catch(e){}
 
@@ -4996,7 +4983,7 @@ try{
       document.querySelectorAll("#rcTab input, #rcTab textarea, #rcTab select").forEach(el=>{ el.disabled = true; });
 
       // Bloquear botones de edición/flujo
-      ["btnGuardarRC","btnGuardarEnviarRC","btnAddAccionRC","btnEnviarAprobRC","btnCerrarEmergencia","btnAprobarRCAdmin"].forEach(id=>{
+      ["btnGuardarRC","btnGuardarAprobarRCAdmin","btnGuardarEnviarRC","btnAddAccionRC","btnEnviarAprobRC","btnCerrarEmergencia","btnAprobarRCAdmin"].forEach(id=>{
         const b = document.getElementById(id);
         if(b) b.disabled = true;
       });
@@ -5193,6 +5180,45 @@ document.getElementById("btnGuardarRC").onclick = () => {
   __guardarRCCore({suppressAlert:false});
 };
 
+
+// ===================== GUARDAR + APROBAR RC (ADMIN) =====================
+document.getElementById("btnGuardarAprobarRCAdmin")?.addEventListener("click", ()=>{
+  if(!(typeof __isAdmin === "function" && __isAdmin())) return;
+
+  const ok = __guardarRCCore({suppressAlert:true});
+  if(!ok){
+    alert("No se pudo guardar el RC.");
+    return;
+  }
+
+  const sent = __enviarRC({suppressAlert:true});
+  if(!sent){
+    alert("No se pudo enviar el RC a aprobación.");
+    return;
+  }
+
+  try{
+    const em = emergenciaSeleccionada;
+    const idx = (em && Array.isArray(em.rcReportes)) ? (em.rcReportes.length - 1) : -1;
+    if(idx < 0){
+      alert("No se encontró el RC para aprobar.");
+      return;
+    }
+
+    __aprobar({kind:"rc", codigo: em.codigo, idx});
+    __saveEmergencias();
+    cargarTablaEmergencias();
+
+    // Bloquear edición tras aprobación
+    try{ setRCEnabled(false); }catch(e){}
+    try{ __applyRCLockUI && __applyRCLockUI(); }catch(e){}
+
+    alert("RC guardado y aprobado.");
+  }catch(e){
+    alert("Ocurrió un error al aprobar el RC.");
+  }
+});
+
 // ===================== GUARDAR + ENVIAR RC (REGISTRADOR) =====================
 document.getElementById("btnGuardarEnviarRC")?.addEventListener("click", ()=>{
   if(!(__isRegistrador && __isRegistrador())) return;
@@ -5257,47 +5283,6 @@ document.getElementById("btnRetornarRP").onclick = () => {
   try{
     if(__isRegistrador && __isRegistrador()){
       __setRPViewActive(false);
-    }
-  }catch(e){}
-  // Admin: al retornar, limpiar el formulario para que no quede información al cambiar de pestaña a "Reporte Preliminar"
-  try{
-    if(__isAdmin && __isAdmin()){
-      // Reset flags
-      rpEditMode = false;
-      rpEditCodigo = null;
-      rpGrabado = false;
-      rpWordGenerado = false;
-
-      // Limpiar acciones RP
-      accionesRPTemp = [];
-      try{ cargarAccionesRP(); }catch(_e){}
-
-      // Limpiar campos RP
-      ["codigoRP","numReporteRP","numGlobalRP","fechaHoraRP","hechosRP","fechaPeligroRP","peligroRP","latitudRP","longitudRP","daniosOtrosRP","fechaAccionRP","descAccionRP"].forEach(id=>{
-        const el = document.getElementById(id);
-        if(el) el.value = "";
-      });
-
-      // Reset Ubigeo en cascada
-      const dep = document.getElementById("departamentoRP");
-      const prov = document.getElementById("provinciaRP");
-      const dist = document.getElementById("distritoRP");
-      if(dep) dep.value = "";
-      if(prov) prov.innerHTML = '<option value="">Seleccione...</option>';
-      if(dist) dist.innerHTML = '<option value="">Seleccione...</option>';
-
-      // Reset daños MIDIS
-      document.querySelectorAll(".danio-rp").forEach(inp=>{ inp.value = 0; });
-
-      // Trazabilidad visible, no editable
-      const elab = document.getElementById("elaboradoRP");
-      if(elab){ elab.value = ""; elab.disabled = false; elab.readOnly = true; }
-      const apr = document.getElementById("aprobadoRP");
-      if(apr){ apr.value = ""; apr.disabled = false; apr.readOnly = true; }
-
-      // Rehabilitar UI base (por si estaba "pegada" por un lock previo)
-      try{ __lockRPForm(false); }catch(_e){}
-      try{ actualizarMarcadorRP(); }catch(_e){}
     }
   }catch(e){}
 
