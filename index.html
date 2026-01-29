@@ -664,6 +664,7 @@ body { background: #f5f5f5; }
       <div class="text-end mt-3">
         <!-- ORDEN: Guardar → Word → Cerrar → Retornar -->
         <button id="btnGuardarEnviarRC" class="btn btn-success me-2 d-none" disabled>Guardar y enviar a aprobación</button>
+        <button id="btnGuardarAprobarRCAdmin" class="btn btn-success me-2 d-none" disabled>Guardar y aprobar RC</button>
         <button id="btnGuardarRC" class="btn btn-success me-2" disabled>Guardar RC</button>
         <button id="btnWordRC" class="btn btn-primary me-2" disabled>Word RC</button>
         <button id="btnEnviarAprobRC" class="btn btn-outline-success me-2" disabled>Enviar a aprobación</button>
@@ -1763,13 +1764,24 @@ if(btnGARP) btnGARP.classList.toggle("d-none", !isAdmin);
 if(btnGRP)  btnGRP.classList.toggle("d-none", (isReg || isAdmin));
 if(btnERP)  btnERP.classList.toggle("d-none", (isReg || isAdmin));
 
-// RC: para Registrador, un solo botón "Guardar y enviar a aprobación"
+// RC: para Registrador, un solo botón "Guardar y enviar a aprobación"; para Admin, un solo botón "Guardar y aprobar RC"
 const btnGRC = document.getElementById("btnGuardarRC");
 const btnERC = document.getElementById("btnEnviarAprobRC");
 const btnGERC = document.getElementById("btnGuardarEnviarRC");
-if(btnGERC) btnGERC.classList.toggle("d-none", !isReg);
-if(btnGRC)  btnGRC.classList.toggle("d-none", isReg);
-if(btnERC)  btnERC.classList.toggle("d-none", isReg);
+const btnGARC = document.getElementById("btnGuardarAprobarRCAdmin");
+
+if(btnGARC) btnGARC.classList.toggle("d-none", !isAdmin);
+
+if(isAdmin){
+  if(btnGERC) btnGERC.classList.add("d-none");
+  if(btnGRC)  btnGRC.classList.add("d-none");
+  if(btnERC)  btnERC.classList.add("d-none");
+} else {
+  if(btnGERC) btnGERC.classList.toggle("d-none", !isReg);
+  if(btnGRC)  btnGRC.classList.toggle("d-none", isReg);
+  if(btnERC)  btnERC.classList.toggle("d-none", isReg);
+}
+
 
 // Registrador: en RC dejar solo Word RC y Retornar como botones operativos (modo solo lectura)
 if(isReg){
@@ -1777,7 +1789,7 @@ if(isReg){
   document.querySelectorAll("#rcTab input, #rcTab textarea, #rcTab select").forEach(el=>{ el.disabled = true; });
 
   // Deshabilitar botones de edición/flujo del RC
-  ["btnGuardarRC","btnGuardarEnviarRC","btnAddAccionRC","btnEnviarAprobRC","btnCerrarEmergencia"].forEach(id=>{
+  ["btnGuardarRC","btnGuardarAprobarRCAdmin","btnGuardarEnviarRC","btnAddAccionRC","btnEnviarAprobRC","btnCerrarEmergencia"].forEach(id=>{
     const b = document.getElementById(id);
     if(b) b.disabled = true;
   });
@@ -1788,7 +1800,7 @@ if(isReg){
   const btnAprRc = document.getElementById("btnAprobarRCAdmin");
   // RP: el Admin usa el botón unificado (Grabar y aprobar), por eso se oculta este botón.
   if(btnAprRp) { btnAprRp.classList.add("d-none"); btnAprRp.disabled = true; }
-  if(btnAprRc) { btnAprRc.classList.toggle("d-none", !isAdmin); btnAprRc.disabled = !isAdmin; }
+  if(btnAprRc) { btnAprRc.classList.add("d-none"); btnAprRc.disabled = true; }
 
   // Tabs visibles
   const linkRP = document.querySelector('a[href="#rpTab"]')?.closest("li");
@@ -1821,7 +1833,7 @@ if(isReg){
 // Bloqueos de edición
   const disableIdsConsulta = [
     "btnGuardarRP","btnGuardarEnviarRP","btnWordRP","btnNuevoRP","btnAddAccionRP","btnEnviarAprobRP",
-    "btnGuardarRC","btnGuardarEnviarRC","btnWordRC","btnCerrarEmergencia","btnRetornarRC","btnAddAccionRC","btnEnviarAprobRC"
+    "btnGuardarRC","btnGuardarAprobarRCAdmin","btnGuardarEnviarRC","btnWordRC","btnCerrarEmergencia","btnRetornarRC","btnAddAccionRC","btnEnviarAprobRC"
   ];
 
   if(isConsulta){
@@ -2887,6 +2899,7 @@ function esAnteriorA(fechaStr, refDate) {
 function setRCEnabled(enabled) {
   const ids = [
     "btnGuardarRC",
+    "btnGuardarAprobarRCAdmin",
     "btnGuardarEnviarRC",
     "btnWordRC",
     "btnCerrarEmergencia",
@@ -4970,7 +4983,7 @@ try{
       document.querySelectorAll("#rcTab input, #rcTab textarea, #rcTab select").forEach(el=>{ el.disabled = true; });
 
       // Bloquear botones de edición/flujo
-      ["btnGuardarRC","btnGuardarEnviarRC","btnAddAccionRC","btnEnviarAprobRC","btnCerrarEmergencia","btnAprobarRCAdmin"].forEach(id=>{
+      ["btnGuardarRC","btnGuardarAprobarRCAdmin","btnGuardarEnviarRC","btnAddAccionRC","btnEnviarAprobRC","btnCerrarEmergencia","btnAprobarRCAdmin"].forEach(id=>{
         const b = document.getElementById(id);
         if(b) b.disabled = true;
       });
@@ -5166,6 +5179,45 @@ function __guardarRCCore(opts={}){
 document.getElementById("btnGuardarRC").onclick = () => {
   __guardarRCCore({suppressAlert:false});
 };
+
+
+// ===================== GUARDAR + APROBAR RC (ADMIN) =====================
+document.getElementById("btnGuardarAprobarRCAdmin")?.addEventListener("click", ()=>{
+  if(!(typeof __isAdmin === "function" && __isAdmin())) return;
+
+  const ok = __guardarRCCore({suppressAlert:true});
+  if(!ok){
+    alert("No se pudo guardar el RC.");
+    return;
+  }
+
+  const sent = __enviarRC({suppressAlert:true});
+  if(!sent){
+    alert("No se pudo enviar el RC a aprobación.");
+    return;
+  }
+
+  try{
+    const em = emergenciaSeleccionada;
+    const idx = (em && Array.isArray(em.rcReportes)) ? (em.rcReportes.length - 1) : -1;
+    if(idx < 0){
+      alert("No se encontró el RC para aprobar.");
+      return;
+    }
+
+    __aprobar({kind:"rc", codigo: em.codigo, idx});
+    __saveEmergencias();
+    cargarTablaEmergencias();
+
+    // Bloquear edición tras aprobación
+    try{ setRCEnabled(false); }catch(e){}
+    try{ __applyRCLockUI && __applyRCLockUI(); }catch(e){}
+
+    alert("RC guardado y aprobado.");
+  }catch(e){
+    alert("Ocurrió un error al aprobar el RC.");
+  }
+});
 
 // ===================== GUARDAR + ENVIAR RC (REGISTRADOR) =====================
 document.getElementById("btnGuardarEnviarRC")?.addEventListener("click", ()=>{
