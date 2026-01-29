@@ -5065,6 +5065,8 @@ function __guardarRCCore(opts={}){
     return false;
   }
 
+  const isAdmin = (typeof __isAdmin === "function" && __isAdmin());
+
   // REGISTRADOR: solo un RC en trámite hasta que sea aprobado
   try{
     const isReg = __isRegistrador && __isRegistrador();
@@ -5078,13 +5080,15 @@ function __guardarRCCore(opts={}){
     }
   }catch(e){}
 
-  if (rcGrabado) {
+  // Evitar doble guardado por sesión SOLO para no-admin (admin puede corregir/ajustar y volver a guardar)
+  if (!isAdmin && rcGrabado) {
     if(!suppress) alert("Este Reporte Complementario ya fue guardado en esta sesión.");
     return false;
   }
 
   let em = emergenciaSeleccionada;
 
+  // Capturar daños MIDIS desde la UI
   document.querySelectorAll(".danio-rc").forEach(inp => {
     let prog = inp.dataset.programa;
     let field = inp.dataset.field;
@@ -5101,6 +5105,67 @@ function __guardarRCCore(opts={}){
     em.daniosMIDIS[prog][field] = val;
   });
 
+  // ===================== ADMIN: ACTUALIZA ÚLTIMO RC (NO CREA OTRO) =====================
+  if(isAdmin && Array.isArray(em.rcReportes) && em.rcReportes.length>0){
+    const idx = em.rcReportes.length - 1;
+    const rc = em.rcReportes[idx];
+    const numRC = rc ? (rc.numeroGlobal || rc.numeroReporteRC) : null;
+
+    if(rc){
+      // Guardar modificaciones sin alterar el correlativo/global
+      rc.acciones = [...accionesRCTemp];
+      rc.daniosMIDIS = JSON.parse(JSON.stringify(em.daniosMIDIS));
+      rc.updatedAt = __nowIso();
+      rc.updatedByEmail = currentUser ? currentUser.email : null;
+    }
+
+    __histPush(em, "RC_ACTUALIZADO", { idx, numeroGlobal: numRC });
+    __touch(em);
+
+    em.accionesRCGlobal = [...accionesRCTemp];
+    rcGrabado = true;
+    rcWordGenerado = false;
+    __saveEmergencias();
+    cargarTablaEmergencias();
+
+    // Actualizar cabecera RC con el N° Global del RC existente
+    let accionesPrevHtml = "<span class=\"text-muted\">—</span>";
+    try{
+      const acc = Array.isArray(em.accionesPreliminar) ? em.accionesPreliminar : [];
+      if(acc.length>0){
+        accionesPrevHtml = "<ul class=\"mb-0 small\">" + acc.map(a=>{
+          const f = (a && a.fecha) ? a.fecha : "";
+          const d = (a && a.descripcion) ? a.descripcion : "";
+          return `<li>[${f}] ${d}</li>`;
+        }).join("") + "</ul>";
+      }
+    }catch(e){}
+
+    const hechosHtml = (String(em.hechos||"").trim())
+      ? `<div class="p-2 bg-light border rounded small">${em.hechos}</div>`
+      : "<span class=\"text-muted\">—</span>";
+    const daniosHtml = (String(em.daniosOtros||"").trim())
+      ? `<div class="p-2 bg-light border rounded small">${em.daniosOtros}</div>`
+      : "<span class=\"text-muted\">—</span>";
+
+    document.getElementById("datosBasicosRC").innerHTML = `
+<b>Código:</b> ${em.codigo}<br>
+<b>N° Global:</b> ${numRC ?? ""}<br>
+<b>Estado:</b> ${em.cerrada ? "Cerrada" : "Abierta"}<br>
+<b>Peligro:</b> ${em.peligro}<br>
+<b>Ubicación:</b> ${em.departamento} / ${em.provincia} / ${em.distrito}<br>
+<b>Fecha del peligro:</b> ${em.fechaPeligro}<br>
+<b>Fecha de elaboración:</b> ${em.fechaHora || ""}<br>
+<div class="mt-2"><b>Hechos:</b> ${hechosHtml}</div>
+<div class="mt-2"><b>Daños de otros sectores:</b> ${daniosHtml}</div>
+<div class="mt-2"><b>Acciones del Sector Desarrollo e Inclusión Social (Preliminar):</b> ${accionesPrevHtml}</div>
+`;
+
+    if(!suppress) alert("RC actualizado con N° de Reporte " + (numRC ?? "") + ".");
+    return true;
+  }
+
+  // ===================== CREAR RC (comportamiento original) =====================
   numeroReporteGlobal++;
   let numRC = numeroReporteGlobal;
 
@@ -5191,12 +5256,6 @@ document.getElementById("btnGuardarAprobarRCAdmin")?.addEventListener("click", (
     return;
   }
 
-  const sent = __enviarRC({suppressAlert:true});
-  if(!sent){
-    alert("No se pudo enviar el RC a aprobación.");
-    return;
-  }
-
   try{
     const em = emergenciaSeleccionada;
     const idx = (em && Array.isArray(em.rcReportes)) ? (em.rcReportes.length - 1) : -1;
@@ -5204,6 +5263,15 @@ document.getElementById("btnGuardarAprobarRCAdmin")?.addEventListener("click", (
       alert("No se encontró el RC para aprobar.");
       return;
     }
+
+    // Intentar enviar solo si aún no está pendiente; si falla, igual se continúa con la aprobación
+    try{
+      const rc = em.rcReportes[idx];
+      const estado = rc ? rc.aprobEstado : null;
+      if(estado !== "Pendiente"){
+        __enviarRC({suppressAlert:true});
+      }
+    }catch(e){}
 
     __aprobar({kind:"rc", codigo: em.codigo, idx});
     __saveEmergencias();
