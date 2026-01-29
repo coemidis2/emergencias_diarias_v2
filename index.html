@@ -3808,7 +3808,7 @@ function verEmergencia(e) {
 <strong>Aprobado por:</strong> ${e.aprobadoPor || ""}
 </p>`;
 
-    if (!isCerrada && !isConsulta) {
+    if (rcList.length === 0) {
   // Tabla daños MIDIS RP
     html += `<h6 class="mt-2">Daños en el Sector Desarrollo e Inclusión Social</h6>`;
     html += `<div class="table-responsive">
@@ -3866,8 +3866,9 @@ rcList.forEach((rc, idx) => {
       html += `<h6 id="ver_rc_${idx}">RC ${idx + 1} – N° Global: ${rc.numeroGlobal || rc.numeroReporteRC || ""}</h6>`;
       html += `<p><strong>Fecha de registro:</strong> ${rc.fechaRegistro || ""}</p>`;
 
-            if (!isCerrada || idx === lastIdx) {
+            if (idx === lastIdx) {
       // Tabla daños MIDIS RC
+            html += `<h6 class="mt-2">Daños en el Sector Desarrollo e Inclusión Social</h6>`;
             html += `<div class="table-responsive">
       <table class="table table-sm table-bordered">
       <thead>
