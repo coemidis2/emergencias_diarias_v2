@@ -4098,7 +4098,7 @@ function __printRC_PDF(idxOpt){
 
 
 // ===================== ORDENAMIENTO (LISTA EMERGENCIAS) =====================
-const __LIST_SORT = { key: null, dir: 1 }; // dir: 1 asc, -1 desc
+const __LIST_SORT = { key: "codigo", dir: -1 }; // dir: 1 asc, -1 desc
 
 // ===================== PAGINACIÓN (LISTA EMERGENCIAS) =====================
 const __LIST_PAGER = {
@@ -4140,10 +4140,51 @@ function __listParseDateYYYYMMDD(s){
   return d;
 }
 
+function __listCodigoSortKey(codigo){
+  const s = String(codigo || "").trim();
+  if(!s) return -Infinity;
+
+  // Formato más común: RP-<correlativo>-<año>
+  let m = /^RP-(\d+)-(\d{4})$/i.exec(s);
+  if(m){
+    const seq = parseInt(m[1], 10);
+    const year = parseInt(m[2], 10);
+    if(Number.isFinite(seq) && Number.isFinite(year)) return (year * 1000000) + seq;
+  }
+
+  // Genérico: detectar año (2000-2100) y usar el número previo como correlativo
+  const nums = s.match(/\d+/g);
+  if(nums && nums.length){
+    let yearIdx = -1;
+    let year = 0;
+    for(let i=0;i<nums.length;i++){
+      const v = Number(nums[i]);
+      if(nums[i].length === 4 && v >= 2000 && v <= 2100){
+        yearIdx = i;
+        year = v;
+      }
+    }
+    if(yearIdx !== -1){
+      let seq = 0;
+      if(yearIdx > 0) seq = parseInt(nums[yearIdx-1], 10);
+      else if(nums.length > 1) seq = parseInt(nums[1], 10);
+      if(!Number.isFinite(seq)) seq = 0;
+      return (year * 1000000) + seq;
+    }
+
+    // Si no hay año, usar el último número como correlativo
+    const seq = parseInt(nums[nums.length-1], 10);
+    if(Number.isFinite(seq)) return seq;
+  }
+
+  // Sin números: lo mandamos al final
+  return -Infinity;
+}
+
 function __listSortValue(e, key){
   const norm = (v)=> normalizarTexto(String(v ?? ""));
   switch(key){
-    case "codigo": return norm(e?.codigo || "");
+    case "codigo": return __listCodigoSortKey(e?.codigo || "");
     case "peligro": return norm(e?.peligro || "");
     case "departamento": return norm(e?.departamento || "");
     case "fechaPeligro": {
@@ -8071,6 +8112,22 @@ document.addEventListener('DOMContentLoaded', async function(){
         }
       });
     });
+  }catch(e){}
+
+
+  // Lista: siempre ordenar por Código (desc) al entrar a la pestaña
+  try{
+    const lnkLista = document.querySelector('a[href="#listaTab"]');
+    if(lnkLista){
+      lnkLista.addEventListener('shown.bs.tab', ()=>{
+        try{
+          __LIST_SORT.key = "codigo";
+          __LIST_SORT.dir = -1;
+          __listUpdateSortUI();
+          cargarTablaEmergencias();
+        }catch(_e){}
+      });
+    }
   }catch(e){}
 
 // estado inicial
