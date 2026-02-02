@@ -683,40 +683,11 @@ body { background: #f5f5f5; }
     <div class="card-body">
       <h4 class="text-primary">Dashboard</h4>
 
-      <!-- ====================== ÁREA 1: EMERGENCIAS DEL DÍA ======================= -->
+            <!-- ====================== ÁREA 1: MAPA DE EMERGENCIAS ======================= -->
       <div class="border rounded bg-white p-3 mb-4">
         <div class="d-flex align-items-center justify-content-between mb-2">
-          <h5 class="text-primary mb-0">Emergencias del día</h5>
+          <h5 class="text-primary mb-0">Mapa de Emergencias</h5>
         </div>
-
-
-      <!-- Filtros -->
-      <div class="row g-2 align-items-end mb-2">
-        <div class="col-md-3">
-          <label class="form-label">Tipo de fecha</label>
-          <select id="dashTipoFecha" class="form-control">
-            <option value="evento">Fecha de evento</option>
-            <option value="registro">Fecha de registro</option>
-          </select>
-        </div>
-        <div class="col-md-3">
-          <label class="form-label">Desde</label>
-          <input type="date" id="dashDesde" class="form-control">
-        </div>
-        <div class="col-md-3">
-          <label class="form-label">Hasta</label>
-          <input type="date" id="dashHasta" class="form-control">
-        </div>
-        <div class="col-md-3 text-end">
-          <button class="btn btn-outline-primary" id="dashBtnHoy">Hoy</button>
-          <button class="btn btn-primary" id="dashBtnAplicar">Aplicar</button>
-        </div>
-      </div>
-
-      <div class="form-check form-switch mb-3">
-        <input class="form-check-input" type="checkbox" id="dashSoloMidis">
-        <label class="form-check-label" for="dashSoloMidis">Solo emergencias que afectan al MIDIS</label>
-      </div>
 
       <!-- Mapa -->
       <div class="mb-3">
@@ -729,6 +700,13 @@ body { background: #f5f5f5; }
         <span class="badge mx-2" style="background:#fd7e14"> </span> En proceso
         <span class="badge mx-2" style="background:#198754"> </span> Cerrada
       </div>
+      </div>
+
+      <!-- ====================== ÁREA 2: EMERGENCIAS DEL DÍA ======================= -->
+      <div class="border rounded bg-white p-3 mb-4">
+        <div class="d-flex align-items-center justify-content-between mb-2">
+          <h5 class="text-primary mb-0">Emergencias del día</h5>
+        </div>
 
       <!-- 1. Activas del día -->
       <div class="mb-3">
@@ -770,10 +748,45 @@ body { background: #f5f5f5; }
           </table>
         </div>
       </div>
+      </div>
 
-            </div>
+      <!-- ====================== ÁREA 3: BÚSQUEDA ======================= -->
+      <div class="border rounded bg-white p-3 mb-4">
+        <div class="d-flex align-items-center justify-content-between mb-2">
+          <h5 class="text-primary mb-0">Búsqueda</h5>
+        </div>
 
-      <!-- ====================== ÁREA 2: ESTADÍSTICA GENERALES DE EMERGENCIAS ======================= -->
+      <!-- Filtros -->
+      <div class="row g-2 align-items-end mb-2">
+        <div class="col-md-3">
+          <label class="form-label">Tipo de fecha</label>
+          <select id="dashTipoFecha" class="form-control">
+            <option value="evento">Fecha de evento</option>
+            <option value="registro">Fecha de registro</option>
+          </select>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Desde</label>
+          <input type="date" id="dashDesde" class="form-control">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Hasta</label>
+          <input type="date" id="dashHasta" class="form-control">
+        </div>
+        <div class="col-md-3 text-end">
+          <button class="btn btn-outline-primary" id="dashBtnHoy">Hoy</button>
+          <button class="btn btn-primary" id="dashBtnAplicar">Aplicar</button>
+        </div>
+      </div>
+
+      <div class="form-check form-switch mb-3">
+        <input class="form-check-input" type="checkbox" id="dashSoloMidis">
+        <label class="form-check-label" for="dashSoloMidis">Solo emergencias que afectan al MIDIS</label>
+      </div>
+      </div>
+
+
+<!-- ====================== ÁREA 4: ESTADÍSTICA GENERALES DE EMERGENCIAS ======================= -->
       <div class="border rounded bg-white p-3 mb-4">
         <div class="d-flex align-items-center justify-content-between mb-2">
           <h5 class="text-primary mb-0">Estadística Generales de Emergencias</h5>
@@ -811,7 +824,9 @@ body { background: #f5f5f5; }
       
             </div>
 
-      <!-- ====================== ÁREA 3: IMPACTO DE EMERGENCIAS EN EL SECTOR DESARROLLO E INCLUSIÓN SOCIAL ======================= -->
+      
+
+<!-- ====================== ÁREA 5: IMPACTO DE EMERGENCIAS EN EL SECTOR DESARROLLO E INCLUSIÓN SOCIAL ======================= -->
       <div class="border rounded bg-white p-3 mb-4">
         <div class="d-flex align-items-center justify-content-between mb-2">
           <h5 class="text-primary mb-0">Impacto de emergencias en el Sector Desarrollo e Inclusión Social</h5>
@@ -903,7 +918,8 @@ body { background: #f5f5f5; }
 
             </div>
 
-      <small class="text-muted">Se actualiza automáticamente cada 10 segundos y al ingresar a esta pestaña.</small>
+      
+<small class="text-muted">Se actualiza automáticamente cada 10 segundos y al ingresar a esta pestaña.</small>
     </div>
   </div>
 </div>
