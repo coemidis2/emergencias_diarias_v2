@@ -683,11 +683,33 @@ body { background: #f5f5f5; }
     <div class="card-body">
       <h4 class="text-primary">Dashboard</h4>
 
-            <!-- ====================== ÁREA 1: MAPA DE EMERGENCIAS ======================= -->
-      <div class="border rounded bg-white p-3 mb-4">
-        <div class="d-flex align-items-center justify-content-between mb-2">
-          <h5 class="text-primary mb-0">Mapa de Emergencias</h5>
+      <!-- Filtros -->
+      <div class="row g-2 align-items-end mb-2">
+        <div class="col-md-3">
+          <label class="form-label">Tipo de fecha</label>
+          <select id="dashTipoFecha" class="form-control">
+            <option value="evento">Fecha de evento</option>
+            <option value="registro">Fecha de registro</option>
+          </select>
         </div>
+        <div class="col-md-3">
+          <label class="form-label">Desde</label>
+          <input type="date" id="dashDesde" class="form-control">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Hasta</label>
+          <input type="date" id="dashHasta" class="form-control">
+        </div>
+        <div class="col-md-3 text-end">
+          <button class="btn btn-outline-primary" id="dashBtnHoy">Hoy</button>
+          <button class="btn btn-primary" id="dashBtnAplicar">Aplicar</button>
+        </div>
+      </div>
+
+      <div class="form-check form-switch mb-3">
+        <input class="form-check-input" type="checkbox" id="dashSoloMidis">
+        <label class="form-check-label" for="dashSoloMidis">Solo emergencias que afectan al MIDIS</label>
+      </div>
 
       <!-- Mapa -->
       <div class="mb-3">
@@ -700,13 +722,6 @@ body { background: #f5f5f5; }
         <span class="badge mx-2" style="background:#fd7e14"> </span> En proceso
         <span class="badge mx-2" style="background:#198754"> </span> Cerrada
       </div>
-      </div>
-
-      <!-- ====================== ÁREA 2: EMERGENCIAS DEL DÍA ======================= -->
-      <div class="border rounded bg-white p-3 mb-4">
-        <div class="d-flex align-items-center justify-content-between mb-2">
-          <h5 class="text-primary mb-0">Emergencias del día</h5>
-        </div>
 
       <!-- 1. Activas del día -->
       <div class="mb-3">
@@ -748,49 +763,6 @@ body { background: #f5f5f5; }
           </table>
         </div>
       </div>
-      </div>
-
-      <!-- ====================== ÁREA 3: BÚSQUEDA ======================= -->
-      <div class="border rounded bg-white p-3 mb-4">
-        <div class="d-flex align-items-center justify-content-between mb-2">
-          <h5 class="text-primary mb-0">Búsqueda</h5>
-        </div>
-
-      <!-- Filtros -->
-      <div class="row g-2 align-items-end mb-2">
-        <div class="col-md-3">
-          <label class="form-label">Tipo de fecha</label>
-          <select id="dashTipoFecha" class="form-control">
-            <option value="evento">Fecha de evento</option>
-            <option value="registro">Fecha de registro</option>
-          </select>
-        </div>
-        <div class="col-md-3">
-          <label class="form-label">Desde</label>
-          <input type="date" id="dashDesde" class="form-control">
-        </div>
-        <div class="col-md-3">
-          <label class="form-label">Hasta</label>
-          <input type="date" id="dashHasta" class="form-control">
-        </div>
-        <div class="col-md-3 text-end">
-          <button class="btn btn-outline-primary" id="dashBtnHoy">Hoy</button>
-          <button class="btn btn-primary" id="dashBtnAplicar">Aplicar</button>
-        </div>
-      </div>
-
-      <div class="form-check form-switch mb-3">
-        <input class="form-check-input" type="checkbox" id="dashSoloMidis">
-        <label class="form-check-label" for="dashSoloMidis">Solo emergencias que afectan al MIDIS</label>
-      </div>
-      </div>
-
-
-<!-- ====================== ÁREA 4: ESTADÍSTICA GENERALES DE EMERGENCIAS ======================= -->
-      <div class="border rounded bg-white p-3 mb-4">
-        <div class="d-flex align-items-center justify-content-between mb-2">
-          <h5 class="text-primary mb-0">Estadística Generales de Emergencias</h5>
-        </div>
 
       <!-- 2. Histograma por evento / región -->
       <div class="mb-3">
@@ -822,16 +794,6 @@ body { background: #f5f5f5; }
       </div>
 
       
-            </div>
-
-      
-
-<!-- ====================== ÁREA 5: IMPACTO DE EMERGENCIAS EN EL SECTOR DESARROLLO E INCLUSIÓN SOCIAL ======================= -->
-      <div class="border rounded bg-white p-3 mb-4">
-        <div class="d-flex align-items-center justify-content-between mb-2">
-          <h5 class="text-primary mb-0">Impacto de emergencias en el Sector Desarrollo e Inclusión Social</h5>
-        </div>
-
       <!-- Resumen MIDIS (totales) -->
       <div class="row g-2 mb-3" id="dashResumenTotales">
         <div class="col-md-3 col-6">
@@ -916,10 +878,7 @@ body { background: #f5f5f5; }
         </div>
       </div>
 
-            </div>
-
-      
-<small class="text-muted">Se actualiza automáticamente cada 10 segundos y al ingresar a esta pestaña.</small>
+      <small class="text-muted">Se actualiza automáticamente cada 10 segundos y al ingresar a esta pestaña.</small>
     </div>
   </div>
 </div>
@@ -4139,7 +4098,7 @@ function __printRC_PDF(idxOpt){
 
 
 // ===================== ORDENAMIENTO (LISTA EMERGENCIAS) =====================
-const __LIST_SORT = { key: "codigo", dir: -1 }; // dir: 1 asc, -1 desc
+const __LIST_SORT = { key: null, dir: 1 }; // dir: 1 asc, -1 desc
 
 // ===================== PAGINACIÓN (LISTA EMERGENCIAS) =====================
 const __LIST_PAGER = {
@@ -4181,51 +4140,10 @@ function __listParseDateYYYYMMDD(s){
   return d;
 }
 
-function __listCodigoSortKey(codigo){
-  const s = String(codigo || "").trim();
-  if(!s) return -Infinity;
-
-  // Formato más común: RP-<correlativo>-<año>
-  let m = /^RP-(\d+)-(\d{4})$/i.exec(s);
-  if(m){
-    const seq = parseInt(m[1], 10);
-    const year = parseInt(m[2], 10);
-    if(Number.isFinite(seq) && Number.isFinite(year)) return (year * 1000000) + seq;
-  }
-
-  // Genérico: detectar año (2000-2100) y usar el número previo como correlativo
-  const nums = s.match(/\d+/g);
-  if(nums && nums.length){
-    let yearIdx = -1;
-    let year = 0;
-    for(let i=0;i<nums.length;i++){
-      const v = Number(nums[i]);
-      if(nums[i].length === 4 && v >= 2000 && v <= 2100){
-        yearIdx = i;
-        year = v;
-      }
-    }
-    if(yearIdx !== -1){
-      let seq = 0;
-      if(yearIdx > 0) seq = parseInt(nums[yearIdx-1], 10);
-      else if(nums.length > 1) seq = parseInt(nums[1], 10);
-      if(!Number.isFinite(seq)) seq = 0;
-      return (year * 1000000) + seq;
-    }
-
-    // Si no hay año, usar el último número como correlativo
-    const seq = parseInt(nums[nums.length-1], 10);
-    if(Number.isFinite(seq)) return seq;
-  }
-
-  // Sin números: lo mandamos al final
-  return -Infinity;
-}
-
 function __listSortValue(e, key){
   const norm = (v)=> normalizarTexto(String(v ?? ""));
   switch(key){
-    case "codigo": return __listCodigoSortKey(e?.codigo || "");
+    case "codigo": return norm(e?.codigo || "");
     case "peligro": return norm(e?.peligro || "");
     case "departamento": return norm(e?.departamento || "");
     case "fechaPeligro": {
@@ -4975,13 +4893,6 @@ try{
   if(btnApr){
     btnApr.disabled = !(__isAdmin() && obj.rpAprobEstado === "Pendiente");
   }
-
-  // Admin: si el RP ya está aprobado, bloquear todos los campos (solo Retornar activo)
-  try{
-    if(__isAdmin && __isAdmin() && obj.rpAprobEstado === "Aprobado"){
-      __lockRPFormAdminApproved?.();
-    }
-  }catch(e){}
 
   // Ir a pestaña RP
   const tabLink = document.querySelector('a[href="#rpTab"]');
@@ -8153,22 +8064,6 @@ document.addEventListener('DOMContentLoaded', async function(){
         }
       });
     });
-  }catch(e){}
-
-
-  // Lista: siempre ordenar por Código (desc) al entrar a la pestaña
-  try{
-    const lnkLista = document.querySelector('a[href="#listaTab"]');
-    if(lnkLista){
-      lnkLista.addEventListener('shown.bs.tab', ()=>{
-        try{
-          __LIST_SORT.key = "codigo";
-          __LIST_SORT.dir = -1;
-          __listUpdateSortUI();
-          cargarTablaEmergencias();
-        }catch(_e){}
-      });
-    }
   }catch(e){}
 
 // estado inicial
