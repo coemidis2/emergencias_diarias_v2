@@ -4766,7 +4766,8 @@ function cargarTablaEmergencias() {
     // Admin-only: Modificar / Eliminar
     const btnEditRP = tr.querySelector(".btnEditRP");
     if(btnEditRP && __isAdmin && __isAdmin()){
-      btnEditRP.onclick = () => abrirRP(e);
+      // Modificar RP: abrir en modo edición (campos y botones activos)
+      btnEditRP.onclick = () => abrirRP(e, {forceEdit:true});
     }
     const btnEditRC = tr.querySelector(".btnEditRC");
     if(btnEditRC && __isAdmin && __isAdmin()){
@@ -4915,9 +4916,12 @@ document.getElementById("btnAddAccionRC").onclick = () => {
 };
 
 
-function abrirRP(obj){
+function abrirRP(obj, opts){
   if(!obj) return;
   if(__isConsulta()) return;
+
+  // Admin: permitir modo edición forzada (desde "Modificar RP") incluso si el RP está Aprobado
+  const __forceEdit = !!(opts && opts.forceEdit);
 
   // Modo edición (carga emergencia existente)
   rpEditMode = true;
@@ -5013,9 +5017,25 @@ try{
   }
 
   // Admin: si el RP ya está aprobado, bloquear todos los campos (solo Retornar activo)
+  //       (salvo cuando se abre desde "Modificar RP")
   try{
-    if(__isAdmin && __isAdmin() && obj.rpAprobEstado === "Aprobado"){
+    if(__isAdmin && __isAdmin() && obj.rpAprobEstado === "Aprobado" && !__forceEdit){
       __lockRPFormAdminApproved?.();
+    }
+  }catch(e){}
+
+  // Admin: al abrir desde "Modificar RP" asegurar campos y botones activos
+  try{
+    if(__isAdmin && __isAdmin() && __forceEdit){
+      __lockRPForm(false);
+      const bGA = document.getElementById("btnGuardarAprobarRPAdmin");
+      const bW  = document.getElementById("btnWordRP");
+      const bA  = document.getElementById("btnAddAccionRP");
+      const apr = document.getElementById("aprobadoRP");
+      if(bGA) bGA.disabled = false;
+      if(bW)  bW.disabled = false;
+      if(bA)  bA.disabled = false;
+      if(apr){ apr.disabled = false; apr.readOnly = false; }
     }
   }catch(e){}
 
