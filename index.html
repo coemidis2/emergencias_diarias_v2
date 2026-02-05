@@ -2967,6 +2967,9 @@ let rpWordGenerado = false;
 let rpEditMode = false;
 let rpEditCodigo = null;
 
+// Admin: abrir RP desde 'Modificar' (Listado) permite edición aunque esté Aprobado
+let __rpAdminForceEdit = false;
+
 // Registrador: mostrar contenido RP solo cuando se abre desde Listado (botón RP) o desde Nuevo (en Listado)
 let __rpViewActive = false;
 function __setRPViewActive(active){
@@ -4912,7 +4915,11 @@ function cargarTablaEmergencias() {
     // Admin-only: Modificar / Eliminar
     const btnEditRP = tr.querySelector(".btnEditRP");
     if(btnEditRP && __isAdmin && __isAdmin()){
-      btnEditRP.onclick = () => abrirRP(e);
+      btnEditRP.onclick = () => {
+        __rpAdminForceEdit = true;
+        try{ abrirRP(e); }
+        finally{ __rpAdminForceEdit = false; }
+      };
     }
     const btnEditRC = tr.querySelector(".btnEditRC");
     if(btnEditRC && __isAdmin && __isAdmin()){
@@ -5159,8 +5166,9 @@ try{
   }
 
   // Admin: si el RP ya está aprobado, bloquear todos los campos (solo Retornar activo)
+  // (EXCEPTO cuando se abre desde "Modificar RP" en el Listado, donde se permite edición)
   try{
-    if(__isAdmin && __isAdmin() && obj.rpAprobEstado === "Aprobado"){
+    if(__isAdmin && __isAdmin() && obj.rpAprobEstado === "Aprobado" && !__rpAdminForceEdit){
       __lockRPFormAdminApproved?.();
     }
   }catch(e){}
