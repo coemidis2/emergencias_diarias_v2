@@ -1186,7 +1186,7 @@ body { background: #f5f5f5; }
       </div>
       <div class="modal-footer">
   <div class="btn-group" id="grpPrintRC">
-    <button type="button" class="btn btn-danger" id="btnPrintRCLast" onclick="__printRC_PDF()" title="Imprimir último RC (PDF)">🖨 RC (PDF)</button>
+    <button type="button" class="btn btn-danger" id="btnPrintRCLast" onclick="__printRP_RC_All()" title="Imprimir RP y RC (PDF)">🖨 RP + RC (PDF)</button>
     <button type="button" class="btn btn-danger dropdown-toggle dropdown-toggle-split" id="btnPrintRCDrop"
             data-bs-toggle="dropdown" aria-expanded="false" title="Elegir RC a imprimir">
       <span class="visually-hidden">Elegir RC</span>
@@ -3883,7 +3883,7 @@ function verEmergencia(e) {
   const isCerrada = !!e.cerrada;
   const isConsulta = (typeof currentUser !== "undefined" && currentUser && currentUser.role === __ROLES.CONS);
 // RP
-  let html = `<h5 id="ver_rp" class="text-primary">Reporte Preliminar</h5>`;
+  let html = `<div class="rp-block" id="ver_rp_block"><h5 id="ver_rp" class="text-primary">Reporte Preliminar</h5>`;
   html += `<p>
 <strong>Código:</strong> ${e.codigo || ""}<br>
 <strong>N° Global RP:</strong> ${e.numeroGlobal || ""}<br>
@@ -3940,12 +3940,14 @@ function verEmergencia(e) {
   } else {
     html += `<p><em>Sin acciones preliminares registradas.</em></p>`;
   }
+  html += `</div>`;
+
 
   // RC
   html += `<hr><h5 class="text-primary">Reportes Complementarios (RC)</h5>`;
   if (rcList.length > 0) {
     html += `<div class="d-flex flex-wrap gap-2 mb-2">
-      <button type="button" class="btn btn-sm btn-danger" onclick="__printRC_PDF()">🖨 Imprimir RC (PDF)</button>
+      <button type="button" class="btn btn-sm btn-danger" onclick="__printRP_RC_All()">🖨 Imprimir RP + RC (PDF)</button>
     </div>`;
   }
   if (rcList.length > 0) {
@@ -4013,8 +4015,8 @@ try{
 
   const btnLast = document.getElementById("btnPrintRCLast");
   if(btnLast){
-    btnLast.disabled = !hasRC;
-    btnLast.title = hasRC ? "Imprimir último RC (PDF)" : "Sin RC para imprimir";
+    btnLast.disabled = false;
+    btnLast.title = hasRC ? "Imprimir RP y RC (PDF)" : "Imprimir RP (sin RC)";
   }
 
   const btnDrop = document.getElementById("btnPrintRCDrop");
@@ -4106,6 +4108,78 @@ function __getRCList(em){
   }
 
   return Array.isArray(rc) ? rc : [];
+}
+
+
+function __printRP_RC_All(){
+  try{
+    const e = window.__VER_EMERG_ACTUAL;
+    if(!e){ alert("No hay emergencia seleccionada."); return; }
+
+    const cont = document.getElementById("contenidoVerEmergencia");
+    const rpEl = document.getElementById("ver_rp_block") || cont;
+    if(!rpEl){ alert("No se encontró el contenido del RP para imprimir."); return; }
+
+    const rcEls = Array.from(document.querySelectorAll('#contenidoVerEmergencia .rc-block'));
+    const hasRC = rcEls.length > 0;
+
+    const titulo = `RP${hasRC ? "+RC" : ""} - Emergencia ${e.codigo || ""}`;
+
+    const header = `
+      <div style="margin-bottom:12px">
+        <h2 style="margin:0;font-size:16pt;color:#1F4E79">Reporte Preliminar (RP)${hasRC ? " y Reportes Complementarios (RC)" : ""}</h2>
+        <div style="font-size:11pt; margin-top:6px">
+          <strong>Código:</strong> ${e.codigo || ""} &nbsp; | &nbsp;
+          <strong>N° Global RP:</strong> ${e.numeroGlobal || ""} &nbsp; | &nbsp;
+          <strong>Peligro:</strong> ${e.peligro || ""}<br>
+          <strong>Ubicación:</strong> ${e.departamento || ""} / ${e.provincia || ""} / ${e.distrito || ""}<br>
+          <strong>Fecha del peligro:</strong> ${e.fechaPeligro || ""} &nbsp; | &nbsp; <strong>Estado:</strong> ${e.cerrada ? "Cerrada" : "Abierta"}
+        </div>
+      </div>`;
+
+    const styles = `
+      <style>
+        @page { size: A4; margin: 15mm; }
+        body { font-family: Calibri, Arial, sans-serif; font-size: 11pt; color:#111; }
+        h2 { color:#1F4E79; }
+        h5,h6 { color:#1F4E79; margin: 8px 0 6px; }
+        p { margin: 4px 0; }
+        ul { margin: 6px 0 10px 18px; }
+        table { width: 100%; border-collapse: collapse; margin: 8px 0 12px; }
+        th, td { border: 1px solid #333; padding: 4px 6px; font-size: 10pt; }
+        th { background: #f2f2f2; }
+        .table-responsive { overflow: visible !important; }
+        button, .btn, .dropdown, .btn-group { display:none !important; }
+        hr { border:0; border-top:1px solid #999; margin:12px 0; }
+        .page-break { page-break-before: always; break-before: page; }
+      </style>`;
+
+    let bodyHtml = `${header}${rpEl.outerHTML}`;
+
+    if(hasRC){
+      bodyHtml += `<div class="page-break"></div><h2 style="margin:0 0 8px 0;font-size:14pt;color:#1F4E79">Reportes Complementarios (RC)</h2>`;
+      rcEls.forEach((el, i)=>{
+        if(i>0){ bodyHtml += `<div class="page-break"></div>`; }
+        bodyHtml += el.outerHTML;
+      });
+    }
+
+    const w = window.open("", "_blank");
+    if(!w){
+      alert("El navegador bloqueó la ventana de impresión. Habilita ventanas emergentes (pop-ups) para este sitio.");
+      return;
+    }
+    w.document.open();
+    w.document.write(`<html><head><title>${titulo}</title>${styles}</head><body>${bodyHtml}</body></html>`);
+    w.document.close();
+    w.focus();
+
+    w.onload = () => {
+      try{ w.print(); }catch(_e){}
+    };
+  }catch(err){
+    alert("Error al imprimir RP/RC: " + (err?.message || String(err)));
+  }
 }
 
 function __printRC_PDF(idxOpt){
