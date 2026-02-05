@@ -4073,12 +4073,16 @@ rcList.forEach((rc, idx) => {
 
 // Configurar impresión RC (PDF) en el footer del modal (siempre visible)
 try{
+  const fromDash = (window.__VER_CTX === "DASH");
   const hasRC = (rcList && rcList.length > 0) || (document.querySelectorAll('#contenidoVerEmergencia .rc-block').length > 0);
+
+  // En Dashboard: el botón "RC (PDF)" imprime RP + RC (y si no hay RC, imprime al menos RP)
+  const canPrintMain = fromDash ? true : hasRC;
 
   const btnLast = document.getElementById("btnPrintRCLast");
   if(btnLast){
-    btnLast.disabled = !hasRC;
-    btnLast.title = hasRC ? "Imprimir último RC (PDF)" : "Sin RC para imprimir";
+    btnLast.disabled = !canPrintMain;
+    btnLast.title = canPrintMain ? (fromDash ? "Imprimir RP y RC (PDF)" : "Imprimir último RC (PDF)") : "Sin RC para imprimir";
   }
 
   const btnDrop = document.getElementById("btnPrintRCDrop");
@@ -4093,7 +4097,8 @@ try{
       menu.innerHTML = '<li><span class="dropdown-item-text text-muted">Sin RC registrado</span></li>';
     }else{
       let items = '';
-      items += `<li><button class="dropdown-item" type="button" onclick="__printRC_PDF()">Imprimir último RC</button></li>`;
+      const lastIdx = rcList.length - 1;
+      items += `<li><button class="dropdown-item" type="button" onclick="__printRC_PDF(${lastIdx})">Imprimir último RC</button></li>`;
       items += `<li><hr class="dropdown-divider"></li>`;
       rcList.forEach((rc, idx)=>{
         const g = rc && (rc.numeroGlobal || rc.numeroReporteRC) ? (rc.numeroGlobal || rc.numeroReporteRC) : "";
@@ -4185,26 +4190,56 @@ function __printRC_PDF(idxOpt){
   try{
     const e = window.__VER_EMERG_ACTUAL;
     if(!e){ alert("No hay emergencia seleccionada."); return; }
-    const rcList = __getRCList(e);
-    if(rcList.length === 0){
-      alert("No hay Reporte Complementario (RC) para imprimir.");
-      return;
-    }
-
-    const idx = (typeof idxOpt === "number" && !isNaN(idxOpt)) ? idxOpt : (rcList.length - 1);
-    const rcEl = document.getElementById("ver_rc_block_" + idx);
-    if(!rcEl){
-      alert("No se encontró el contenido del RC para imprimir.");
-      return;
-    }
 
     const fromDash = (window.__VER_CTX === "DASH");
     const rpEl = fromDash ? document.getElementById("ver_rp_block") : null;
     const logoSrc = fromDash ? __coeLogoSrc() : "";
 
-    const titulo = fromDash
-      ? `RP y RC - Emergencia ${e.codigo || ""}`
-      : `RC ${idx+1} - Emergencia ${e.codigo || ""}`;
+    const rcList = __getRCList(e);
+
+    // Selección de RC a imprimir
+    let rcEls = [];
+    if(fromDash){
+      // En Dashboard: por defecto imprimir RP + TODOS los RC.
+      // Si se especifica idxOpt (desde el dropdown), imprimir RP + ese RC.
+      if(typeof idxOpt === "number" && !isNaN(idxOpt)){
+        const rcEl = document.getElementById("ver_rc_block_" + idxOpt);
+        if(rcEl) rcEls = [rcEl];
+      }else{
+        rcEls = Array.from(document.querySelectorAll('#contenidoVerEmergencia .rc-block'));
+        // Fallback: si no se encuentran en el DOM pero sí en data, intentar por ID
+        if(rcEls.length === 0 && rcList.length > 0){
+          for(let i=0;i<rcList.length;i++){
+            const el = document.getElementById('ver_rc_block_' + i);
+            if(el) rcEls.push(el);
+          }
+        }
+      }
+      // Si no hay RC, igual permitir imprimir (al menos RP)
+    }else{
+      // Fuera del Dashboard: requiere RC
+      if(rcList.length === 0){
+        alert("No hay Reporte Complementario (RC) para imprimir.");
+        return;
+      }
+      const idx = (typeof idxOpt === "number" && !isNaN(idxOpt)) ? idxOpt : (rcList.length - 1);
+      const rcEl = document.getElementById("ver_rc_block_" + idx);
+      if(!rcEl){
+        alert("No se encontró el contenido del RC para imprimir.");
+        return;
+      }
+      rcEls = [rcEl];
+    }
+
+    // Título
+    let titulo = '';
+    if(fromDash){
+      if(typeof idxOpt === 'number' && !isNaN(idxOpt)) titulo = `RP y RC ${idxOpt+1} - Emergencia ${e.codigo || ""}`;
+      else titulo = `RP y RC - Emergencia ${e.codigo || ""}`;
+    }else{
+      const idx = (typeof idxOpt === "number" && !isNaN(idxOpt)) ? idxOpt : (rcList.length - 1);
+      titulo = `RC ${idx+1} - Emergencia ${e.codigo || ""}`;
+    }
 
     const header = fromDash ? `
       <div style="display:flex;justify-content:center;align-items:center;margin-bottom:10px">
@@ -4249,6 +4284,7 @@ function __printRC_PDF(idxOpt){
         /* Dashboard: NO forzar salto de página entre RP y RC */
         #ver_rp_block { break-after: auto !important; page-break-after: auto !important; }
         .rc-block { break-before: auto !important; page-break-before: auto !important; }
+        .rc-block, #ver_rp_block { break-inside: avoid !important; page-break-inside: avoid !important; }
       </style>`;
 
     const w = window.open("", "_blank");
@@ -4257,8 +4293,20 @@ function __printRC_PDF(idxOpt){
       return;
     }
     w.document.open();
+
     const rpHtml = (fromDash && rpEl) ? (rpEl.outerHTML + '<div style="height:10px"></div>') : '';
-    w.document.write(`<html><head><title>${titulo}</title>${styles}</head><body>${header}${rpHtml}${rcEl.outerHTML}</body></html>`);
+
+    let rcHtml = '';
+    if(rcEls && rcEls.length){
+      rcHtml = rcEls.map(el => el.outerHTML).join('<div style="height:10px"></div>');
+    }else if(!fromDash){
+      rcHtml = ''; // ya se habría cortado antes
+    }else{
+      // Dashboard sin RC: imprimir solo RP
+      rcHtml = '<p><em>Sin reportes complementarios (RC) registrados.</em></p>';
+    }
+
+    w.document.write(`<html><head><title>${titulo}</title>${styles}</head><body>${header}${rpHtml}${rcHtml}</body></html>`);
     w.document.close();
     w.focus();
 
