@@ -66,6 +66,15 @@ body { background: #f5f5f5; }
 }
 
 
+/* ======= VER (RP/RC): Cabecera con logo COE MIDIS ======= */
+.coe-header-wrap{ display:flex; justify-content:center; align-items:center; margin: 0 0 .5rem; }
+.coe-header-logo{ max-width:100%; height:auto; object-fit:contain; }
+@media print{
+  .coe-header-logo{ width:16.24cm !important; height:3.18cm !important; max-width:none !important; }
+}
+
+
+
 /* ======= SORT (Lista de Emergencias) ======= */
 #tablaEmergencias thead th.sortable{
   cursor: pointer;
@@ -3915,6 +3924,18 @@ document.getElementById("btnGuardarEnviarRP").onclick = async () => {
 };
 
 // ===================== FUNCIÓN VER EMERGENCIA CERRADA =====================
+
+
+// === Helper: Logo COE MIDIS (configurable) ===
+function __coeLogoSrc(){
+  try{
+    const v = (window.__COE_MIDIS_LOGO_SRC || window.__COE_MIDIS_LOGO_URL || window.__COE_MIDIS_LOGO || "");
+    if(v && String(v).trim()) return String(v).trim();
+  }catch(_e){}
+  // Por defecto, se espera un archivo en la misma carpeta del index (puedes reemplazarlo por tu ruta real)
+  return "logo_coe_midis.png";
+}
+
 function verEmergencia(e) {
   const cont = document.getElementById("contenidoVerEmergencia");
   if (!cont) return;
@@ -3924,8 +3945,14 @@ function verEmergencia(e) {
 
   const isCerrada = !!e.cerrada;
   const isConsulta = (typeof currentUser !== "undefined" && currentUser && currentUser.role === __ROLES.CONS);
+const logoSrc = __coeLogoSrc();
 // RP
-  let html = `<h5 id="ver_rp" class="text-primary">Reporte Preliminar</h5>`;
+  let html = `
+    <div class="coe-header-wrap">
+      <img class="coe-header-logo" src="${logoSrc}" alt="COE MIDIS" onerror="this.style.display='none'">
+    </div>
+    <div id="ver_rp_block" class="rp-block">
+      <h5 id="ver_rp" class="text-primary">Reporte Preliminar</h5>`;
   html += `<p>
 <strong>Código:</strong> ${e.codigo || ""}<br>
 <strong>N° Global RP:</strong> ${e.numeroGlobal || ""}<br>
@@ -3983,7 +4010,10 @@ function verEmergencia(e) {
     html += `<p><em>Sin acciones preliminares registradas.</em></p>`;
   }
 
-  // RC
+  // Cerrar bloque RP
+  html += `</div>`;
+
+// RC
   html += `<hr><h5 class="text-primary">Reportes Complementarios (RC)</h5>`;
   if (rcList.length > 0) {
     html += `<div class="d-flex flex-wrap gap-2 mb-2">
@@ -4162,16 +4192,21 @@ function __printRC_PDF(idxOpt){
 
     const idx = (typeof idxOpt === "number" && !isNaN(idxOpt)) ? idxOpt : (rcList.length - 1);
     const rcEl = document.getElementById("ver_rc_block_" + idx);
+    const rpEl = document.getElementById("ver_rp_block");
     if(!rcEl){
       alert("No se encontró el contenido del RC para imprimir.");
       return;
     }
 
-    const titulo = `RC ${idx+1} - Emergencia ${e.codigo || ""}`;
+    const titulo = `RP y RC - Emergencia ${e.codigo || ""}`;
+    const logoSrc = __coeLogoSrc();
 
     const header = `
+      <div class="coe-header-wrap" style="margin-bottom:10px">
+        <img class="coe-header-logo" src="${logoSrc}" alt="COE MIDIS" onerror="this.style.display='none'">
+      </div>
       <div style="margin-bottom:12px">
-        <h2 style="margin:0;font-size:16pt;color:#1F4E79">Reporte Complementario (RC)</h2>
+        <h2 style="margin:0;font-size:16pt;color:#1F4E79">Reporte Preliminar (RP) y Reporte Complementario (RC)</h2>
         <div style="font-size:11pt; margin-top:6px">
           <strong>Código:</strong> ${e.codigo || ""} &nbsp; | &nbsp;
           <strong>N° Global RP:</strong> ${e.numeroGlobal || ""} &nbsp; | &nbsp;
@@ -4185,13 +4220,23 @@ function __printRC_PDF(idxOpt){
       <style>
         @page { size: A4; margin: 15mm; }
         body { font-family: Calibri, Arial, sans-serif; font-size: 11pt; color:#111; }
-        h5,h6 { color:#1F4E79; margin: 8px 0 6px; }
+
+        .coe-header-wrap{ display:flex; justify-content:center; align-items:center; }
+        .coe-header-logo{ width:16.24cm; height:3.18cm; object-fit:contain; display:block; }
+
+        h5,h6 { color:#1F4E79; margin: 8px 0 6px; break-after: avoid; page-break-after: avoid; }
         p { margin: 4px 0; }
         ul { margin: 6px 0 10px 18px; }
         table { width: 100%; border-collapse: collapse; margin: 8px 0 12px; }
         th, td { border: 1px solid #333; padding: 4px 6px; font-size: 10pt; }
         th { background: #f2f2f2; }
         .table-responsive { overflow: visible !important; }
+
+        /* Evitar salto entre RP y RC (sin forzar page-break) */
+        #ver_rp_block{ break-after: avoid-page; page-break-after: avoid; }
+        .rc-block{ break-before: avoid-page; page-break-before: avoid; }
+        #ver_rp_block, .rc-block{ break-inside: avoid; page-break-inside: avoid; }
+
         button, .btn { display:none !important; }
         hr { border:0; border-top:1px solid #999; margin:12px 0; }
       </style>`;
@@ -4202,7 +4247,8 @@ function __printRC_PDF(idxOpt){
       return;
     }
     w.document.open();
-    w.document.write(`<html><head><title>${titulo}</title>${styles}</head><body>${header}${rcEl.outerHTML}</body></html>`);
+    const rpHtml = rpEl ? rpEl.outerHTML : '';
+    w.document.write(`<html><head><title>${titulo}</title>${styles}</head><body>${header}${rpHtml}<div style="height:10px"></div>${rcEl.outerHTML}</body></html>`);
     w.document.close();
     w.focus();
 
