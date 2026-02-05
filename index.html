@@ -4151,15 +4151,15 @@ function __printRP_RC_All(){
         .table-responsive { overflow: visible !important; }
         button, .btn, .dropdown, .btn-group { display:none !important; }
         hr { border:0; border-top:1px solid #999; margin:12px 0; }
-        .page-break { page-break-before: always; break-before: page; }
+        .page-break { page-break-before: auto; break-before: auto; }
       </style>`;
 
     let bodyHtml = `${header}${rpEl.outerHTML}`;
 
     if(hasRC){
-      bodyHtml += `<div class="page-break"></div><h2 style="margin:0 0 8px 0;font-size:14pt;color:#1F4E79">Reportes Complementarios (RC)</h2>`;
+      bodyHtml += `<hr><h2 style="margin:0 0 8px 0;font-size:14pt;color:#1F4E79">Reportes Complementarios (RC)</h2>`;
       rcEls.forEach((el, i)=>{
-        if(i>0){ bodyHtml += `<div class="page-break"></div>`; }
+        if(i>0){ bodyHtml += `<hr>`; }
         bodyHtml += el.outerHTML;
       });
     }
