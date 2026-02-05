@@ -329,6 +329,9 @@ body { background: #f5f5f5; }
               <option value="Oleajes">Oleajes</option>
               <option value="Sequía">Sequía</option>
               <option value="Bajas temperaturas">Bajas temperaturas</option>
+              <option value="Heladas">Heladas</option>
+              <option value="Friaje">Friaje</option>
+              <option value="Colapso de estructura">Colapso de estructura</option>
               <option value="Granizada">Granizada</option>
               <option value="Nevada">Nevada</option>
               <option value="Biológicos">Biológicos</option>
@@ -537,6 +540,9 @@ body { background: #f5f5f5; }
 	    <option>Oleajes</option>
 	    <option>Sequía</option>
 	    <option>Bajas temperaturas</option>
+	    <option>Heladas</option>
+	    <option>Friaje</option>
+	    <option>Colapso de estructura</option>
 	    <option>Granizada</option>
 	    <option>Nevada</option>
 	    <option>Biológicos</option>
@@ -717,7 +723,7 @@ body { background: #f5f5f5; }
       <div class="mb-3">
         <div class="d-flex justify-content-between align-items-center mb-1">
           <h5 class="text-primary mb-0">Emergencias activas del día</h5>
-          <button class="btn btn-sm btn-outline-primary" id="dashBtnWordActivas" title="Exportar Word">Exportar Word</button>
+          <button class="btn btn-sm btn-outline-primary" id="dashBtnWordActivas" title="Exportar Excel">Exportar Excel</button>
         </div>
 
         <!-- Resumen: total + histograma por departamento (activas del día) -->
@@ -6193,6 +6199,123 @@ function __dashExportActivasHoyWord(){
 }
 
 
+
+function __dashAccionesToTextExcel(acciones){
+  if(!acciones || !Array.isArray(acciones) || acciones.length===0) return "";
+  const lines = [];
+  acciones.forEach((acc, i)=>{
+    if(acc && typeof acc === "object"){
+      const f = __dashFmtDateDDMMYYYY(acc.fecha || "");
+      const d = (acc.descripcion !== undefined && acc.descripcion !== null) ? String(acc.descripcion) : "";
+      const prefix = f ? `${i+1}. [${f}] ` : `${i+1}. `;
+      lines.push(prefix + d);
+    }else{
+      lines.push(`${i+1}. ` + String(acc));
+    }
+  });
+  return lines.join("\n");
+}
+
+function __dashGetAccionesComplementarias(e){
+  try{
+    if(e && Array.isArray(e.accionesRCGlobal) && e.accionesRCGlobal.length>0) return e.accionesRCGlobal;
+    if(e && Array.isArray(e.accionesRC) && e.accionesRC.length>0) return e.accionesRC;
+    if(e && Array.isArray(e.rcReportes) && e.rcReportes.length>0){
+      const last = e.rcReportes[e.rcReportes.length-1];
+      if(last && Array.isArray(last.acciones) && last.acciones.length>0) return last.acciones;
+    }
+  }catch(_e){}
+  return [];
+}
+
+function __dashExportActivasHoyExcel(){
+  try{
+    if(!window.XLSX){
+      alert("No se pudo cargar la librería de Excel (XLSX). Verifique su conexión a internet.");
+      return;
+    }
+
+    const list = __dashGetActivasHoyList();
+    if(!list.length){
+      alert("No hay emergencias activas del día para exportar.");
+      return;
+    }
+
+    const hoy = new Date();
+    const ymd = hoy.toISOString().slice(0,10);
+    const fecha = __dashFmtDateDDMMYYYY(ymd);
+
+    const titleStyle = { font:{name:"Calibri", sz:8, bold:true}, alignment:{horizontal:"center", vertical:"center", wrapText:true} };
+    const subStyle   = { font:{name:"Calibri", sz:8, bold:true}, alignment:{horizontal:"center", vertical:"center", wrapText:true} };
+    const hdrStyle   = { font:{name:"Calibri", sz:8, bold:true}, alignment:{horizontal:"center", vertical:"center", wrapText:true}, fill:{ fgColor:{ rgb:"D9E1F2" } } };
+    const bodyStyle  = { font:{name:"Calibri", sz:8}, alignment:{vertical:"top", wrapText:true} };
+
+    const aoa = [];
+    aoa.push([{v:"COE MIDIS – Lista de Emergencias del Día", t:"s", s:titleStyle}]);
+    aoa.push([{v:`Fecha: ${fecha}`, t:"s", s:subStyle}]);
+    aoa.push([{v:`Total registros: ${list.length}`, t:"s", s:subStyle}]);
+    aoa.push([]); // línea en blanco
+
+    const headers = [
+      "Código",
+      "Fecha del peligro",
+      "Departamento",
+      "Provincia",
+      "Distrito",
+      "Hechos",
+      "Acciones del Sector Desarrollo e Inclusión Social (Preliminar)",
+      "Acciones del Sector Desarrollo e Inclusión Social (Complementarias)"
+    ];
+    aoa.push(headers.map(h=>({v:h, t:"s", s:hdrStyle})));
+
+    list.forEach(e=>{
+      const accionesP = __dashAccionesToTextExcel(e.accionesPreliminar);
+      const accionesC = __dashAccionesToTextExcel(__dashGetAccionesComplementarias(e));
+      aoa.push([
+        {v:String(e.codigo||""), t:"s", s:bodyStyle},
+        {v:String(__dashFmtDateDDMMYYYY(e.fechaPeligro||"")), t:"s", s:bodyStyle},
+        {v:String(e.departamento||""), t:"s", s:bodyStyle},
+        {v:String(e.provincia||""), t:"s", s:bodyStyle},
+        {v:String(e.distrito||""), t:"s", s:bodyStyle},
+        {v:String(e.hechos||""), t:"s", s:bodyStyle},
+        {v:String(accionesP||""), t:"s", s:bodyStyle},
+        {v:String(accionesC||""), t:"s", s:bodyStyle}
+      ]);
+    });
+
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+
+    // merges: título / fecha / total (sobre 8 columnas)
+    ws["!merges"] = [
+      {s:{r:0,c:0}, e:{r:0,c:7}},
+      {s:{r:1,c:0}, e:{r:1,c:7}},
+      {s:{r:2,c:0}, e:{r:2,c:7}}
+    ];
+
+    // Anchos de columna
+    ws["!cols"] = [
+      {wch:16}, // Código
+      {wch:14}, // Fecha del peligro
+      {wch:18}, // Departamento
+      {wch:18}, // Provincia
+      {wch:18}, // Distrito
+      {wch:70}, // Hechos
+      {wch:70}, // Acciones Preliminar
+      {wch:70}  // Acciones Complementarias
+    ];
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Emergencias del día");
+
+    const fname = `COE_MIDIS_Lista_Emergencias_Del_Dia_${String(ymd).replace(/-/g,"")}.xlsx`;
+    XLSX.writeFile(wb, fname);
+  }catch(e){
+    console.error(e);
+    alert("Ocurrió un error al exportar a Excel.");
+  }
+}
+
+
 function __dashReadPageSize(selectId, fallback){
   const sel = document.getElementById(selectId);
   const v = sel ? parseInt(sel.value, 10) : NaN;
@@ -6552,7 +6675,7 @@ document.addEventListener("DOMContentLoaded", ()=>{
   if(btnAplicar) btnAplicar.addEventListener("click", dashboardRefresh);
   if(soloMidis) soloMidis.addEventListener("change", dashboardRefresh);
 
-  if(btnWordActivas) btnWordActivas.addEventListener("click", __dashExportActivasHoyWord);
+  if(btnWordActivas) btnWordActivas.addEventListener("click", __dashExportActivasHoyExcel);
 
   // Paginación: Activas del día
   document.getElementById("dashActivasPageSize")?.addEventListener("change", ()=>{ __dashPagerActivas.page = 1; __dashRenderActivasHoy(); });
