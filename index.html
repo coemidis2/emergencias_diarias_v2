@@ -329,9 +329,6 @@ body { background: #f5f5f5; }
               <option value="Oleajes">Oleajes</option>
               <option value="Sequía">Sequía</option>
               <option value="Bajas temperaturas">Bajas temperaturas</option>
-              <option value="Heladas">Heladas</option>
-              <option value="Friaje">Friaje</option>
-              <option value="Colapso de estructura">Colapso de estructura</option>
               <option value="Granizada">Granizada</option>
               <option value="Nevada">Nevada</option>
               <option value="Biológicos">Biológicos</option>
@@ -540,9 +537,6 @@ body { background: #f5f5f5; }
 	    <option>Oleajes</option>
 	    <option>Sequía</option>
 	    <option>Bajas temperaturas</option>
-	    <option>Heladas</option>
-	    <option>Friaje</option>
-	    <option>Colapso de estructura</option>
 	    <option>Granizada</option>
 	    <option>Nevada</option>
 	    <option>Biológicos</option>
@@ -723,7 +717,7 @@ body { background: #f5f5f5; }
       <div class="mb-3">
         <div class="d-flex justify-content-between align-items-center mb-1">
           <h5 class="text-primary mb-0">Emergencias activas del día</h5>
-          <button class="btn btn-sm btn-outline-primary" id="dashBtnWordActivas" title="Exportar Excel">Exportar Excel</button>
+          <button class="btn btn-sm btn-outline-primary" id="dashBtnWordActivas" title="Exportar Word">Exportar Word</button>
         </div>
 
         <!-- Resumen: total + histograma por departamento (activas del día) -->
@@ -1197,7 +1191,7 @@ body { background: #f5f5f5; }
       </div>
       <div class="modal-footer">
   <div class="btn-group" id="grpPrintRC">
-    <button type="button" class="btn btn-danger" id="btnPrintRCLast" onclick="__printRC_PDF()" title="Imprimir último RC (PDF)">🖨 RC (PDF)</button>
+    <button type="button" class="btn btn-danger" id="btnPrintRCLast" onclick="__printRC_PDF()" title="Imprimir RP y RC (PDF)">🖨 RC (PDF)</button>
     <button type="button" class="btn btn-danger dropdown-toggle dropdown-toggle-split" id="btnPrintRCDrop"
             data-bs-toggle="dropdown" aria-expanded="false" title="Elegir RC a imprimir">
       <span class="visually-hidden">Elegir RC</span>
@@ -3944,16 +3938,17 @@ function verEmergencia(e) {
 
   const isCerrada = !!e.cerrada;
   const isConsulta = (typeof currentUser !== "undefined" && currentUser && currentUser.role === __ROLES.CONS);
-  const __fromDash = (window.__VER_CTX === "DASH");
-  const __logoSrc = __fromDash ? __coeLogoSrc() : "";
+  const __showLogo = (window.__VER_CTX === "DASH" || window.__VER_CTX === "LIST");
+  const __logoSrc = __showLogo ? __coeLogoSrc() : "";
 // RP
-  let html = __fromDash ? `
+  let html = __showLogo ? `
     <div style="text-align:center;margin-bottom:10px">
       <img src="${__logoSrc}" alt="COE MIDIS" style="width:16.24cm;height:3.18cm;max-width:100%;object-fit:contain;display:block;margin:0 auto" onerror="this.style.display='none'">
     </div>
     <div id="ver_rp_block" class="rp-block">
       <h5 id="ver_rp" class="text-primary">Reporte Preliminar</h5>`
-    : `<h5 id="ver_rp" class="text-primary">Reporte Preliminar</h5>`;
+    : `<div id="ver_rp_block" class="rp-block">
+      <h5 id="ver_rp" class="text-primary">Reporte Preliminar</h5>`;
   html += `<p>
 <strong>Código:</strong> ${e.codigo || ""}<br>
 <strong>N° Global RP:</strong> ${e.numeroGlobal || ""}<br>
@@ -4011,8 +4006,8 @@ function verEmergencia(e) {
     html += `<p><em>Sin acciones preliminares registradas.</em></p>`;
   }
 
-  // Cerrar bloque RP (solo Dashboard)
-  if(__fromDash){ html += `</div>`; }
+  // Cerrar bloque RP
+  html += `</div>`;
 
   // RC
   html += `<hr><h5 class="text-primary">Reportes Complementarios (RC)</h5>`;
@@ -4082,16 +4077,17 @@ rcList.forEach((rc, idx) => {
 
 // Configurar impresión RC (PDF) en el footer del modal (siempre visible)
 try{
-  const fromDash = (window.__VER_CTX === "DASH");
+  const isDash = (window.__VER_CTX === "DASH");
+  const isList = (window.__VER_CTX === "LIST");
   const hasRC = (rcList && rcList.length > 0) || (document.querySelectorAll('#contenidoVerEmergencia .rc-block').length > 0);
 
   // En Dashboard: el botón "RC (PDF)" imprime RP + RC (y si no hay RC, imprime al menos RP)
-  const canPrintMain = fromDash ? true : hasRC;
+  const canPrintMain = isDash ? true : hasRC;
 
   const btnLast = document.getElementById("btnPrintRCLast");
   if(btnLast){
     btnLast.disabled = !canPrintMain;
-    btnLast.title = canPrintMain ? (fromDash ? "Imprimir RP y RC (PDF)" : "Imprimir último RC (PDF)") : "Sin RC para imprimir";
+    btnLast.title = canPrintMain ? ((isDash || isList) ? "Imprimir RP y RC (PDF)" : "Imprimir RC (PDF)") : "Sin RC para imprimir";
   }
 
   const btnDrop = document.getElementById("btnPrintRCDrop");
@@ -4195,78 +4191,52 @@ function __getRCList(em){
   return Array.isArray(rc) ? rc : [];
 }
 
+
 function __printRC_PDF(idxOpt){
   try{
     const e = window.__VER_EMERG_ACTUAL;
     if(!e){ alert("No hay emergencia seleccionada."); return; }
 
-    const fromDash = (window.__VER_CTX === "DASH");
-    const rpEl = fromDash ? document.getElementById("ver_rp_block") : null;
-    const logoSrc = fromDash ? __coeLogoSrc() : "";
-
     const rcList = __getRCList(e);
+    if(!rcList || rcList.length === 0){
+      alert("No hay Reporte Complementario (RC) para imprimir.");
+      return;
+    }
+
+    const rpEl = document.getElementById("ver_rp_block");
+    const logoSrc = (typeof __coeLogoSrc === "function") ? __coeLogoSrc() : "";
 
     // Selección de RC a imprimir
     let rcEls = [];
-    if(fromDash){
-      // En Dashboard: por defecto imprimir RP + TODOS los RC.
-      // Si se especifica idxOpt (desde el dropdown), imprimir RP + ese RC.
-      if(typeof idxOpt === "number" && !isNaN(idxOpt)){
-        const rcEl = document.getElementById("ver_rc_block_" + idxOpt);
-        if(rcEl) rcEls = [rcEl];
-      }else{
-        rcEls = Array.from(document.querySelectorAll('#contenidoVerEmergencia .rc-block'));
-        // Fallback: si no se encuentran en el DOM pero sí en data, intentar por ID
-        if(rcEls.length === 0 && rcList.length > 0){
-          for(let i=0;i<rcList.length;i++){
-            const el = document.getElementById('ver_rc_block_' + i);
-            if(el) rcEls.push(el);
-          }
-        }
-      }
-      // Si no hay RC, igual permitir imprimir (al menos RP)
-    }else{
-      // Fuera del Dashboard: requiere RC
-      if(rcList.length === 0){
-        alert("No hay Reporte Complementario (RC) para imprimir.");
-        return;
-      }
-      const idx = (typeof idxOpt === "number" && !isNaN(idxOpt)) ? idxOpt : (rcList.length - 1);
-      const rcEl = document.getElementById("ver_rc_block_" + idx);
+    if(typeof idxOpt === "number" && !isNaN(idxOpt)){
+      const rcEl = document.getElementById("ver_rc_block_" + idxOpt);
       if(!rcEl){
         alert("No se encontró el contenido del RC para imprimir.");
         return;
       }
       rcEls = [rcEl];
-    }
-
-    // Título
-    let titulo = '';
-    if(fromDash){
-      if(typeof idxOpt === 'number' && !isNaN(idxOpt)) titulo = `RP y RC ${idxOpt+1} - Emergencia ${e.codigo || ""}`;
-      else titulo = `RP y RC - Emergencia ${e.codigo || ""}`;
     }else{
-      const idx = (typeof idxOpt === "number" && !isNaN(idxOpt)) ? idxOpt : (rcList.length - 1);
-      titulo = `RC ${idx+1} - Emergencia ${e.codigo || ""}`;
+      // Por defecto: imprimir RP + TODOS los RC
+      rcEls = Array.from(document.querySelectorAll('#contenidoVerEmergencia .rc-block'));
+      // Fallback: si no se encuentran en el DOM pero sí en data, intentar por ID
+      if(rcEls.length === 0 && rcList.length > 0){
+        for(let i=0;i<rcList.length;i++){
+          const el = document.getElementById('ver_rc_block_' + i);
+          if(el) rcEls.push(el);
+        }
+      }
     }
 
-    const header = fromDash ? `
+    const titulo = (typeof idxOpt === 'number' && !isNaN(idxOpt))
+      ? `RP y RC ${idxOpt+1} - Emergencia ${e.codigo || ""}`
+      : `RP y RC - Emergencia ${e.codigo || ""}`;
+
+    const header = `
       <div style="display:flex;justify-content:center;align-items:center;margin-bottom:10px">
         <img src="${logoSrc}" alt="COE MIDIS" style="width:16.24cm;height:3.18cm;object-fit:contain;display:block" onerror="this.style.display='none'">
       </div>
       <div style="margin-bottom:12px">
-        <h2 style="margin:0;font-size:16pt;color:#1F4E79">Reporte Preliminar (RP) y Reporte Complementario (RC)</h2>
-        <div style="font-size:11pt; margin-top:6px">
-          <strong>Código:</strong> ${e.codigo || ""} &nbsp; | &nbsp;
-          <strong>N° Global RP:</strong> ${e.numeroGlobal || ""} &nbsp; | &nbsp;
-          <strong>Peligro:</strong> ${e.peligro || ""}<br>
-          <strong>Ubicación:</strong> ${e.departamento || ""} / ${e.provincia || ""} / ${e.distrito || ""}<br>
-          <strong>Fecha del peligro:</strong> ${e.fechaPeligro || ""} &nbsp; | &nbsp; <strong>Estado:</strong> ${e.cerrada ? "Cerrada" : "Abierta"}
-        </div>
-      </div>`
-    : `
-      <div style="margin-bottom:12px">
-        <h2 style="margin:0;font-size:16pt;color:#1F4E79">Reporte Complementario (RC)</h2>
+        <h2 style="margin:0;font-size:16pt;color:#1F4E79">Reporte Preliminar (RP) y Reportes Complementarios (RC)</h2>
         <div style="font-size:11pt; margin-top:6px">
           <strong>Código:</strong> ${e.codigo || ""} &nbsp; | &nbsp;
           <strong>N° Global RP:</strong> ${e.numeroGlobal || ""} &nbsp; | &nbsp;
@@ -4290,7 +4260,7 @@ function __printRC_PDF(idxOpt){
         button, .btn { display:none !important; }
         hr { border:0; border-top:1px solid #999; margin:12px 0; }
 
-        /* Dashboard: NO forzar salto de página entre RP y RC */
+        /* NO forzar salto de página entre RP y RC */
         #ver_rp_block { break-after: auto !important; page-break-after: auto !important; }
         .rc-block { break-before: auto !important; page-break-before: auto !important; }
         .rc-block, #ver_rp_block { break-inside: avoid !important; page-break-inside: avoid !important; }
@@ -4301,18 +4271,16 @@ function __printRC_PDF(idxOpt){
       alert("El navegador bloqueó la ventana de impresión. Habilita ventanas emergentes (pop-ups) para este sitio.");
       return;
     }
+
     w.document.open();
 
-    const rpHtml = (fromDash && rpEl) ? (rpEl.outerHTML + '<div style="height:10px"></div>') : '';
+    const rpHtml = (rpEl) ? (rpEl.outerHTML + '<div style="height:10px"></div>') : '';
 
     let rcHtml = '';
     if(rcEls && rcEls.length){
       rcHtml = rcEls.map(el => el.outerHTML).join('<div style="height:10px"></div>');
-    }else if(!fromDash){
-      rcHtml = ''; // ya se habría cortado antes
     }else{
-      // Dashboard sin RC: imprimir solo RP
-      rcHtml = '<p><em>Sin reportes complementarios (RC) registrados.</em></p>';
+      rcHtml = '<p><em>No se encontró contenido RC para imprimir.</em></p>';
     }
 
     w.document.write(`<html><head><title>${titulo}</title>${styles}</head><body>${header}${rpHtml}${rcHtml}</body></html>`);
@@ -4326,6 +4294,7 @@ function __printRC_PDF(idxOpt){
     alert("Error al imprimir RC: " + (err?.message || String(err)));
   }
 }
+
 
 
 
@@ -4884,7 +4853,7 @@ function cargarTablaEmergencias() {
     // Handlers de botones según disponibilidad
     const btnVer = tr.querySelector(".btnVer");
     if (btnVer && !btnVer.disabled && btnVer.style.display !== "none") {
-      btnVer.onclick = () => { verEmergencia(e); if(__getRCList(e).length>0) __scrollVerToLastRC(); };
+      btnVer.onclick = () => { try{ window.__VER_CTX = 'LIST'; }catch(_e){} verEmergencia(e); if(__getRCList(e).length>0) __scrollVerToLastRC(); };
     }
 
     const btnRP = tr.querySelector(".btnRP");
@@ -6199,123 +6168,6 @@ function __dashExportActivasHoyWord(){
 }
 
 
-
-function __dashAccionesToTextExcel(acciones){
-  if(!acciones || !Array.isArray(acciones) || acciones.length===0) return "";
-  const lines = [];
-  acciones.forEach((acc, i)=>{
-    if(acc && typeof acc === "object"){
-      const f = __dashFmtDateDDMMYYYY(acc.fecha || "");
-      const d = (acc.descripcion !== undefined && acc.descripcion !== null) ? String(acc.descripcion) : "";
-      const prefix = f ? `${i+1}. [${f}] ` : `${i+1}. `;
-      lines.push(prefix + d);
-    }else{
-      lines.push(`${i+1}. ` + String(acc));
-    }
-  });
-  return lines.join("\n");
-}
-
-function __dashGetAccionesComplementarias(e){
-  try{
-    if(e && Array.isArray(e.accionesRCGlobal) && e.accionesRCGlobal.length>0) return e.accionesRCGlobal;
-    if(e && Array.isArray(e.accionesRC) && e.accionesRC.length>0) return e.accionesRC;
-    if(e && Array.isArray(e.rcReportes) && e.rcReportes.length>0){
-      const last = e.rcReportes[e.rcReportes.length-1];
-      if(last && Array.isArray(last.acciones) && last.acciones.length>0) return last.acciones;
-    }
-  }catch(_e){}
-  return [];
-}
-
-function __dashExportActivasHoyExcel(){
-  try{
-    if(!window.XLSX){
-      alert("No se pudo cargar la librería de Excel (XLSX). Verifique su conexión a internet.");
-      return;
-    }
-
-    const list = __dashGetActivasHoyList();
-    if(!list.length){
-      alert("No hay emergencias activas del día para exportar.");
-      return;
-    }
-
-    const hoy = new Date();
-    const ymd = hoy.toISOString().slice(0,10);
-    const fecha = __dashFmtDateDDMMYYYY(ymd);
-
-    const titleStyle = { font:{name:"Calibri", sz:8, bold:true}, alignment:{horizontal:"center", vertical:"center", wrapText:true} };
-    const subStyle   = { font:{name:"Calibri", sz:8, bold:true}, alignment:{horizontal:"center", vertical:"center", wrapText:true} };
-    const hdrStyle   = { font:{name:"Calibri", sz:8, bold:true}, alignment:{horizontal:"center", vertical:"center", wrapText:true}, fill:{ fgColor:{ rgb:"D9E1F2" } } };
-    const bodyStyle  = { font:{name:"Calibri", sz:8}, alignment:{vertical:"top", wrapText:true} };
-
-    const aoa = [];
-    aoa.push([{v:"COE MIDIS – Lista de Emergencias del Día", t:"s", s:titleStyle}]);
-    aoa.push([{v:`Fecha: ${fecha}`, t:"s", s:subStyle}]);
-    aoa.push([{v:`Total registros: ${list.length}`, t:"s", s:subStyle}]);
-    aoa.push([]); // línea en blanco
-
-    const headers = [
-      "Código",
-      "Fecha del peligro",
-      "Departamento",
-      "Provincia",
-      "Distrito",
-      "Hechos",
-      "Acciones del Sector Desarrollo e Inclusión Social (Preliminar)",
-      "Acciones del Sector Desarrollo e Inclusión Social (Complementarias)"
-    ];
-    aoa.push(headers.map(h=>({v:h, t:"s", s:hdrStyle})));
-
-    list.forEach(e=>{
-      const accionesP = __dashAccionesToTextExcel(e.accionesPreliminar);
-      const accionesC = __dashAccionesToTextExcel(__dashGetAccionesComplementarias(e));
-      aoa.push([
-        {v:String(e.codigo||""), t:"s", s:bodyStyle},
-        {v:String(__dashFmtDateDDMMYYYY(e.fechaPeligro||"")), t:"s", s:bodyStyle},
-        {v:String(e.departamento||""), t:"s", s:bodyStyle},
-        {v:String(e.provincia||""), t:"s", s:bodyStyle},
-        {v:String(e.distrito||""), t:"s", s:bodyStyle},
-        {v:String(e.hechos||""), t:"s", s:bodyStyle},
-        {v:String(accionesP||""), t:"s", s:bodyStyle},
-        {v:String(accionesC||""), t:"s", s:bodyStyle}
-      ]);
-    });
-
-    const ws = XLSX.utils.aoa_to_sheet(aoa);
-
-    // merges: título / fecha / total (sobre 8 columnas)
-    ws["!merges"] = [
-      {s:{r:0,c:0}, e:{r:0,c:7}},
-      {s:{r:1,c:0}, e:{r:1,c:7}},
-      {s:{r:2,c:0}, e:{r:2,c:7}}
-    ];
-
-    // Anchos de columna
-    ws["!cols"] = [
-      {wch:16}, // Código
-      {wch:14}, // Fecha del peligro
-      {wch:18}, // Departamento
-      {wch:18}, // Provincia
-      {wch:18}, // Distrito
-      {wch:70}, // Hechos
-      {wch:70}, // Acciones Preliminar
-      {wch:70}  // Acciones Complementarias
-    ];
-
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Emergencias del día");
-
-    const fname = `COE_MIDIS_Lista_Emergencias_Del_Dia_${String(ymd).replace(/-/g,"")}.xlsx`;
-    XLSX.writeFile(wb, fname);
-  }catch(e){
-    console.error(e);
-    alert("Ocurrió un error al exportar a Excel.");
-  }
-}
-
-
 function __dashReadPageSize(selectId, fallback){
   const sel = document.getElementById(selectId);
   const v = sel ? parseInt(sel.value, 10) : NaN;
@@ -6675,7 +6527,7 @@ document.addEventListener("DOMContentLoaded", ()=>{
   if(btnAplicar) btnAplicar.addEventListener("click", dashboardRefresh);
   if(soloMidis) soloMidis.addEventListener("change", dashboardRefresh);
 
-  if(btnWordActivas) btnWordActivas.addEventListener("click", __dashExportActivasHoyExcel);
+  if(btnWordActivas) btnWordActivas.addEventListener("click", __dashExportActivasHoyWord);
 
   // Paginación: Activas del día
   document.getElementById("dashActivasPageSize")?.addEventListener("change", ()=>{ __dashPagerActivas.page = 1; __dashRenderActivasHoy(); });
