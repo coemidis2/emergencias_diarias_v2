@@ -3540,7 +3540,7 @@ function __lockRPForm(locked){
       if(!b) return;
 
       // Admin: siempre habilitado (evita que queden botones "pegados" en disabled por un lock previo)
-      if(isAdmin){
+      if(isAdmin || isRegOrCons){
         b.disabled = false;
         return;
       }
@@ -4090,6 +4090,8 @@ rcList.forEach((rc, idx) => {
 // Configurar impresión RC (PDF) en el footer del modal (siempre visible)
 try{
   const isAdmin = (typeof __isAdmin === "function" ? __isAdmin() : (typeof __isAdministrador === "function" ? __isAdministrador() : false));
+
+    const isRegOrCons = (typeof currentUser !== "undefined" && currentUser && (currentUser.role === __ROLES.REG || currentUser.role === __ROLES.CONS));
   const hasRC = (rcList && rcList.length > 0) || (document.querySelectorAll('#contenidoVerEmergencia .rc-block').length > 0);
   const hasPrintable = true; // Administrador: imprimir RP (con o sin RC)
 
@@ -4227,9 +4229,10 @@ function __printRC_PDF(idxOpt){
     if(!e){ alert("No hay emergencia seleccionada."); return; }
 
     const isAdmin = (typeof __isAdmin === "function" ? __isAdmin() : (typeof __isAdministrador === "function" ? __isAdministrador() : false));
+    const isRegOrCons = (typeof currentUser !== "undefined" && currentUser && (currentUser.role === __ROLES.REG || currentUser.role === __ROLES.CONS));
 
     // === Solo Administrador: imprimir RP + RC con un solo botón ===
-    if(isAdmin){
+    if(isAdmin || isRegOrCons){
       const contSrc = document.getElementById("contenidoVerEmergencia");
       if(!contSrc){ alert("No se encontró el contenido para imprimir."); return; }
 
