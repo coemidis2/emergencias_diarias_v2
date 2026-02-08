@@ -4099,7 +4099,7 @@ try{
   const btnDrop = document.getElementById("btnPrintRCDrop");
   const menu = document.getElementById("menuPrintRC");
 
-  if(isAdmin){
+  if(isAdmin || isRegOrCons){
     if(btnLast){
       btnLast.disabled = !hasPrintable;
       btnLast.title = "Imprimir RP y RC (PDF)";
