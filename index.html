@@ -728,7 +728,7 @@ body { background: #f5f5f5; }
       <div class="mb-3">
         <div class="d-flex justify-content-between align-items-center mb-1">
           <h5 class="text-primary mb-0">Emergencias activas del día</h5>
-          <button class="btn btn-sm btn-outline-primary" id="dashBtnWordActivas" title="Exportar Word">Exportar Word</button>
+          <button class="btn btn-sm btn-outline-primary" id="dashBtnWordActivas" title="Exportar Excel">Exportar Excel</button>
         </div>
 
         <!-- Resumen: total + histograma por departamento (activas del día) -->
@@ -6499,6 +6499,167 @@ function __dashExportActivasHoyWord(){
   setTimeout(()=>URL.revokeObjectURL(url), 1500);
 }
 
+function __dashFmtAccionesArrayToText(acciones){
+  if(!acciones || !Array.isArray(acciones) || acciones.length===0) return "";
+  const lines = [];
+  acciones.forEach((acc, i)=>{
+    if(acc && typeof acc === "object"){
+      const f = __dashFmtDateDDMMYYYY(acc.fecha || acc.fechaAccion || acc.fechaRegistro || "");
+      const d = String(acc.descripcion || acc.detalle || acc.texto || "");
+      const prefix = f ? `${i+1}. [${f}] ` : `${i+1}. `;
+      lines.push(prefix + d);
+    }else{
+      lines.push(`${i+1}. ` + String(acc));
+    }
+  });
+  return lines.join("\n");
+}
+
+function __dashGetAccionesComplementarioFromRC(rc){
+  if(!rc) return [];
+  let a = rc.acciones ?? rc.accionesRC ?? rc.accionesComplementario ?? rc.accionesComplementarias ?? rc.accionesComp;
+  if(typeof a === "string"){
+    try{ a = JSON.parse(a); }catch(_e){}
+  }
+  return Array.isArray(a) ? a : [];
+}
+
+function __dashFmtAccionesComplementariosText(em){
+  if(!em) return "";
+  const lines = [];
+  const rcList = (typeof __getRCList === "function") ? __getRCList(em) : [];
+
+  if(Array.isArray(rcList) && rcList.length){
+    rcList.forEach((rc, idx)=>{
+      const arr = __dashGetAccionesComplementarioFromRC(rc);
+      if(!arr || !arr.length) return;
+      arr.forEach((acc, i)=>{
+        if(acc && typeof acc === "object"){
+          const f = __dashFmtDateDDMMYYYY(acc.fecha || acc.fechaAccion || acc.fechaRegistro || "");
+          const d = String(acc.descripcion || acc.detalle || acc.texto || "");
+          lines.push(`RC ${idx+1}.${i+1}. ${f ? '['+f+'] ' : ''}${d}`);
+        }else{
+          lines.push(`RC ${idx+1}.${i+1}. ${String(acc)}`);
+        }
+      });
+    });
+  } else if(Array.isArray(em.accionesRCGlobal) && em.accionesRCGlobal.length){
+    // Fallback por compatibilidad (si no hay rcReportes)
+    em.accionesRCGlobal.forEach((acc, i)=>{
+      if(acc && typeof acc === "object"){
+        const f = __dashFmtDateDDMMYYYY(acc.fecha || acc.fechaAccion || acc.fechaRegistro || "");
+        const d = String(acc.descripcion || acc.detalle || acc.texto || "");
+        lines.push(`RC 1.${i+1}. ${f ? '['+f+'] ' : ''}${d}`);
+      }else{
+        lines.push(`RC 1.${i+1}. ${String(acc)}`);
+      }
+    });
+  }
+
+  return lines.join("\n");
+}
+
+function __dashExportActivasHoyExcel(){
+  const list = __dashGetActivasHoyList();
+  if(!list.length){
+    alert("No hay emergencias activas del día para exportar.");
+    return;
+  }
+  if(!window.XLSX){
+    alert("No se pudo cargar la librería de Excel (XLSX). Verifique su conexión a internet.");
+    return;
+  }
+
+  const now = new Date();
+  const ymd = now.toISOString().slice(0,10);
+  const title = "COE MIDIS - Lista de Emergencias del día";
+  const stamp = (typeof now.toLocaleString === "function")
+    ? now.toLocaleString("es-PE", {hour12:false})
+    : String(now);
+
+  const blue = "1F4E79";
+  const black = "000000";
+  const borderThin = {
+    top:{style:"thin", color:{rgb:black}},
+    bottom:{style:"thin", color:{rgb:black}},
+    left:{style:"thin", color:{rgb:black}},
+    right:{style:"thin", color:{rgb:black}}
+  };
+
+  const titleStyle = { font:{name:"Calibri", sz:14, bold:true, color:{rgb:blue}}, alignment:{horizontal:"center", vertical:"center", wrapText:true} };
+  const subStyle   = { font:{name:"Calibri", sz:11, bold:false, color:{rgb:black}}, alignment:{horizontal:"left", vertical:"center", wrapText:true} };
+  const hdrStyle   = { font:{name:"Calibri", sz:11, bold:true, color:{rgb:black}}, alignment:{horizontal:"center", vertical:"center", wrapText:true}, fill:{ fgColor:{ rgb:"D9E1F2" } }, border:borderThin };
+  const bodyStyle  = { font:{name:"Calibri", sz:11, bold:false, color:{rgb:black}}, alignment:{vertical:"top", wrapText:true}, border:borderThin };
+
+  const headers = [
+    "Código",
+    "Peligro",
+    "Fecha de peligro",
+    "Departamento",
+    "Provincia",
+    "Distrito",
+    "Hechos",
+    "Acciones Preliminares",
+    "Acciones Complementarios"
+  ];
+
+  const aoa = [];
+  aoa.push([{v:title, t:"s", s:titleStyle}]);
+  aoa.push([{v:`Fecha de elaboración (descarga): ${stamp}`, t:"s", s:subStyle}]);
+  aoa.push([{v:`Total registros: ${list.length}`, t:"s", s:subStyle}]);
+  aoa.push([]); // línea en blanco
+  aoa.push([]); // línea en blanco
+
+  aoa.push(headers.map(h=>({v:h, t:"s", s:hdrStyle})));
+
+  list.forEach(em=>{
+    const accionesPre = __dashFmtAccionesArrayToText(em?.accionesPreliminar);
+    const accionesComp = __dashFmtAccionesComplementariosText(em);
+
+    const row = [
+      String(em?.codigo || ""),
+      String(em?.peligro || ""),
+      String(em?.fechaPeligro || ""),
+      String(em?.departamento || ""),
+      String(em?.provincia || ""),
+      String(em?.distrito || ""),
+      String(em?.hechos || ""),
+      String(accionesPre || ""),
+      String(accionesComp || "")
+    ];
+
+    aoa.push(row.map(v=>({v:v, t:"s", s:bodyStyle})));
+  });
+
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+
+  // merges: título / fecha / total (sobre 9 columnas)
+  ws["!merges"] = [
+    {s:{r:0,c:0}, e:{r:0,c:8}},
+    {s:{r:1,c:0}, e:{r:1,c:8}},
+    {s:{r:2,c:0}, e:{r:2,c:8}}
+  ];
+
+  // Anchos de columna
+  ws["!cols"] = [
+    {wch:16}, // Código
+    {wch:18}, // Peligro
+    {wch:16}, // Fecha de peligro
+    {wch:18}, // Departamento
+    {wch:18}, // Provincia
+    {wch:18}, // Distrito
+    {wch:70}, // Hechos
+    {wch:70}, // Acciones Preliminares
+    {wch:70}  // Acciones Complementarios
+  ];
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Emergencias_del_dia");
+
+  const fname = `COE_MIDIS_Emergencias_del_dia_${String(ymd).replace(/-/g,"")}.xlsx`;
+  XLSX.writeFile(wb, fname);
+}
+
 
 function __dashReadPageSize(selectId, fallback){
   const sel = document.getElementById(selectId);
@@ -6859,7 +7020,7 @@ document.addEventListener("DOMContentLoaded", ()=>{
   if(btnAplicar) btnAplicar.addEventListener("click", dashboardRefresh);
   if(soloMidis) soloMidis.addEventListener("change", dashboardRefresh);
 
-  if(btnWordActivas) btnWordActivas.addEventListener("click", __dashExportActivasHoyWord);
+  if(btnWordActivas) btnWordActivas.addEventListener("click", __dashExportActivasHoyExcel);
 
   // Paginación: Activas del día
   document.getElementById("dashActivasPageSize")?.addEventListener("change", ()=>{ __dashPagerActivas.page = 1; __dashRenderActivasHoy(); });
