@@ -3992,8 +3992,42 @@ function verEmergencia(e) {
 
   const coords = [__safe(e.latitud).trim(), __safe(e.longitud).trim()].filter(Boolean).join(", ");
 
-  const daniosSrc = (lastRC && lastRC.daniosMIDIS) ? lastRC.daniosMIDIS : (e.daniosMIDIS || {});
-  const accionesComp = (lastRC && Array.isArray(lastRC.acciones)) ? lastRC.acciones : [];
+  const __getDaniosMIDIS = (obj)=>{
+    try{
+      const dm = obj && obj.daniosMIDIS ? obj.daniosMIDIS : null;
+      if(!dm || typeof dm !== "object") return null;
+      if(Object.keys(dm).length === 0) return null;
+      return dm;
+    }catch(_e){ return null; }
+  };
+
+  // Última matriz de daños: prioriza el último RC con datos; si no, usa RP
+  const daniosSrc = (__getDaniosMIDIS(lastRC) || __getDaniosMIDIS(e) || {});
+
+  // Acciones Complementario: reúne TODAS las acciones de TODOS los RC (en orden)
+  const __getAccionesCompRC = (rc)=>{
+    if(!rc) return [];
+    let a =
+      rc.acciones ??
+      rc.accionesRC ??
+      rc.accionesComplementario ??
+      rc.accionesComplementarias ??
+      rc.accionesComp;
+    if(typeof a === "string"){
+      try{ a = JSON.parse(a); }catch(_e){}
+    }
+    return Array.isArray(a) ? a : [];
+  };
+
+  const accionesCompAll = [];
+  if(Array.isArray(rcList) && rcList.length){
+    rcList.forEach((rc, idx)=>{
+      const arr = __getAccionesCompRC(rc);
+      if(arr && arr.length){
+        arr.forEach(item=> accionesCompAll.push({__rcIdx: idx, item}));
+      }
+    });
+  }
 
   const elaboradoPorTxt = (lastRC && lastRC.elaboradoPor) ? lastRC.elaboradoPor : (e.elaboradoPor || "");
   const aprobadoPorTxt = (lastRC && lastRC.aprobadoPor) ? lastRC.aprobadoPor : (e.aprobadoPor || "");
@@ -4043,7 +4077,9 @@ function verEmergencia(e) {
       </thead>
       <tbody>`;
   programas.forEach(p => {
-    const d = (daniosSrc && daniosSrc[p]) || {};
+    const keyUp = (p || '').toString().toUpperCase();
+    const keyLo = (p || '').toString().toLowerCase();
+    const d = (daniosSrc && (daniosSrc[p] || daniosSrc[keyUp] || daniosSrc[keyLo])) ? (daniosSrc[p] || daniosSrc[keyUp] || daniosSrc[keyLo]) : {};
     html += `<tr>
       <td>${p}</td>
       <td>${d.usuariosAfectados || 0}</td>
@@ -4057,9 +4093,18 @@ function verEmergencia(e) {
 
   // Acciones Complementario (párrafos justificados)
   html += `<div class="ver-section-title">Acciones del sector Desarrollo e Inclusión Social (Complementario)</div>`;
-  if (accionesComp.length > 0) {
-    accionesComp.forEach(a => {
-      html += `<p class="mb-1 ver-just ver-prewrap">[${__safe(a.fecha)}] ${__txt(a.descripcion)}</p>`;
+  if (accionesCompAll.length > 0) {
+    accionesCompAll.forEach(({__rcIdx, item}) => {
+      let f = "";
+      let d = "";
+      if(item && typeof item === "object"){
+        f = __safe(item.fecha || item.fechaAccion || item.fechaRegistro || "");
+        d = __txt(item.descripcion || item.detalle || item.texto || "");
+      } else {
+        d = __txt(item);
+      }
+      const tag = `RC ${(__rcIdx+1)}`;
+      html += `<p class="mb-1 ver-just ver-prewrap">[${tag}${f ? " - " + f : ""}] ${d}</p>`;
     });
   } else {
     html += `<p><em>Sin acciones complementarias registradas.</em></p>`;
@@ -4299,18 +4344,21 @@ function __printRC_PDF(idxOpt){
           const tbl = clone.querySelector('table');
           if(tbl){
             const rows = programas.map(p=>{
-              const d = (daniosSrc && daniosSrc[p.key]) ? daniosSrc[p.key] : {};
+              const keyUp = (p || "").toString().toUpperCase();
+              const keyLo = (p || "").toString().toLowerCase();
+              const d = (daniosSrc && (daniosSrc[p] || daniosSrc[keyUp] || daniosSrc[keyLo])) ? (daniosSrc[p] || daniosSrc[keyUp] || daniosSrc[keyLo]) : {};
               const v = (k)=> (d && d[k] !== undefined && d[k] !== null) ? d[k] : 0;
-              return `<tr><td>${p.nombre}</td><td>${v('usuariosAfectados')}</td><td>${v('usuariosDamnificados')}</td><td>${v('localesAfectados')}</td><td>${v('localesInhabitables')}</td></tr>`;
+              return `<tr><td>${p}</td><td>${v('usuariosAfectados')}</td><td>${v('serviciosAfectados')}</td><td>${v('usuariosPorServicios')}</td><td>${v('usuariosFallecidos')}</td><td>${v('moduloAfectado')}</td></tr>`;
             }).join('');
             tbl.innerHTML = `
               <thead>
                 <tr>
                   <th>Programa</th>
                   <th>Usuarios afectados</th>
-                  <th>Usuarios damnificados</th>
-                  <th>Locales afectados</th>
-                  <th>Locales inhabitables</th>
+                  <th>Servicios afectados</th>
+                  <th>Usuarios por servicios</th>
+                  <th>Fallecidos</th>
+                  <th>Módulo afectado</th>
                 </tr>
               </thead>
               <tbody>${rows}</tbody>`;
@@ -4330,9 +4378,9 @@ function __printRC_PDF(idxOpt){
             }
             const wrap = document.createElement('div');
             wrap.className = 'ver-just';
-            const acciones = Array.isArray(rcSel.acciones) ? rcSel.acciones : [];
+            const acciones = Array.isArray(rcSel.acciones) ? rcSel.acciones : (Array.isArray(rcSel.accionesRC) ? rcSel.accionesRC : (Array.isArray(rcSel.accionesComplementario) ? rcSel.accionesComplementario : (Array.isArray(rcSel.accionesComplementarias) ? rcSel.accionesComplementarias : [])));
             if(acciones.length){
-              wrap.innerHTML = acciones.map(a=>`<p class="mb-1 ver-prewrap">[${a.fecha || ''}] ${(a.descripcion || '')}</p>`).join('');
+              wrap.innerHTML = acciones.map(a=>`<p class="mb-1 ver-just ver-prewrap">[${a.fecha || ''}] ${(a.descripcion || '')}</p>`).join('');
             } else {
               wrap.innerHTML = `<p><em>Sin acciones complementarias registradas.</em></p>`;
             }
