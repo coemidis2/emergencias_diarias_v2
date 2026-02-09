@@ -2799,7 +2799,14 @@ function __enviarRC(opts={}){
     if(!suppress) alert("Primero guarde un RC.");
     return false;
   }
-  const idx = em.rcReportes.length - 1;
+    let idx = em.rcReportes.length - 1;
+    try{
+      if(window.__rcAdminEditFromList === true && Number.isInteger(window.__rcAdminEditIdx)){
+        const cand = window.__rcAdminEditIdx;
+        if(cand >= 0 && cand < em.rcReportes.length) idx = cand;
+      }
+    }catch(e){}
+    const __isLast = (idx === em.rcReportes.length - 1);
   const rc = em.rcReportes[idx];
 
   if(rc.aprobEstado === "Aprobado"){
@@ -5116,7 +5123,7 @@ function cargarTablaEmergencias() {
     }
     const btnEditRC = tr.querySelector(".btnEditRC");
     if(btnEditRC && __isAdmin && __isAdmin()){
-      btnEditRC.onclick = () => abrirRC(e);
+      btnEditRC.onclick = () => __abrirRCAdminEditarDesdeListado(e);
     }
     const btnDel = tr.querySelector(".btnDel");
     if(btnDel && __isAdmin && __isAdmin()){
@@ -5288,6 +5295,80 @@ function __abrirRPAdminEditarDesdeListado(obj){
   }catch(e){}
 }
 
+
+
+// Admin: desde el Listado (columna "Modificar"), elegir qué RC (histórico) editar
+function __abrirRCAdminEditarDesdeListado(obj){
+  if(!obj) return;
+  if(!(__isAdmin && __isAdmin())){ abrirRC(obj); return; }
+
+  const rcList = (typeof __getRCList === "function") ? __getRCList(obj) : (Array.isArray(obj.rcReportes)? obj.rcReportes : []);
+  if(!Array.isArray(rcList) || rcList.length === 0){
+    // Si no hay RC, abre RC normal (creación)
+    try{ window.__rcAdminEditFromList = false; window.__rcAdminEditIdx = null; }catch(e){}
+    abrirRC(obj);
+    return;
+  }
+
+  let idx = rcList.length - 1;
+  if(rcList.length > 1){
+    try{
+      const menu = rcList.map((r,i)=>{
+        const n = (r && (r.numeroGlobal || r.numeroReporteRC)) ? (r.numeroGlobal || r.numeroReporteRC) : (i+1);
+        const est = (r && r.aprobEstado) ? r.aprobEstado : "—";
+        const fh = (r && (r.fechaHoraRC || r.fechaRegistro)) ? (r.fechaHoraRC || r.fechaRegistro) : "";
+        return `${i+1}) N° ${n} - ${est}${fh?(' - '+fh):''}`;
+      }).join("\n");
+
+      const resp = prompt(
+        "Seleccione el Reporte Complementario (RC) a modificar:\n\n" + menu + "\n\nEscriba el número (1-" + rcList.length + "):",
+        String(rcList.length)
+      );
+      if(resp === null) return;
+      const sel = parseInt(String(resp).trim(), 10);
+      if(Number.isFinite(sel) && sel >= 1 && sel <= rcList.length) idx = sel - 1;
+    }catch(e){}
+  }
+
+  // Activar modo edición de RC específico
+  try{ window.__rcAdminEditFromList = true; window.__rcAdminEditIdx = idx; }catch(e){}
+  abrirRC(obj);
+
+  // Sobrescribir el contenido del formulario RC con el RC elegido
+  try{
+    const rc = (obj.rcReportes && obj.rcReportes[idx]) ? obj.rcReportes[idx] : rcList[idx];
+    if(rc){
+      accionesRCTemp = Array.isArray(rc.acciones) ? JSON.parse(JSON.stringify(rc.acciones)) : [];
+      cargarAccionesRC();
+
+      const snap = { daniosMIDIS: (rc.daniosMIDIS ? JSON.parse(JSON.stringify(rc.daniosMIDIS)) : (obj.daniosMIDIS || {})) };
+      cargarTablaDaniosRC(snap);
+
+      const num = rc.numeroGlobal || rc.numeroReporteRC || "";
+      const box = document.getElementById("datosBasicosRC");
+      if(box && num !== ""){
+        box.innerHTML = box.innerHTML.replace(/(<b>N° Global:<\/b>\s*)([^<]*)/i, "$1" + num);
+      }
+    }
+  }catch(e){}
+
+  // Asegurar edición habilitada
+  try{
+    setRCEnabled(true);
+    setRCViewActive(true);
+    const bSaveA = document.getElementById("btnGuardarAprobarRCAdmin");
+    const bSave  = document.getElementById("btnGuardarRC");
+    const bSend  = document.getElementById("btnGuardarEnviarRC");
+    const bWord  = document.getElementById("btnWordRC");
+    const bRet   = document.getElementById("btnRetornarRC");
+    if(bSaveA){ bSaveA.disabled = false; bSaveA.classList.remove("d-none"); }
+    if(bSave)  bSave.disabled = false;
+    if(bSend)  bSend.disabled = false;
+    if(bWord)  bWord.disabled = false;
+    if(bRet)   bRet.disabled  = false;
+  }catch(e){}
+}
+
 function abrirRP(obj){
   if(!obj) return;
   if(__isConsulta()) return;
@@ -5419,6 +5500,14 @@ function abrirRC(obj) {
     alert("El Reporte Complementario (RC) se habilita recién cuando el Reporte Preliminar (RP) esté Aprobado por el Administrador.");
     return;
   }
+
+  // Admin: limpiar modo edición especial salvo que venga desde 'Modificar RC' del Listado
+  try{
+    if(!(window.__rcAdminEditFromList === true)){
+      window.__rcAdminEditFromList = false;
+      window.__rcAdminEditIdx = null;
+    }
+  }catch(e){}
 
   emergenciaSeleccionada = obj;
   accionesRCTemp = Array.isArray(obj.accionesRCGlobal) ? [...obj.accionesRCGlobal] : [];
@@ -5559,12 +5648,14 @@ function __guardarRCCore(opts={}){
   let em = emergenciaSeleccionada;
 
   // Capturar daños MIDIS desde la UI
+  const __daniosFromUI = {};
   document.querySelectorAll(".danio-rc").forEach(inp => {
-    let prog = inp.dataset.programa;
-    let field = inp.dataset.field;
+    const prog = inp.dataset.programa;
+    const field = inp.dataset.field;
     let val = Number(inp.value);
-    if (!em.daniosMIDIS[prog]) {
-      em.daniosMIDIS[prog] = {
+    if (!Number.isFinite(val) || val < 0) val = 0;
+    if (!__daniosFromUI[prog]) {
+      __daniosFromUI[prog] = {
         usuariosAfectados: 0,
         serviciosAfectados: 0,
         usuariosPorServicios: 0,
@@ -5572,19 +5663,26 @@ function __guardarRCCore(opts={}){
         moduloAfectado: 0
       };
     }
-    em.daniosMIDIS[prog][field] = val;
+    __daniosFromUI[prog][field] = val;
   });
 
   // ===================== ADMIN: ACTUALIZA ÚLTIMO RC (NO CREA OTRO) =====================
   if(isAdmin && Array.isArray(em.rcReportes) && em.rcReportes.length>0){
-    const idx = em.rcReportes.length - 1;
+    let idx = em.rcReportes.length - 1;
+    try{
+      if(window.__rcAdminEditFromList === true && Number.isInteger(window.__rcAdminEditIdx)){
+        const cand = window.__rcAdminEditIdx;
+        if(cand >= 0 && cand < em.rcReportes.length) idx = cand;
+      }
+    }catch(e){}
+    const __isLast = (idx === em.rcReportes.length - 1);
     const rc = em.rcReportes[idx];
     const numRC = rc ? (rc.numeroGlobal || rc.numeroReporteRC) : null;
 
     if(rc){
       // Guardar modificaciones sin alterar el correlativo/global
       rc.acciones = [...accionesRCTemp];
-      rc.daniosMIDIS = JSON.parse(JSON.stringify(em.daniosMIDIS));
+      rc.daniosMIDIS = JSON.parse(JSON.stringify(__daniosFromUI));
       rc.updatedAt = __nowIso();
       rc.updatedByEmail = currentUser ? currentUser.email : null;
     }
@@ -5592,7 +5690,10 @@ function __guardarRCCore(opts={}){
     __histPush(em, "RC_ACTUALIZADO", { idx, numeroGlobal: numRC });
     __touch(em);
 
-    em.accionesRCGlobal = [...accionesRCTemp];
+    if(__isLast){
+      em.accionesRCGlobal = [...accionesRCTemp];
+      em.daniosMIDIS = JSON.parse(JSON.stringify(__daniosFromUI));
+    }
     rcGrabado = true;
     rcWordGenerado = false;
     __saveEmergencias();
@@ -5636,6 +5737,7 @@ function __guardarRCCore(opts={}){
   }
 
   // ===================== CREAR RC (comportamiento original) =====================
+  em.daniosMIDIS = JSON.parse(JSON.stringify(__daniosFromUI));
   numeroReporteGlobal++;
   let numRC = numeroReporteGlobal;
 
@@ -5728,17 +5830,23 @@ document.getElementById("btnGuardarAprobarRCAdmin")?.addEventListener("click", (
 
   try{
     const em = emergenciaSeleccionada;
-    const idx = (em && Array.isArray(em.rcReportes)) ? (em.rcReportes.length - 1) : -1;
+    let idx = (em && Array.isArray(em.rcReportes)) ? (em.rcReportes.length - 1) : -1;
+    try{
+      if(window.__rcAdminEditFromList === true && Number.isInteger(window.__rcAdminEditIdx)){
+        const cand = window.__rcAdminEditIdx;
+        if(cand >= 0 && cand < em.rcReportes.length) idx = cand;
+      }
+    }catch(e){}
     if(idx < 0){
       alert("No se encontró el RC para aprobar.");
       return;
     }
-
     // Intentar enviar solo si aún no está pendiente; si falla, igual se continúa con la aprobación
     try{
       const rc = em.rcReportes[idx];
       const estado = rc ? rc.aprobEstado : null;
-      if(estado !== "Pendiente"){
+      const __isLast = (idx === (em && Array.isArray(em.rcReportes) ? (em.rcReportes.length - 1) : -1));
+      if(__isLast && estado !== "Pendiente"){
         __enviarRC({suppressAlert:true});
       }
     }catch(e){}
@@ -5813,6 +5921,7 @@ document.getElementById("btnRetornarRC").onclick = () => {
   document.getElementById("fechaAccionRC").value = "";
   document.getElementById("descAccionRC").value = "";
   setRCViewActive(false);
+  try{ window.__rcAdminEditFromList = false; window.__rcAdminEditIdx = null; }catch(e){}
 };
 
 // ===================== RETORNAR A LISTA DESDE RP =====================
