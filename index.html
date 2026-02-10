@@ -1209,7 +1209,7 @@ body { background: #f5f5f5; }
     </button>
     <ul class="dropdown-menu dropdown-menu-end" id="menuPrintRC"></ul>
   </div>
-  <button type="button" class="btn btn-primary me-2 d-none" id="btnVerWord" onclick="__verToWord()" title="Descargar en Word">Word</button>
+  <button type="button" class="btn btn-primary" id="btnWordVer" style="display:none" onclick="__verToWord()" title="Descargar Word">Word</button>
   <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
 </div>
     </div>
@@ -1466,7 +1466,6 @@ body { background: #f5f5f5; }
 <script src="ubigeoData.js?v=20251225a"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style/dist/xlsx.bundle.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.umd.js"></script>
 
 <script>
 
@@ -4041,19 +4040,8 @@ function verEmergencia(e) {
   const elaboradoPorTxt = (lastRC && lastRC.elaboradoPor) ? lastRC.elaboradoPor : (e.elaboradoPor || "");
   const aprobadoPorTxt = (lastRC && lastRC.aprobadoPor) ? lastRC.aprobadoPor : (e.aprobadoPor || "");
 
-  // Contexto para exportar a Word desde VER
-  window.__VER_WORD_CTX = {
-    e,
-    rcList,
-    lastRC,
-    estadoTxt,
-    tituloRep,
-    coords,
-    daniosSrc,
-    accionesCompAll,
-    elaboradoPorTxt,
-    aprobadoPorTxt
-  };
+  // Contexto para exportar Word desde el modal "Ver"
+  try{ window.__VER_WORD_CTX = { e, rcList, lastRC, estadoTxt, tituloRep, coords, daniosSrc, accionesCompAll, elaboradoPorTxt, aprobadoPorTxt }; }catch(_e){}
 
   let html = `<div class="ver-report-wrap">`;
 
@@ -4166,22 +4154,18 @@ function verEmergencia(e) {
 
   cont.innerHTML = html;
 
+  // Mostrar/ocultar botón Word SOLO para Administrador y Registrador
+  try{
+    const btnW = document.getElementById("btnWordVer");
+    const canWord = (typeof currentUser !== "undefined" && currentUser && (currentUser.role === __ROLES.ADMIN || currentUser.role === __ROLES.REG));
+    if(btnW){ btnW.style.display = canWord ? "" : "none"; btnW.disabled = !canWord; }
+  }catch(_e){}
+
 // Configurar impresión RC (PDF) en el footer del modal (siempre visible)
 try{
   const isAdmin = (typeof __isAdmin === "function" ? __isAdmin() : (typeof __isAdministrador === "function" ? __isAdministrador() : false));
 
     const isRegOrCons = (typeof currentUser !== "undefined" && currentUser && (currentUser.role === __ROLES.REG || currentUser.role === __ROLES.CONS));
-
-    // Botón Word (solo Administrador y Registrador)
-    try{
-      const btnW = document.getElementById("btnVerWord");
-      if(btnW){
-        const isAdminOrReg = !!(isAdmin || (typeof currentUser !== "undefined" && currentUser && currentUser.role === __ROLES.REG));
-        btnW.classList.toggle("d-none", !isAdminOrReg);
-        btnW.disabled = !isAdminOrReg;
-      }
-    }catch(_e){}
-
   const hasRC = (rcList && rcList.length > 0) || (document.querySelectorAll('#contenidoVerEmergencia .rc-block').length > 0);
   const hasPrintable = true; // Administrador/Registrador/Consultor: imprimir RP (con o sin RC)
 
@@ -4249,6 +4233,305 @@ try{
 
 const modal = new bootstrap.Modal(document.getElementById("modalVerEmergencia"));
   modal.show();
+}
+
+
+// === Word (DOCX) desde Ver (Listado de Emergencias) ===
+async function __verToWord(){
+  try{
+    const canWord = (typeof currentUser !== "undefined" && currentUser && (currentUser.role === __ROLES.ADMIN || currentUser.role === __ROLES.REG));
+    if(!canWord){ alert("No autorizado."); return; }
+
+    const ctx = (typeof window !== "undefined" && window.__VER_WORD_CTX) ? window.__VER_WORD_CTX : null;
+    const e = ctx && ctx.e ? ctx.e : (typeof window !== "undefined" ? window.__VER_EMERG_ACTUAL : null);
+    if(!e){ alert("No hay información para exportar."); return; }
+
+    const rcList = (ctx && Array.isArray(ctx.rcList)) ? ctx.rcList : __getRCList(e);
+    const lastRC = (rcList && rcList.length) ? rcList[rcList.length-1] : null;
+
+    // N° Global y Fecha/Hora de elaboración: último RC si existe, si no, RP
+    const numeroGlobalUlt = (lastRC && (lastRC.numeroGlobal || lastRC.numeroReporteRC || lastRC.numeroReporte)) ? (lastRC.numeroGlobal || lastRC.numeroReporteRC || lastRC.numeroReporte) : (e.numeroGlobal || e.numeroReporte || "");
+    const fechaHoraUlt = (lastRC && (lastRC.fechaHoraRC || lastRC.fechaHora || lastRC.updatedAt || lastRC.createdAt || lastRC.fechaRegistro)) ? (lastRC.fechaHoraRC || lastRC.fechaHora || lastRC.updatedAt || lastRC.createdAt || lastRC.fechaRegistro) : (e.fechaHora || e.updatedAt || e.createdAt || "");
+
+    // Cargar librería DOCX (solo cuando se usa)
+    await __ensureDocxLib();
+    const D = (typeof window !== "undefined" ? window.docx : null);
+    if(!D || !D.Document){ alert("No se pudo cargar la librería para generar Word."); return; }
+
+    const {
+      Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell,
+      WidthType, AlignmentType, Header, ImageRun
+    } = D;
+
+    const __safe = (v)=> (v===null || v===undefined) ? "" : String(v);
+    const __txt = (v)=> __safe(v).replace(/\r\n/g,"\n");
+    const __hex = (c)=> __safe(c).replace("#","");
+    const __cmToPx = (cm)=> Math.round(Number(cm||0) * 37.7952755906);
+    const __fmtDMY = (isoDate)=>{
+      const s = __safe(isoDate).trim();
+      if(!s) return "";
+      const d = s.split("T")[0];
+      const m = d.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      if(!m) return d;
+      return `${m[3]}-${m[2]}-${m[1]}`;
+    };
+
+    const __dataUriToUint8 = (dataUri)=>{
+      const b64 = String(dataUri||"").split(",")[1] || "";
+      const bin = atob(b64);
+      const arr = new Uint8Array(bin.length);
+      for(let i=0;i<bin.length;i++) arr[i] = bin.charCodeAt(i);
+      return arr;
+    };
+    const __fetchUint8 = async(url)=>{
+      const r = await fetch(url, { cache:"force-cache" });
+      if(!r.ok) throw new Error("HTTP " + r.status);
+      const buf = await r.arrayBuffer();
+      return new Uint8Array(buf);
+    };
+
+    // Logo (primero intenta archivo local; si no, usa data-uri global si existe)
+    let logoBytes = null;
+    try{ logoBytes = await __fetchUint8("logo_coemidis.jpg"); }catch(_e){
+      try{ logoBytes = await __fetchUint8("./logo_coemidis.jpg"); }catch(__e){
+        try{ if(window.__COE_MIDIS_LOGO_DATA_URI) logoBytes = __dataUriToUint8(window.__COE_MIDIS_LOGO_DATA_URI); }catch(___e){}
+      }
+    }
+
+    // Título solicitado
+    const tituloRep = (ctx && ctx.tituloRep) ? ctx.tituloRep : (()=>{
+      const peligroTxt = __safe(e.peligro).trim();
+      const distritoTxt = __safe(e.distrito).trim();
+      const depTxt = __safe(e.departamento).trim();
+      return ((peligroTxt ? peligroTxt : "") + (distritoTxt ? ` en el distrito ${distritoTxt}` : "") + (depTxt ? ` - ${depTxt}` : "")).trim() || "Emergencia";
+    })();
+
+    const estadoTxt = (ctx && ctx.estadoTxt) ? ctx.estadoTxt : (e.cerrada ? "Cerrada" : "Abierta");
+    const coords = (ctx && ctx.coords!==undefined) ? ctx.coords : [__safe(e.latitud).trim(), __safe(e.longitud).trim()].filter(Boolean).join(", ");
+    const elaboradoPorTxt = (ctx && ctx.elaboradoPorTxt!==undefined) ? ctx.elaboradoPorTxt : ((lastRC && lastRC.elaboradoPor) ? lastRC.elaboradoPor : (e.elaboradoPor || ""));
+    const aprobadoPorTxt = (ctx && ctx.aprobadoPorTxt!==undefined) ? ctx.aprobadoPorTxt : ((lastRC && lastRC.aprobadoPor) ? lastRC.aprobadoPor : (e.aprobadoPor || ""));
+
+    const __lbl = (t)=> new TextRun({ text: t, bold:true, font:"Calibri", size:22 });
+    const __val = (t)=> new TextRun({ text: t, bold:false, font:"Calibri", size:22 });
+    const __p = (runs, align)=> new Paragraph({ children: runs, alignment: align || AlignmentType.LEFT });
+    const __pJust = (text)=>{
+      const s = __txt(text);
+      if(!s.trim()) return [ new Paragraph({ children:[__val("")], alignment: AlignmentType.JUSTIFIED }) ];
+      return s.split("\n").map(line=> new Paragraph({ children:[__val(line)], alignment: AlignmentType.JUSTIFIED }));
+    };
+
+    const __th = (t)=> new TableCell({
+      children: [ new Paragraph({ children:[ new TextRun({text:t, bold:true, font:"Calibri", size:22}) ], alignment: AlignmentType.CENTER }) ],
+      width: { size: 1, type: WidthType.AUTO }
+    });
+    const __td = (t)=> new TableCell({
+      children: [ new Paragraph({ children:[ new TextRun({text: __safe(t), font:"Calibri", size:22}) ], alignment: AlignmentType.CENTER }) ],
+      width: { size: 1, type: WidthType.AUTO }
+    });
+
+    const __daniosSrc = (ctx && ctx.daniosSrc) ? ctx.daniosSrc : ((lastRC && lastRC.daniosMIDIS) ? lastRC.daniosMIDIS : (e.daniosMIDIS || {}));
+    const __getDanioRow = (prog)=>{
+      const keyUp = (prog||"").toString().toUpperCase();
+      const keyLo = (prog||"").toString().toLowerCase();
+      const d = (__daniosSrc && (__daniosSrc[prog] || __daniosSrc[keyUp] || __daniosSrc[keyLo])) ? (__daniosSrc[prog] || __daniosSrc[keyUp] || __daniosSrc[keyLo]) : {};
+      return [
+        prog,
+        Number(d.usuariosAfectados||0),
+        Number(d.serviciosAfectados||0),
+        Number(d.usuariosPorServicios||0),
+        Number(d.usuariosFallecidos||0),
+        Number(d.moduloAfectado||0)
+      ];
+    };
+
+    // Programas (usa el arreglo global si existe)
+    const __progs = (typeof programas !== "undefined" && Array.isArray(programas) && programas.length) ? programas : Object.keys(__daniosSrc||{});
+
+    const daniosTable = new Table({
+      width: { size: 100, type: WidthType.PERCENTAGE },
+      rows: [
+        new TableRow({ children:[ __th("Programa"), __th("Usuarios afectados"), __th("Servicios afectados"), __th("Usuarios por servicios"), __th("Fallecidos"), __th("Módulo afectado") ] }),
+        ...__progs.map(p=>{
+          const r = __getDanioRow(p);
+          return new TableRow({ children:[ __td(r[0]), __td(r[1]), __td(r[2]), __td(r[3]), __td(r[4]), __td(r[5]) ] });
+        })
+      ]
+    });
+
+    // Acciones complementarias: reúne TODAS las acciones de TODOS los RC
+    const __getAccionesCompRC = (rc)=>{
+      if(!rc) return [];
+      let a = rc.acciones ?? rc.accionesRC ?? rc.accionesComplementario ?? rc.accionesComplementarias ?? rc.accionesComp;
+      if(typeof a === "string"){ try{ a = JSON.parse(a); }catch(_e){} }
+      return Array.isArray(a) ? a : [];
+    };
+    const accionesCompAll = (ctx && Array.isArray(ctx.accionesCompAll)) ? ctx.accionesCompAll : (()=>{
+      const out = [];
+      if(Array.isArray(rcList) && rcList.length){
+        rcList.forEach((rc, idx)=>{
+          const arr = __getAccionesCompRC(rc);
+          if(arr && arr.length) arr.forEach(item=> out.push({__rcIdx: idx, item}));
+        });
+      }
+      return out;
+    })();
+
+    const accionesPre = Array.isArray(e.accionesPreliminar) ? e.accionesPreliminar : [];
+
+    // Historial RC
+    const hist = (Array.isArray(rcList) && rcList.length) ? rcList.map((rc, idx)=>{
+      const g = __safe((rc && (rc.numeroGlobal || rc.numeroReporteRC || rc.numeroReporte)) ? (rc.numeroGlobal || rc.numeroReporteRC || rc.numeroReporte) : "").trim();
+      const fr = __safe(rc && (rc.fechaRegistro || rc.fechaHoraRC) ? (rc.fechaRegistro || rc.fechaHoraRC) : "").trim();
+      const frFmt = fr ? __fmtDMY(fr) : "";
+      const gTxt = g ? `N° Global ${g}` : "N° Global";
+      const fTxt = frFmt ? ` | Fecha de registro ${frFmt}` : "";
+      return `RC ${idx+1} – ${gTxt}${fTxt}`;
+    }).join(", ") : "";
+
+    const header = new Header({
+      children: [
+        new Paragraph({
+          children: logoBytes ? [ new ImageRun({ data: logoBytes, transformation: { width: __cmToPx(16.18), height: __cmToPx(3.18) } }) ] : [],
+          alignment: AlignmentType.LEFT
+        })
+      ]
+    });
+
+    const children = [];
+
+    // Título
+    children.push(new Paragraph({
+      children: [ new TextRun({ text: tituloRep, bold:true, color: __hex("#1F4E79"), font:"Calibri", size:30 }) ],
+      alignment: AlignmentType.LEFT
+    }));
+
+    // Subtítulo (datos clave)
+    children.push(__p([
+      __lbl("Código: "), __val(__safe(e.codigo)),
+      __lbl("   N° Global: "), __val(__safe(numeroGlobalUlt)),
+      __lbl("   Fecha y hora de elaboración: "), __val(__safe(fechaHoraUlt)),
+      __lbl("   Estado: "), __val(__safe(estadoTxt))
+    ]));
+
+    // Hechos
+    children.push(__p([__lbl("Hechos")], AlignmentType.LEFT));
+    children.push(...__pJust(e.hechos));
+
+    // Ubicación / Fecha del peligro / Peligro / Coordenadas
+    children.push(__p([
+      __lbl("Ubicación: "), __val(`${__safe(e.departamento)} / ${__safe(e.provincia)} / ${__safe(e.distrito)}`),
+      __lbl("   Fecha del peligro: "), __val(__safe(e.fechaPeligro)),
+      __lbl("   Peligro: "), __val(__safe(e.peligro)),
+      __lbl("   Coordenadas: "), __val(__safe(coords))
+    ]));
+
+    // Daños en otros sectores
+    children.push(__p([__lbl("Daños en otros sectores")], AlignmentType.LEFT));
+    children.push(...__pJust(e.daniosOtros));
+
+    // Matriz de daños MIDIS
+    children.push(__p([__lbl("Daños en el Sector Desarrollo e Inclusión Social")], AlignmentType.LEFT));
+    children.push(daniosTable);
+
+    // Acciones Complementario (TODOS los RC)
+    children.push(__p([__lbl("Acciones del sector Desarrollo e Inclusión Social (Complementario)")], AlignmentType.LEFT));
+    if(accionesCompAll.length){
+      accionesCompAll.forEach(({__rcIdx, item})=>{
+        let f = "";
+        let d = "";
+        if(item && typeof item === "object"){
+          f = __safe(item.fecha || item.fechaAccion || item.fechaRegistro || "");
+          d = __txt(item.descripcion || item.detalle || item.texto || "");
+        }else{
+          d = __txt(item);
+        }
+        const tag = `RC ${(__rcIdx+1)}`;
+        const head = `[${tag}${f ? " - " + f : ""}] `;
+        children.push(new Paragraph({ children:[ __val(head + d) ], alignment: AlignmentType.JUSTIFIED }));
+      });
+    }else{
+      children.push(new Paragraph({ children:[ __val("Sin acciones complementarias registradas.") ], alignment: AlignmentType.LEFT }));
+    }
+
+    // Acciones Preliminar
+    children.push(__p([__lbl("Acciones del Sector Desarrollo e Inclusión Social (Preliminar)")], AlignmentType.LEFT));
+    if(accionesPre.length){
+      accionesPre.forEach(a=>{
+        const head = `[${__safe(a.fecha)}] `;
+        const d = __txt(a.descripcion || "");
+        children.push(new Paragraph({ children:[ __val(head + d) ], alignment: AlignmentType.JUSTIFIED }));
+      });
+    }else{
+      children.push(new Paragraph({ children:[ __val("Sin acciones preliminares registradas.") ], alignment: AlignmentType.LEFT }));
+    }
+
+    // Elaborado / Aprobado
+    children.push(__p([__lbl("Elaborado por")], AlignmentType.LEFT));
+    children.push(__p([__val(__safe(elaboradoPorTxt))], AlignmentType.LEFT));
+    children.push(__p([__lbl("Aprobado por")], AlignmentType.LEFT));
+    children.push(__p([__val(__safe(aprobadoPorTxt))], AlignmentType.LEFT));
+
+    // Historial de Nros globales anteriores
+    children.push(__p([__lbl("Nros globales anteriores")], AlignmentType.LEFT));
+    children.push(new Paragraph({ children:[ __val(hist || (rcList && rcList.length ? "" : "Sin RC registrado.")) ], alignment: AlignmentType.LEFT }));
+
+    const doc = new Document({
+      styles: {
+        default: {
+          document: {
+            run: { font: "Calibri", size: 22 }
+          }
+        }
+      },
+      sections: [{
+        properties: {},
+        headers: { default: header },
+        children
+      }]
+    });
+
+    const blob = await Packer.toBlob(doc);
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `Reporte_${__safe(e.codigo||"Emergencia")}.docx`;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(()=>{ try{ URL.revokeObjectURL(url); }catch(_e){} a.remove(); }, 1500);
+  }catch(err){
+    console.error(err);
+    alert("No se pudo generar el Word: " + (err && err.message ? err.message : String(err)));
+  }
+}
+
+function __ensureDocxLib(){
+  try{
+    if(typeof window === "undefined") return Promise.resolve();
+    if(window.docx && window.docx.Document) return Promise.resolve();
+    if(window.__DOCX_LIB_PROMISE) return window.__DOCX_LIB_PROMISE;
+
+    const load = (src)=> new Promise((resolve, reject)=>{
+      const s = document.createElement("script");
+      s.src = src;
+      s.async = true;
+      s.onload = ()=> resolve(true);
+      s.onerror = ()=> reject(new Error("No se pudo cargar: " + src));
+      document.head.appendChild(s);
+    });
+
+    window.__DOCX_LIB_PROMISE = (async()=>{
+      try{
+        await load("https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.min.js");
+      }catch(_e){
+        await load("https://unpkg.com/docx@8.5.0/build/index.min.js");
+      }
+      return true;
+    })();
+
+    return window.__DOCX_LIB_PROMISE;
+  }catch(e){
+    return Promise.reject(e);
+  }
 }
 
 
@@ -4564,325 +4847,6 @@ const __LIST_PAGER = {
   lastFilterKey: null
 };
 
-
-
-// ===================== EXPORTAR WORD (VER - LISTADO DE EMERGENCIAS) =====================
-function __cmToPx(cm){
-  const n = Number(cm||0);
-  return Math.round(n * 37.7952755906);
-}
-
-function __dataUriToUint8Array(dataURI){
-  try{
-    if(!dataURI) return new Uint8Array();
-    const base64 = String(dataURI).split(',')[1] || '';
-    const bin = atob(base64);
-    const len = bin.length;
-    const bytes = new Uint8Array(len);
-    for(let i=0;i<len;i++) bytes[i] = bin.charCodeAt(i);
-    return bytes;
-  }catch(e){
-    return new Uint8Array();
-  }
-}
-
-function __downloadBlob(blob, filename){
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename || 'reporte.docx';
-  document.body.appendChild(a);
-  a.click();
-  setTimeout(()=>{ try{ URL.revokeObjectURL(url); }catch(_e){} try{ a.remove(); }catch(_e){} }, 0);
-}
-
-function __fmtDateDDMMYYYYDash(v){
-  if(!v) return '';
-  const s = String(v).trim();
-  // YYYY-MM-DD || YYYY-MM-DDTHH:MM...
-  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if(m) return `${m[3]}-${m[2]}-${m[1]}`;
-  return s;
-}
-
-
-function __getCOELogoDataUri(){
-  try{
-    if(window.__COE_MIDIS_LOGO_DATA_URI) return window.__COE_MIDIS_LOGO_DATA_URI;
-    // Extraer el DataURI embebido dentro de __printRC_PDF (evita duplicar base64)
-    if(typeof __printRC_PDF === 'function'){
-      const s = String(__printRC_PDF);
-      const mm = s.match(/"data:image\/jpeg;base64,[^"]+"/);
-      if(mm && mm[0]){
-        const uri = mm[0].slice(1,-1);
-        window.__COE_MIDIS_LOGO_DATA_URI = uri;
-        return uri;
-      }
-    }
-    return '';
-  }catch(_e){
-    return '';
-  }
-}
-
-async function __verToWord(){
-  try{
-    // Solo Administrador y Registrador
-    const isAdmin = (typeof __isAdmin === 'function' ? __isAdmin() : (typeof __isAdministrador === 'function' ? __isAdministrador() : false));
-    const isReg = (typeof currentUser !== 'undefined' && currentUser && currentUser.role === __ROLES.REG);
-    if(!(isAdmin || isReg)) return;
-
-    const ctx = window.__VER_WORD_CTX || null;
-    const e = ctx && ctx.e ? ctx.e : window.__VER_EMERG_ACTUAL;
-    if(!e){ alert('No hay emergencia seleccionada.'); return; }
-
-    if(!window.docx){
-      alert('No se pudo cargar el generador Word. Verifique su conexión a internet.');
-      return;
-    }
-
-    const docx = window.docx;
-    const {
-      Document, Packer, Paragraph, TextRun, AlignmentType,
-      Table, TableRow, TableCell, WidthType,
-      Header, ImageRun
-    } = docx;
-
-    const safe = (v)=> (v===null || v===undefined) ? '' : String(v);
-    const txt  = (v)=> safe(v).replace(/\r\n/g,'\n');
-
-    const rcList = (ctx && Array.isArray(ctx.rcList)) ? ctx.rcList : __getRCList(e);
-    const lastRC = (ctx && ctx.lastRC!==undefined) ? ctx.lastRC : (rcList && rcList.length ? rcList[rcList.length-1] : null);
-    const estadoTxt = (ctx && ctx.estadoTxt) ? ctx.estadoTxt : (e.cerrada ? 'Cerrada' : 'Abierta');
-
-    const peligroTxt = safe(e.peligro).trim();
-    const distritoTxt = safe(e.distrito).trim();
-    const depTxt = safe(e.departamento).trim();
-    const tituloRep = (ctx && ctx.tituloRep) ? ctx.tituloRep : (
-      (peligroTxt ? peligroTxt : '') +
-      (distritoTxt ? ` en el distrito ${distritoTxt}` : '') +
-      (depTxt ? ` - ${depTxt}` : '')
-    ).trim() || 'Emergencia';
-
-    const coords = (ctx && ctx.coords) ? ctx.coords : [safe(e.latitud).trim(), safe(e.longitud).trim()].filter(Boolean).join(', ');
-
-    // Matriz de daños (último RC con datos, si no RP)
-    const getDaniosMIDIS = (obj)=>{
-      try{
-        const dm = obj && obj.daniosMIDIS ? obj.daniosMIDIS : null;
-        if(!dm || typeof dm !== 'object') return null;
-        if(Object.keys(dm).length === 0) return null;
-        return dm;
-      }catch(_e){ return null; }
-    };
-    const daniosSrc = (ctx && ctx.daniosSrc) ? ctx.daniosSrc : (getDaniosMIDIS(lastRC) || getDaniosMIDIS(e) || {});
-
-    // Acciones Complementario: TODAS las acciones de TODOS los RC (en orden)
-    let accionesCompAll = (ctx && Array.isArray(ctx.accionesCompAll)) ? ctx.accionesCompAll : null;
-    if(!accionesCompAll){
-      const getAccionesCompRC = (rc)=>{
-        if(!rc) return [];
-        let a = rc.acciones ?? rc.accionesRC ?? rc.accionesComplementario ?? rc.accionesComplementarias ?? rc.accionesComp;
-        if(typeof a === 'string'){
-          try{ a = JSON.parse(a); }catch(_e){}
-        }
-        return Array.isArray(a) ? a : [];
-      };
-      accionesCompAll = [];
-      if(Array.isArray(rcList) && rcList.length){
-        rcList.forEach((rc, idx)=>{
-          const arr = getAccionesCompRC(rc);
-          if(arr && arr.length) arr.forEach(item=> accionesCompAll.push({__rcIdx: idx, item}));
-        });
-      }
-    }
-
-    const elaboradoPorTxt = (ctx && ctx.elaboradoPorTxt!==undefined) ? ctx.elaboradoPorTxt : ((lastRC && lastRC.elaboradoPor) ? lastRC.elaboradoPor : (e.elaboradoPor || ''));
-    const aprobadoPorTxt = (ctx && ctx.aprobadoPorTxt!==undefined) ? ctx.aprobadoPorTxt : ((lastRC && lastRC.aprobadoPor) ? lastRC.aprobadoPor : (e.aprobadoPor || ''));
-
-    // Logo COE MIDIS
-    const __COE_LOGO_DATA_URI = __getCOELogoDataUri();
-    const logoBytes = __dataUriToUint8Array(__COE_LOGO_DATA_URI);
-    const logoW = __cmToPx(16.18);
-    const logoH = __cmToPx(3.18);
-
-    const children = [];
-
-    // Título
-    children.push(new Paragraph({
-      spacing: { after: 180 },
-      children: [new TextRun({
-        text: tituloRep,
-        bold: true,
-        color: '1F4E79',
-        font: 'Calibri',
-        size: 30
-      })]
-    }));
-
-    // Subtítulo: Código / N° Global / Fecha y hora / Estado
-    children.push(new Paragraph({
-      spacing: { after: 120 },
-      children: [
-        new TextRun({ text: 'Código: ', bold: true, font: 'Calibri', size: 22 }),
-        new TextRun({ text: safe(e.codigo) + '   ', font: 'Calibri', size: 22 }),
-        new TextRun({ text: 'N° Global: ', bold: true, font: 'Calibri', size: 22 }),
-        new TextRun({ text: safe(e.numeroGlobal) + '   ', font: 'Calibri', size: 22 }),
-        new TextRun({ text: 'Fecha y hora de elaboración: ', bold: true, font: 'Calibri', size: 22 }),
-        new TextRun({ text: safe(e.fechaHora) + '   ', font: 'Calibri', size: 22 }),
-        new TextRun({ text: 'Estado: ', bold: true, font: 'Calibri', size: 22 }),
-        new TextRun({ text: estadoTxt, font: 'Calibri', size: 22 })
-      ]
-    }));
-
-    // Hechos
-    children.push(new Paragraph({ children:[new TextRun({ text:'Hechos', bold: true, font:'Calibri', size: 22 })] }));
-    txt(e.hechos).replace(/\r\n/g,'\n').split('\n').forEach((ln)=>{
-      children.push(new Paragraph({ alignment: AlignmentType.JUSTIFIED, children:[new TextRun({ text: ln, font:'Calibri', size: 22 })] }));
-    });
-
-    // Ubicación + campos
-    children.push(new Paragraph({
-      spacing: { before: 120 },
-      children: [
-        new TextRun({ text: 'Ubicación: ', bold: true, font: 'Calibri', size: 22 }),
-        new TextRun({ text: `${safe(e.departamento)} / ${safe(e.provincia)} / ${safe(e.distrito)}   `, font: 'Calibri', size: 22 }),
-        new TextRun({ text: 'Fecha del peligro: ', bold: true, font: 'Calibri', size: 22 }),
-        new TextRun({ text: safe(e.fechaPeligro) + '   ', font: 'Calibri', size: 22 }),
-        new TextRun({ text: 'Peligro: ', bold: true, font: 'Calibri', size: 22 }),
-        new TextRun({ text: safe(e.peligro) + '   ', font: 'Calibri', size: 22 }),
-        new TextRun({ text: 'Coordenadas: ', bold: true, font: 'Calibri', size: 22 }),
-        new TextRun({ text: coords, font: 'Calibri', size: 22 })
-      ]
-    }));
-
-    // Daños en otros sectores
-    children.push(new Paragraph({ spacing:{ before: 120 }, children:[new TextRun({ text:'Daños en otros sectores', bold: true, font:'Calibri', size: 22 })] }));
-    txt(e.daniosOtros).replace(/\r\n/g,'\n').split('\n').forEach((ln)=>{
-      children.push(new Paragraph({ alignment: AlignmentType.JUSTIFIED, children:[new TextRun({ text: ln, font:'Calibri', size: 22 })] }));
-    });
-
-    // Matriz de daños MIDIS
-    children.push(new Paragraph({ spacing:{ before: 120, after: 60 }, children:[new TextRun({ text:'Daños en el Sector Desarrollo e Inclusión Social', bold: true, font:'Calibri', size: 22 })] }));
-
-    const headerCells = ['Programa','Usuarios afectados','Servicios afectados','Usuarios por servicios','Fallecidos','Módulo afectado'].map(t=>
-      new TableCell({
-        width: { size: 1, type: WidthType.AUTO },
-        children: [new Paragraph({ children:[new TextRun({ text:t, bold: true, font:'Calibri', size: 20 })] })]
-      })
-    );
-
-    const rows = [new TableRow({ children: headerCells })];
-
-    (Array.isArray(window.programas) ? window.programas : (typeof programas !== 'undefined' ? programas : [])).forEach((p)=>{
-      const keyUp = (p||'').toString().toUpperCase();
-      const keyLo = (p||'').toString().toLowerCase();
-      const d = (daniosSrc && (daniosSrc[p] || daniosSrc[keyUp] || daniosSrc[keyLo])) ? (daniosSrc[p] || daniosSrc[keyUp] || daniosSrc[keyLo]) : {};
-      const cells = [
-        p,
-        d.usuariosAfectados || 0,
-        d.serviciosAfectados || 0,
-        d.usuariosPorServicios || 0,
-        d.usuariosFallecidos || 0,
-        d.moduloAfectado || 0,
-      ].map(v=> new TableCell({ children:[new Paragraph({ children:[new TextRun({ text: safe(v), font:'Calibri', size: 20 })] })] }));
-      rows.push(new TableRow({ children: cells }));
-    });
-
-    children.push(new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, rows }));
-
-    // Acciones Complementario
-    children.push(new Paragraph({ spacing:{ before: 180 }, children:[new TextRun({ text:'Acciones del sector Desarrollo e Inclusión Social (Complementario)', bold: true, font:'Calibri', size: 22 })] }));
-    if(Array.isArray(accionesCompAll) && accionesCompAll.length){
-      accionesCompAll.forEach(({__rcIdx, item})=>{
-        let f = '';
-        let d = '';
-        if(item && typeof item === 'object'){
-          f = safe(item.fecha || item.fechaAccion || item.fechaRegistro || '');
-          d = txt(item.descripcion || item.detalle || item.texto || '');
-        }else{
-          d = txt(item);
-        }
-        const tag = `RC ${(__rcIdx+1)}`;
-        const prefix = `[${tag}${f ? ' - ' + f : ''}] `;
-        const lines = (prefix + d).replace(/\r\n/g,'\n').split('\n');
-        lines.forEach((ln)=>{
-          children.push(new Paragraph({ alignment: AlignmentType.JUSTIFIED, children:[new TextRun({ text: ln, font:'Calibri', size: 22 })] }));
-        });
-      });
-    }else{
-      children.push(new Paragraph({ children:[new TextRun({ text:'Sin acciones complementarias registradas.', font:'Calibri', size: 22, italics: true })] }));
-    }
-
-    // Acciones Preliminar
-    children.push(new Paragraph({ spacing:{ before: 180 }, children:[new TextRun({ text:'Acciones del Sector Desarrollo e Inclusión Social (Preliminar)', bold: true, font:'Calibri', size: 22 })] }));
-    if(Array.isArray(e.accionesPreliminar) && e.accionesPreliminar.length){
-      e.accionesPreliminar.forEach((a)=>{
-        const line = `[${safe(a.fecha)}] ${txt(a.descripcion)}`;
-        line.replace(/\r\n/g,'\n').split('\n').forEach((ln)=>{
-          children.push(new Paragraph({ alignment: AlignmentType.JUSTIFIED, children:[new TextRun({ text: ln, font:'Calibri', size: 22 })] }));
-        });
-      });
-    }else{
-      children.push(new Paragraph({ children:[new TextRun({ text:'Sin acciones preliminares registradas.', font:'Calibri', size: 22, italics: true })] }));
-    }
-
-    // Elaborado / Aprobado
-    children.push(new Paragraph({ spacing:{ before: 180 }, children:[
-      new TextRun({ text:'Elaborado por: ', bold: true, font:'Calibri', size: 22 }),
-      new TextRun({ text: safe(elaboradoPorTxt), font:'Calibri', size: 22 })
-    ] }));
-
-    children.push(new Paragraph({ children:[
-      new TextRun({ text:'Aprobado por: ', bold: true, font:'Calibri', size: 22 }),
-      new TextRun({ text: safe(aprobadoPorTxt), font:'Calibri', size: 22 })
-    ] }));
-
-    // Nros globales anteriores
-    let rcHist = '';
-    if(Array.isArray(rcList) && rcList.length){
-      rcHist = rcList.map((rc, idx)=>{
-        const g = safe((rc && (rc.numeroGlobal || rc.numeroReporteRC)) ? (rc.numeroGlobal || rc.numeroReporteRC) : '').trim();
-        const fr = __fmtDateDDMMYYYYDash(safe(rc && rc.fechaRegistro ? rc.fechaRegistro : '').trim());
-        const gTxt = g ? `N° Global ${g}` : 'N° Global';
-        const fTxt = fr ? ` | Fecha de registro ${fr}` : '';
-        return `RC ${idx+1} – ${gTxt}${fTxt}`;
-      }).join(' | ');
-    }else{
-      rcHist = 'Sin RC registrado.';
-    }
-
-    children.push(new Paragraph({ spacing:{ before: 120 }, children:[
-      new TextRun({ text:'Nros globales anteriores: ', bold: true, font:'Calibri', size: 22 }),
-      new TextRun({ text: rcHist, font:'Calibri', size: 22 })
-    ] }));
-
-    const headerChildren = [];
-    if(logoBytes && logoBytes.length){
-      headerChildren.push(new Paragraph({
-        alignment: AlignmentType.LEFT,
-        children: [ new ImageRun({ data: logoBytes, transformation: { width: logoW, height: logoH } }) ]
-      }));
-    }
-
-    const doc = new Document({
-      sections: [{
-        properties: {},
-        headers: {
-          default: new Header({ children: headerChildren })
-        },
-        children
-      }]
-    });
-
-    const blob = await Packer.toBlob(doc);
-    const codigo = safe(e.codigo).trim() || 'reporte';
-    __downloadBlob(blob, `Reporte_${codigo}.docx`);
-  }catch(err){
-    console.error(err);
-    alert('No se pudo generar el Word.');
-  }
-}
 function __listGetPageSize(){
   try{
     const sel = document.getElementById("listPageSize");
