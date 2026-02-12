@@ -1718,6 +1718,22 @@ function __saveUsers(users){
   }
 }
 
+// Nombre del Administrador (para autocompletar "Aprobado por" cuando el usuario no es Admin)
+function __getPrimaryAdminName(){
+  try{
+    const users = (typeof __loadUsers === "function") ? __loadUsers() : [];
+    const admin = (Array.isArray(users) ? users : []).find(u=>{
+      if(!u) return false;
+      const active = (u.active === undefined || u.active === null) ? true : !!u.active;
+      const role = String(u.role || "").toLowerCase();
+      return active && (role === "admin" || role === "administrador" || role.includes("admin"));
+    });
+    const n = admin ? String(admin.fullName || admin.nombre || admin.name || "").trim() : "";
+    if(n) return n;
+  }catch(e){}
+  return "William Huatay Villoslada";
+}
+
 function __genPassword(len=18){
   const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789@#-_";
   let out = "";
@@ -1894,16 +1910,6 @@ const btnGERP = document.getElementById("btnGuardarEnviarRP");
 const btnGARP = document.getElementById("btnGuardarAprobarRPAdmin");
 const isReg   = currentUser?.role === __ROLES.REG;
 
-// Ocultar botones Word (RP/RC) para Administrador y Registrador (según solicitud)
-try{
-  const __hideWordBtns = (currentUser?.role === __ROLES.ADMIN || currentUser?.role === __ROLES.REG);
-  const bw1 = document.getElementById("btnWordRP");
-  const bw2 = document.getElementById("btnWordRC");
-  if(bw1) bw1.classList.toggle("d-none", __hideWordBtns);
-  if(bw2) bw2.classList.toggle("d-none", __hideWordBtns);
-}catch(e){}
-
-
   // Lista de Emergencias: Exportar Excel (Admin/Registrador)
   try{
     const bX = document.getElementById("btnExportExcelLista");
@@ -2013,15 +2019,17 @@ if(isAdmin){
     const apr = document.getElementById("aprobadoRP");
     if(apr){
       apr.readOnly = !isAdmin;
-      if(!isAdmin) apr.value = ""; // el registrador no se auto-aprueba
+      if(isAdmin){
+        if(!String(apr.value||"").trim()) apr.value = (typeof __getApproverName === "function") ? __getApproverName() : __getCurrentUserName();
+      } else {
+        if(!String(apr.value||"").trim()) apr.value = __getPrimaryAdminName();
+      }
     }
 
     // Ajuste botón cierre según rol
     const btnCierre = document.getElementById("btnCerrarEmergencia");
     if(btnCierre){
       btnCierre.textContent = isAdmin ? "Cerrar emergencia" : "Solicitar cierre";
-      btnCierre.classList.toggle("d-none", isReg);
-      if(isReg) btnCierre.disabled = true;
     }
 
     // Habilitar envío a aprobación cuando corresponda (se habilita al guardar)
@@ -2554,11 +2562,6 @@ function __syncRCActionButtons(){
       return;
     }
 
-    if(bCerrar){
-      bCerrar.classList.add("d-none");
-      bCerrar.disabled = true;
-    }
-
     const btn = document.getElementById("btnGuardarEnviarRC");
     if(!btn) return;
 
@@ -2600,8 +2603,7 @@ function __syncRCActionButtons(){
           bCerrar.classList.add("d-none");
           bCerrar.disabled = true;
         }else{
-          bCerrar.classList.add("d-none");
-          bCerrar.disabled = true;
+          bCerrar.classList.remove("d-none");
         }
       }
     }catch(e){}
@@ -3523,9 +3525,15 @@ rpGrabado = false;
       document.getElementById("elaboradoRP").value = currentUser.fullName;
       document.getElementById("elaboradoRP").readOnly = true;
     }
-    if(currentUser && currentUser.role !== __ROLES.ADMIN && document.getElementById("aprobadoRP")){
-      document.getElementById("aprobadoRP").value = "";
-      document.getElementById("aprobadoRP").readOnly = true;
+    if(currentUser && document.getElementById("aprobadoRP")){
+      const apr = document.getElementById("aprobadoRP");
+      if(currentUser.role === __ROLES.ADMIN){
+        apr.readOnly = false;
+        if(!String(apr.value||"").trim()) apr.value = (typeof __getApproverName === "function") ? __getApproverName() : __getCurrentUserName();
+      } else {
+        apr.readOnly = true;
+        if(!String(apr.value||"").trim()) apr.value = __getPrimaryAdminName();
+      }
     }
   }catch(e){}
   // Desvincular selección previa y desbloquear formulario para nuevo registro
@@ -4075,7 +4083,8 @@ function verEmergencia(e) {
   }
 
   const elaboradoPorTxt = (lastRC && lastRC.elaboradoPor) ? lastRC.elaboradoPor : (e.elaboradoPor || "");
-  const aprobadoPorTxt = (lastRC && lastRC.aprobadoPor) ? lastRC.aprobadoPor : (e.aprobadoPor || "");
+  let aprobadoPorTxt = (lastRC && lastRC.aprobadoPor) ? lastRC.aprobadoPor : (e.aprobadoPor || "");
+  if(!String(aprobadoPorTxt||"").trim()) aprobadoPorTxt = __getPrimaryAdminName();
 
   const nroGlobalWord = (lastRC && (lastRC.numeroGlobal || lastRC.numeroReporteRC)) ? (lastRC.numeroGlobal || lastRC.numeroReporteRC) : (e.numeroGlobal || "");
   const fechaHoraWord = (lastRC && (lastRC.fechaHoraRC || lastRC.fechaHora || lastRC.fechaRegistro || lastRC.updatedAt)) ? (lastRC.fechaHoraRC || lastRC.fechaHora || lastRC.fechaRegistro || lastRC.updatedAt) : (e.fechaHora || "");
@@ -5857,7 +5866,19 @@ function abrirRP(obj){
   const apr = document.getElementById("aprobadoRP");
   if(apr){
     // mostrar aprobador real si existe
-    apr.value = obj.rpAprobadoPor || obj.aprobadoPor || "";
+    let _aprVal = obj.rpAprobadoPor || obj.aprobadoPor || "";
+    if(!String(_aprVal||"").trim()){
+      try{
+        if(currentUser && currentUser.role === __ROLES.ADMIN){
+          _aprVal = (typeof __getApproverName === "function") ? __getApproverName() : __getCurrentUserName();
+        } else {
+          _aprVal = __getPrimaryAdminName();
+        }
+      }catch(e){
+        _aprVal = __getPrimaryAdminName();
+      }
+    }
+    apr.value = _aprVal;
     // si venimos de un RP aprobado (bloqueado), asegurar que se restablezca el control
     apr.disabled = false;
   }
@@ -6194,7 +6215,7 @@ ${rcLecturaHtml ? `
     elaboradoPor: (__getCurrentUserName ? __getCurrentUserName() : "") || "",
     enviadoPor: null,
     enviadoEn: null,
-    aprobadoPor: null,
+    aprobadoPor: (currentUser && currentUser.role !== __ROLES.ADMIN) ? __getPrimaryAdminName() : null,
     aprobadoEn: null,
     obs: null,
     createdAt: __nowIso(),
