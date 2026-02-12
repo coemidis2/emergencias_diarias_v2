@@ -1485,6 +1485,24 @@ const __ROLES = {
   CONS: "Consulta"
 };
 
+// Nombre canónico del Administrador (para autocompletar y firmas)
+const __ADMIN_DEFAULT_FULLNAME = "William Huatay Villoslada";
+
+// Detecta nombres genéricos del administrador (p.ej. "Administrador COE MIDIS")
+function __isGenericAdminName(name){
+  const s = String(name || "").trim();
+  if(!s) return true;
+  return /^administrador\b/i.test(s) || /^admin\b/i.test(s);
+}
+
+// Normaliza el nombre del aprobador para mostrar nombre y apellidos del Admin
+function __normalizeAdminName(name){
+  const s = String(name || "").trim();
+  if(!s) return "";
+  return __isGenericAdminName(s) ? __ADMIN_DEFAULT_FULLNAME : s;
+}
+
+
 // Wrapper de storage (para que el app no se "muera" si el navegador bloquea localStorage en file://)
 const __MEM_STORE = {};
 function __lsGet(key){
@@ -1729,9 +1747,9 @@ function __getPrimaryAdminName(){
       return active && (role === "admin" || role === "administrador" || role.includes("admin"));
     });
     const n = admin ? String(admin.fullName || admin.nombre || admin.name || "").trim() : "";
-    if(n) return n;
+    if(n) return __normalizeAdminName(n) || __ADMIN_DEFAULT_FULLNAME;
   }catch(e){}
-  return "William Huatay Villoslada";
+  return __ADMIN_DEFAULT_FULLNAME;
 }
 
 function __genPassword(len=18){
@@ -1756,7 +1774,27 @@ function __genPassword(len=18){
 
 async function __ensureDefaultAdmin(){
   const users = __loadUsers();
-  if(users.length) return;
+
+  // Si ya existen usuarios, normalizar el nombre del Administrador si quedó como genérico
+  if(users.length){
+    try{
+      let changed = false;
+      (Array.isArray(users) ? users : []).forEach(u=>{
+        if(!u) return;
+        const role = String(u.role || "").toLowerCase();
+        if(role === "admin" || role === "administrador" || role.includes("admin")){
+          const cur = String(u.fullName || u.nombre || u.name || "").trim();
+          const norm = __normalizeAdminName(cur);
+          if(norm && norm !== cur){
+            u.fullName = norm;
+            changed = true;
+          }
+        }
+      });
+      if(changed) __saveUsers(users);
+    }catch(e){}
+    return;
+  }
 
   const email = "whuatay@midis.gob.pe";
   const tempPass = "AdminMIDIS2025!!"; // 15+ caracteres
@@ -1764,7 +1802,7 @@ async function __ensureDefaultAdmin(){
 
   users.push({
     id: "u_admin_1",
-    fullName: "Administrador MIDIS",
+    fullName: __ADMIN_DEFAULT_FULLNAME,
     email,
     role: __ROLES.ADMIN,
     active: true,
@@ -2714,14 +2752,14 @@ function __getApproverName(){
     const isAdmin = (typeof __isAdmin === "function" && __isAdmin()) || (typeof __isAdministrador === "function" && __isAdministrador());
     if(isAdmin){
       const n = (currentUser && (currentUser.fullName || currentUser.nombre || currentUser.name)) ? String(currentUser.fullName || currentUser.nombre || currentUser.name).trim() : "";
-      return n || "William Huatay Villoslada";
+      return __normalizeAdminName(n) || __ADMIN_DEFAULT_FULLNAME;
     }
   }catch(e){}
   try{
     if(typeof __getCurrentUserName === "function") return __getCurrentUserName();
   }catch(e){}
   const fallback = (currentUser && (currentUser.fullName || currentUser.email || currentUser.user || currentUser.name)) ? String(currentUser.fullName || currentUser.email || currentUser.user || currentUser.name).trim() : "";
-  return fallback || "William Huatay Villoslada";
+  return __normalizeAdminName(fallback) || __ADMIN_DEFAULT_FULLNAME;
 }
 
 function __aprobar(ref){
@@ -4084,6 +4122,7 @@ function verEmergencia(e) {
 
   const elaboradoPorTxt = (lastRC && lastRC.elaboradoPor) ? lastRC.elaboradoPor : (e.elaboradoPor || "");
   let aprobadoPorTxt = (lastRC && lastRC.aprobadoPor) ? lastRC.aprobadoPor : (e.aprobadoPor || "");
+  aprobadoPorTxt = __normalizeAdminName(aprobadoPorTxt);
   if(!String(aprobadoPorTxt||"").trim()) aprobadoPorTxt = __getPrimaryAdminName();
 
   const nroGlobalWord = (lastRC && (lastRC.numeroGlobal || lastRC.numeroReporteRC)) ? (lastRC.numeroGlobal || lastRC.numeroReporteRC) : (e.numeroGlobal || "");
@@ -4511,7 +4550,7 @@ function __printRC_PDF(idxOpt){
 
           // Firmas: Elaborado/Aprobado (prioriza RC seleccionado)
           const elab = rcSel.elaboradoPor || e.elaboradoPor || '';
-          const aprob = rcSel.aprobadoPor || e.aprobadoPor || '';
+          const aprob = __normalizeAdminName(rcSel.aprobadoPor || e.aprobadoPor || '') || __getPrimaryAdminName();
           clone.querySelectorAll('.ver-subline').forEach(d=>{
             const t = (d.textContent || '').trim().toLowerCase();
             if(t.startsWith('elaborado por')){
@@ -4786,7 +4825,9 @@ async function __verToWord(){
     }
 
     const elaboradoPorTxt = (ctx && ctx.elaboradoPorTxt!==undefined) ? ctx.elaboradoPorTxt : ((lastRC && lastRC.elaboradoPor) ? lastRC.elaboradoPor : (e.elaboradoPor || ''));
-    const aprobadoPorTxt = (ctx && ctx.aprobadoPorTxt!==undefined) ? ctx.aprobadoPorTxt : ((lastRC && lastRC.aprobadoPor) ? lastRC.aprobadoPor : (e.aprobadoPor || ''));
+    let aprobadoPorTxt = (ctx && ctx.aprobadoPorTxt!==undefined) ? ctx.aprobadoPorTxt : ((lastRC && lastRC.aprobadoPor) ? lastRC.aprobadoPor : (e.aprobadoPor || ''));
+    aprobadoPorTxt = __normalizeAdminName(aprobadoPorTxt);
+    if(!String(aprobadoPorTxt||'').trim()) aprobadoPorTxt = __getPrimaryAdminName();
 
     const nroGlobalWord = (ctx && ctx.nroGlobalWord!==undefined) ? ctx.nroGlobalWord : ((lastRC && (lastRC.numeroGlobal || lastRC.numeroReporteRC)) ? (lastRC.numeroGlobal || lastRC.numeroReporteRC) : (e.numeroGlobal || ''));
     const fechaHoraWord = (ctx && ctx.fechaHoraWord!==undefined) ? ctx.fechaHoraWord : ((lastRC && (lastRC.fechaHoraRC || lastRC.fechaHora || lastRC.fechaRegistro || lastRC.updatedAt)) ? (lastRC.fechaHoraRC || lastRC.fechaHora || lastRC.fechaRegistro || lastRC.updatedAt) : (e.fechaHora || ''));
@@ -5866,7 +5907,7 @@ function abrirRP(obj){
   const apr = document.getElementById("aprobadoRP");
   if(apr){
     // mostrar aprobador real si existe
-    let _aprVal = obj.rpAprobadoPor || obj.aprobadoPor || "";
+    let _aprVal = __normalizeAdminName(obj.rpAprobadoPor || obj.aprobadoPor || "");
     if(!String(_aprVal||"").trim()){
       try{
         if(currentUser && currentUser.role === __ROLES.ADMIN){
