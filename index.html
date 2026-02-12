@@ -2010,6 +2010,15 @@ if(isAdmin){
   const linkSeg = document.querySelector('a[href=\"#segTab\"]')?.closest("li");
   const isConsulta = currentUser?.role === __ROLES.CONS;
 
+  // Ocultar botones "Word" en RP y RC para Administrador y Registrador
+  try{
+    const hideWordBtns = (isAdmin || isReg);
+    const bwRP = document.getElementById("btnWordRP");
+    const bwRC = document.getElementById("btnWordRC");
+    if(bwRP) bwRP.style.display = hideWordBtns ? "none" : "";
+    if(bwRC) bwRC.style.display = hideWordBtns ? "none" : "";
+  }catch(e){}
+
   if(linkRP) linkRP.classList.toggle("d-none", isConsulta);
   if(linkRC) linkRC.classList.toggle("d-none", isConsulta);
   if(linkDash) linkDash.classList.remove("d-none");
