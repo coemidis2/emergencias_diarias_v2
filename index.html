@@ -1209,6 +1209,7 @@ body { background: #f5f5f5; }
     </button>
     <ul class="dropdown-menu dropdown-menu-end" id="menuPrintRC"></ul>
   </div>
+  <button type="button" class="btn btn-primary me-2 d-none" id="btnVerWord" onclick="__verToWord()" title="Descargar en Word">Word</button>
   <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
 </div>
     </div>
@@ -1465,6 +1466,7 @@ body { background: #f5f5f5; }
 <script src="ubigeoData.js?v=20251225a"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style/dist/xlsx.bundle.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.umd.js"></script>
 
 <script>
 
@@ -1738,30 +1740,15 @@ function __genPassword(len=18){
 
 async function __ensureDefaultAdmin(){
   const users = __loadUsers();
+  if(users.length) return;
+
   const email = "whuatay@midis.gob.pe";
-  const desiredName = "William Huatay Villoslada";
-
-  // Si ya existe el admin, asegurar el nombre (evita que se vea "Administrador MIDIS")
-  if(users.length){
-    try{
-      const u = users.find(x => (x?.email||"").toLowerCase() === email.toLowerCase());
-      if(u && String(u.role||"") === __ROLES.ADMIN){
-        const nm = String(u.fullName||"").trim();
-        if(!nm || nm.toLowerCase() === "administrador midis"){
-          u.fullName = desiredName;
-          __saveUsers(users);
-        }
-      }
-    }catch(e){}
-    return;
-  }
-
   const tempPass = "AdminMIDIS2025!!"; // 15+ caracteres
   const passHash = await __sha256(tempPass);
 
   users.push({
     id: "u_admin_1",
-    fullName: desiredName,
+    fullName: "Administrador MIDIS",
     email,
     role: __ROLES.ADMIN,
     active: true,
@@ -1874,26 +1861,6 @@ function __recalcularCorrelativos(){
 
 function __getCurrentUserName(){
   return currentUser ? currentUser.fullName : "";
-}
-
-// Nombre de aprobador (Administrador). Se usa para RP/RC (UI y Word) para evitar que se muestre un nombre genérico.
-const __ADMIN_APPROVER_FALLBACK_NAME = "William Huatay Villoslada";
-
-function __getApproverName(){
-  try{
-    // 1) Si el usuario actual es Admin, usar su nombre salvo que sea el genérico
-    if(currentUser && String(currentUser.role||"") === __ROLES.ADMIN){
-      const nm = String(currentUser.fullName||"").trim();
-      if(nm && nm.toLowerCase() !== "administrador midis") return nm;
-      return __ADMIN_APPROVER_FALLBACK_NAME;
-    }
-    // 2) Si no es Admin, buscar el Admin activo en usuarios
-    const users = __loadUsers();
-    const admin = Array.isArray(users) ? users.find(u => String(u?.role||"") === __ROLES.ADMIN && u?.active !== false) : null;
-    const nm2 = String(admin?.fullName||"").trim();
-    if(nm2 && nm2.toLowerCase() !== "administrador midis") return nm2;
-  }catch(e){}
-  return __ADMIN_APPROVER_FALLBACK_NAME;
 }
 
 // UI por rol
@@ -2036,8 +2003,7 @@ if(isAdmin){
     const apr = document.getElementById("aprobadoRP");
     if(apr){
       apr.readOnly = !isAdmin;
-      // Registrador: no se auto-aprueba, pero debe poder visualizar al aprobador cuando ya exista
-      if(isAdmin && !String(apr.value||"").trim()) apr.value = __getApproverName();
+      if(!isAdmin) apr.value = ""; // el registrador no se auto-aprueba
     }
 
     // Ajuste botón cierre según rol
@@ -2723,6 +2689,21 @@ function __renderAprobaciones(){
   });
 }
 
+function __getApproverName(){
+  try{
+    const isAdmin = (typeof __isAdmin === "function" && __isAdmin()) || (typeof __isAdministrador === "function" && __isAdministrador());
+    if(isAdmin){
+      const n = (currentUser && (currentUser.fullName || currentUser.nombre || currentUser.name)) ? String(currentUser.fullName || currentUser.nombre || currentUser.name).trim() : "";
+      return n || "William Huatay Villoslada";
+    }
+  }catch(e){}
+  try{
+    if(typeof __getCurrentUserName === "function") return __getCurrentUserName();
+  }catch(e){}
+  const fallback = (currentUser && (currentUser.fullName || currentUser.email || currentUser.user || currentUser.name)) ? String(currentUser.fullName || currentUser.email || currentUser.user || currentUser.name).trim() : "";
+  return fallback || "William Huatay Villoslada";
+}
+
 function __aprobar(ref){
   const em = (Array.isArray(emergencias)?emergencias:[]).find(x=>x.codigo===ref.codigo);
   if(!em) return;
@@ -2733,8 +2714,7 @@ function __aprobar(ref){
     em.rpAprobadoPorEmail = currentUser ? currentUser.email : null;
     em.rpAprobadoEn = __nowIso();
     em.rpObs = null;
-
-    // Sincronizar aprobador RP (para Ver/Word)
+    // Sincronizar aprobador RP para Word/Ver
     em.aprobadoPor = em.rpAprobadoPor;
     em.aprobadoPorEmail = em.rpAprobadoPorEmail;
     __audit("APROBAR_RP", "emergencia", em.codigo, null);
@@ -2748,10 +2728,6 @@ function __aprobar(ref){
       rc.aprobadoPorEmail = currentUser ? currentUser.email : null;
       rc.aprobadoEn = __nowIso();
       rc.obs = null;
-
-      // Mantener aprobador (para Ver/Word unificado)
-      em.aprobadoPor = rc.aprobadoPor;
-      em.aprobadoPorEmail = rc.aprobadoPorEmail;
       __audit("APROBAR_RC", "emergencia", em.codigo, {idx: ref.idx});
       __histPush(em, "RC_APROBADO", {idx: ref.idx});
     }
@@ -2888,7 +2864,7 @@ function __solicitarCierre(){
     // Admin cierra directo
     em.cerrada = true;
     em.cierreEstado = "Aprobado";
-    em.cierreAprobadoPor = __getCurrentUserName();
+    em.cierreAprobadoPor = __getApproverName();
     em.cierreAprobadoEn = __nowIso();
     __audit("CIERRE_DIRECTO_ADMIN", "emergencia", em.codigo, null);
     __histPush(em, "CIERRE_DIRECTO_ADMIN", null);
@@ -3005,7 +2981,7 @@ document.addEventListener("DOMContentLoaded", ()=>{
     // Al aprobar, dejar el RP en solo lectura (solo Retornar activo)
     try{
       const apr = document.getElementById("aprobadoRP");
-      if(apr) apr.value = em.rpAprobadoPor || __getCurrentUserName();
+      if(apr) apr.value = em.rpAprobadoPor || __getApproverName();
       const btnApr = document.getElementById("btnAprobarRPAdmin");
       if(btnApr) btnApr.disabled = true;
       __lockRPFormAdminApproved?.();
@@ -3879,7 +3855,7 @@ function __saveRP(opts){
   base.daniosOtros  = document.getElementById("daniosOtrosRP")?.value || "";
   base.accionesPreliminar = [...accionesRPTemp];
   base.elaboradoPor = elaborado;
-  base.aprobadoPor  = aprobadoUI;
+  base.aprobadoPor  = (String(aprobadoUI||"" ).trim() !== "") ? aprobadoUI : ((existing && (existing.aprobadoPor || existing.rpAprobadoPor)) ? (existing.aprobadoPor || existing.rpAprobadoPor) : "");
 
   // Enviar a aprobación en la misma acción (Registrador)
   if(submit){
@@ -3987,7 +3963,7 @@ document.getElementById("btnGuardarAprobarRPAdmin")?.addEventListener("click", a
   // Al aprobar, dejar el RP en solo lectura (solo Retornar activo)
   try{
     const apr = document.getElementById("aprobadoRP");
-    if(apr) apr.value = em.rpAprobadoPor || em.aprobadoPor || __getApproverName();
+    if(apr) apr.value = em.rpAprobadoPor || __getApproverName();
     __lockRPFormAdminApproved?.();
   }catch(e){}
 
@@ -4081,9 +4057,26 @@ function verEmergencia(e) {
   }
 
   const elaboradoPorTxt = (lastRC && lastRC.elaboradoPor) ? lastRC.elaboradoPor : (e.elaboradoPor || "");
-  const __aprobTmp = (lastRC && lastRC.aprobadoPor) ? lastRC.aprobadoPor : (e.aprobadoPor || "");
-  const __isAprob = (String(e.rpAprobEstado||"") === "Aprobado") || (lastRC && String(lastRC.aprobEstado||"") === "Aprobado");
-  const aprobadoPorTxt = (__aprobTmp ? __aprobTmp : (__isAprob ? __getApproverName() : ""));
+  const aprobadoPorTxt = (lastRC && lastRC.aprobadoPor) ? lastRC.aprobadoPor : (e.aprobadoPor || "");
+
+  const nroGlobalWord = (lastRC && (lastRC.numeroGlobal || lastRC.numeroReporteRC)) ? (lastRC.numeroGlobal || lastRC.numeroReporteRC) : (e.numeroGlobal || "");
+  const fechaHoraWord = (lastRC && (lastRC.fechaHoraRC || lastRC.fechaHora || lastRC.fechaRegistro || lastRC.updatedAt)) ? (lastRC.fechaHoraRC || lastRC.fechaHora || lastRC.fechaRegistro || lastRC.updatedAt) : (e.fechaHora || "");
+
+  // Contexto para exportar a Word desde VER
+  window.__VER_WORD_CTX = {
+    e,
+    rcList,
+    lastRC,
+    estadoTxt,
+    tituloRep,
+    coords,
+    daniosSrc,
+    accionesCompAll,
+    elaboradoPorTxt,
+    aprobadoPorTxt,
+    nroGlobalWord,
+    fechaHoraWord
+  };
 
   let html = `<div class="ver-report-wrap">`;
 
@@ -4093,8 +4086,8 @@ function verEmergencia(e) {
   // Subtítulo (línea de datos)
   html += `<div class="ver-subline">
     <span class="ver-lbl">Código:</span> ${__safe(e.codigo)}&nbsp;&nbsp;
-    <span class="ver-lbl">N° Global:</span> ${__safe(e.numeroGlobal)}&nbsp;&nbsp;
-    <span class="ver-lbl">Fecha y hora de elaboración:</span> ${__safe(e.fechaHora)}&nbsp;&nbsp;
+    <span class="ver-lbl">N° Global:</span> ${__safe(nroGlobalWord)}&nbsp;&nbsp;
+    <span class="ver-lbl">Fecha y hora de elaboración:</span> ${__safe(fechaHoraWord)}&nbsp;&nbsp;
     <span class="ver-lbl">Estado:</span> ${estadoTxt}
   </div>`;
 
@@ -4201,6 +4194,17 @@ try{
   const isAdmin = (typeof __isAdmin === "function" ? __isAdmin() : (typeof __isAdministrador === "function" ? __isAdministrador() : false));
 
     const isRegOrCons = (typeof currentUser !== "undefined" && currentUser && (currentUser.role === __ROLES.REG || currentUser.role === __ROLES.CONS));
+
+    // Botón Word (solo Administrador y Registrador)
+    try{
+      const btnW = document.getElementById("btnVerWord");
+      if(btnW){
+        const isAdminOrReg = !!(isAdmin || (typeof currentUser !== "undefined" && currentUser && currentUser.role === __ROLES.REG));
+        btnW.classList.toggle("d-none", !isAdminOrReg);
+        btnW.disabled = !isAdminOrReg;
+      }
+    }catch(_e){}
+
   const hasRC = (rcList && rcList.length > 0) || (document.querySelectorAll('#contenidoVerEmergencia .rc-block').length > 0);
   const hasPrintable = true; // Administrador/Registrador/Consultor: imprimir RP (con o sin RC)
 
@@ -4332,6 +4336,44 @@ function __getRCList(em){
   return Array.isArray(rc) ? rc : [];
 }
 
+function __buildRCLecturaHtml(em, opts){
+  try{
+    const all = __getRCList(em);
+    let list = all;
+    if(opts && opts.excludeLast && Array.isArray(all) && all.length>0){
+      list = all.slice(0, all.length-1);
+    }
+    if(!Array.isArray(list) || list.length===0) return "";
+
+    let out = "";
+    list.forEach((rc, idx)=>{
+      const num = (rc && (rc.numeroGlobal || rc.numeroReporteRC || rc.numGlobal || rc.nroGlobal)) ? (rc.numeroGlobal || rc.numeroReporteRC || rc.numGlobal || rc.nroGlobal) : "";
+      const fecha = (rc && (rc.fechaHoraRC || rc.fechaHora || rc.fechaElaboracion || rc.fechaRegistro)) ? (rc.fechaHoraRC || rc.fechaHora || rc.fechaElaboracion || rc.fechaRegistro) : "";
+      const est = (rc && (rc.aprobEstado || rc.estado || rc.status)) ? (rc.aprobEstado || rc.estado || rc.status) : "";
+      const acciones = Array.isArray(rc?.acciones) ? rc.acciones : (Array.isArray(rc?.accionesRC) ? rc.accionesRC : []);
+
+      let accionesHtml = "<span class=\"text-muted\">Sin acciones registradas.</span>";
+      if(Array.isArray(acciones) && acciones.length){
+        accionesHtml = "<ul class=\"mb-0 small\">" + acciones.map(a=>{
+          const f = (a && (a.fecha || a.fechaHora || a.fecha_accion)) ? (a.fecha || a.fechaHora || a.fecha_accion) : "";
+          const d = (a && (a.descripcion || a.detalle || a.accion)) ? (a.descripcion || a.detalle || a.accion) : "";
+          return `<li>[${__escapeHtml(f)}] ${__escapeHtml(d)}</li>`;
+        }).join("") + "</ul>";
+      }
+
+      out += `
+        <div class=\"border rounded p-2 mb-2\">
+          <div><b>RC ${idx+1}</b>${num ? ` – <b>N° Global:</b> ${__escapeHtml(num)}` : ""}${fecha ? ` – <b>Fecha de registro:</b> ${__escapeHtml(fecha)}` : ""}${est ? ` – <b>Estado:</b> ${__escapeHtml(est)}` : ""}</div>
+          <div class=\"mt-1\">${accionesHtml}</div>
+        </div>`;
+    });
+
+    return out;
+  }catch(e){
+    return "";
+  }
+}
+
 function __printRC_PDF(idxOpt){
   try{
     const e = window.__VER_EMERG_ACTUAL;
@@ -4442,8 +4484,7 @@ function __printRC_PDF(idxOpt){
 
           // Firmas: Elaborado/Aprobado (prioriza RC seleccionado)
           const elab = rcSel.elaboradoPor || e.elaboradoPor || '';
-          const __isAprob = (String(e.rpAprobEstado||"") === "Aprobado") || (rcSel && String(rcSel.aprobEstado||"") === "Aprobado");
-          const aprob = rcSel.aprobadoPor || e.aprobadoPor || (__isAprob ? __getApproverName() : '');
+          const aprob = rcSel.aprobadoPor || e.aprobadoPor || '';
           clone.querySelectorAll('.ver-subline').forEach(d=>{
             const t = (d.textContent || '').trim().toLowerCase();
             if(t.startsWith('elaborado por')){
@@ -4584,6 +4625,328 @@ const __LIST_PAGER = {
   lastFilterKey: null
 };
 
+
+
+// ===================== EXPORTAR WORD (VER - LISTADO DE EMERGENCIAS) =====================
+function __cmToPx(cm){
+  const n = Number(cm||0);
+  return Math.round(n * 37.7952755906);
+}
+
+function __dataUriToUint8Array(dataURI){
+  try{
+    if(!dataURI) return new Uint8Array();
+    const base64 = String(dataURI).split(',')[1] || '';
+    const bin = atob(base64);
+    const len = bin.length;
+    const bytes = new Uint8Array(len);
+    for(let i=0;i<len;i++) bytes[i] = bin.charCodeAt(i);
+    return bytes;
+  }catch(e){
+    return new Uint8Array();
+  }
+}
+
+function __downloadBlob(blob, filename){
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename || 'reporte.docx';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(()=>{ try{ URL.revokeObjectURL(url); }catch(_e){} try{ a.remove(); }catch(_e){} }, 0);
+}
+
+function __fmtDateDDMMYYYYDash(v){
+  if(!v) return '';
+  const s = String(v).trim();
+  // YYYY-MM-DD || YYYY-MM-DDTHH:MM...
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if(m) return `${m[3]}-${m[2]}-${m[1]}`;
+  return s;
+}
+
+
+function __getCOELogoDataUri(){
+  try{
+    if(window.__COE_MIDIS_LOGO_DATA_URI) return window.__COE_MIDIS_LOGO_DATA_URI;
+    // Extraer el DataURI embebido dentro de __printRC_PDF (evita duplicar base64)
+    if(typeof __printRC_PDF === 'function'){
+      const s = String(__printRC_PDF);
+      const mm = s.match(/"data:image\/jpeg;base64,[^"]+"/);
+      if(mm && mm[0]){
+        const uri = mm[0].slice(1,-1);
+        window.__COE_MIDIS_LOGO_DATA_URI = uri;
+        return uri;
+      }
+    }
+    return '';
+  }catch(_e){
+    return '';
+  }
+}
+
+async function __verToWord(){
+  try{
+    // Solo Administrador y Registrador
+    const isAdmin = (typeof __isAdmin === 'function' ? __isAdmin() : (typeof __isAdministrador === 'function' ? __isAdministrador() : false));
+    const isReg = (typeof currentUser !== 'undefined' && currentUser && currentUser.role === __ROLES.REG);
+    if(!(isAdmin || isReg)) return;
+
+    const ctx = window.__VER_WORD_CTX || null;
+    const e = ctx && ctx.e ? ctx.e : window.__VER_EMERG_ACTUAL;
+    if(!e){ alert('No hay emergencia seleccionada.'); return; }
+
+    if(!window.docx){
+      alert('No se pudo cargar el generador Word. Verifique su conexión a internet.');
+      return;
+    }
+
+    const docx = window.docx;
+    const {
+      Document, Packer, Paragraph, TextRun, AlignmentType,
+      Table, TableRow, TableCell, WidthType,
+      Header, ImageRun
+    } = docx;
+
+    const safe = (v)=> (v===null || v===undefined) ? '' : String(v);
+    const txt  = (v)=> safe(v).replace(/\r\n/g,'\n');
+
+    const rcList = (ctx && Array.isArray(ctx.rcList)) ? ctx.rcList : __getRCList(e);
+    const lastRC = (ctx && ctx.lastRC!==undefined) ? ctx.lastRC : (rcList && rcList.length ? rcList[rcList.length-1] : null);
+    const estadoTxt = (ctx && ctx.estadoTxt) ? ctx.estadoTxt : (e.cerrada ? 'Cerrada' : 'Abierta');
+
+    const peligroTxt = safe(e.peligro).trim();
+    const distritoTxt = safe(e.distrito).trim();
+    const depTxt = safe(e.departamento).trim();
+    const tituloRep = (ctx && ctx.tituloRep) ? ctx.tituloRep : (
+      (peligroTxt ? peligroTxt : '') +
+      (distritoTxt ? ` en el distrito ${distritoTxt}` : '') +
+      (depTxt ? ` - ${depTxt}` : '')
+    ).trim() || 'Emergencia';
+
+    const coords = (ctx && ctx.coords) ? ctx.coords : [safe(e.latitud).trim(), safe(e.longitud).trim()].filter(Boolean).join(', ');
+
+    // Matriz de daños (último RC con datos, si no RP)
+    const getDaniosMIDIS = (obj)=>{
+      try{
+        const dm = obj && obj.daniosMIDIS ? obj.daniosMIDIS : null;
+        if(!dm || typeof dm !== 'object') return null;
+        if(Object.keys(dm).length === 0) return null;
+        return dm;
+      }catch(_e){ return null; }
+    };
+    const daniosSrc = (ctx && ctx.daniosSrc) ? ctx.daniosSrc : (getDaniosMIDIS(lastRC) || getDaniosMIDIS(e) || {});
+
+    // Acciones Complementario: TODAS las acciones de TODOS los RC (en orden)
+    let accionesCompAll = (ctx && Array.isArray(ctx.accionesCompAll)) ? ctx.accionesCompAll : null;
+    if(!accionesCompAll){
+      const getAccionesCompRC = (rc)=>{
+        if(!rc) return [];
+        let a = rc.acciones ?? rc.accionesRC ?? rc.accionesComplementario ?? rc.accionesComplementarias ?? rc.accionesComp;
+        if(typeof a === 'string'){
+          try{ a = JSON.parse(a); }catch(_e){}
+        }
+        return Array.isArray(a) ? a : [];
+      };
+      accionesCompAll = [];
+      if(Array.isArray(rcList) && rcList.length){
+        rcList.forEach((rc, idx)=>{
+          const arr = getAccionesCompRC(rc);
+          if(arr && arr.length) arr.forEach(item=> accionesCompAll.push({__rcIdx: idx, item}));
+        });
+      }
+    }
+
+    const elaboradoPorTxt = (ctx && ctx.elaboradoPorTxt!==undefined) ? ctx.elaboradoPorTxt : ((lastRC && lastRC.elaboradoPor) ? lastRC.elaboradoPor : (e.elaboradoPor || ''));
+    const aprobadoPorTxt = (ctx && ctx.aprobadoPorTxt!==undefined) ? ctx.aprobadoPorTxt : ((lastRC && lastRC.aprobadoPor) ? lastRC.aprobadoPor : (e.aprobadoPor || ''));
+
+    const nroGlobalWord = (ctx && ctx.nroGlobalWord!==undefined) ? ctx.nroGlobalWord : ((lastRC && (lastRC.numeroGlobal || lastRC.numeroReporteRC)) ? (lastRC.numeroGlobal || lastRC.numeroReporteRC) : (e.numeroGlobal || ''));
+    const fechaHoraWord = (ctx && ctx.fechaHoraWord!==undefined) ? ctx.fechaHoraWord : ((lastRC && (lastRC.fechaHoraRC || lastRC.fechaHora || lastRC.fechaRegistro || lastRC.updatedAt)) ? (lastRC.fechaHoraRC || lastRC.fechaHora || lastRC.fechaRegistro || lastRC.updatedAt) : (e.fechaHora || ''));
+
+    // Logo COE MIDIS
+    const __COE_LOGO_DATA_URI = __getCOELogoDataUri();
+    const logoBytes = __dataUriToUint8Array(__COE_LOGO_DATA_URI);
+    const logoW = __cmToPx(16.18);
+    const logoH = __cmToPx(3.18);
+
+    const children = [];
+
+    // Título
+    children.push(new Paragraph({
+      spacing: { after: 180 },
+      children: [new TextRun({
+        text: tituloRep,
+        bold: true,
+        color: '1F4E79',
+        font: 'Calibri',
+        size: 30
+      })]
+    }));
+
+    // Subtítulo: Código / N° Global / Fecha y hora / Estado
+    children.push(new Paragraph({
+      spacing: { after: 120 },
+      children: [
+        new TextRun({ text: 'Código: ', bold: true, font: 'Calibri', size: 22 }),
+        new TextRun({ text: safe(e.codigo) + '   ', font: 'Calibri', size: 22 }),
+        new TextRun({ text: 'N° Global: ', bold: true, font: 'Calibri', size: 22 }),
+        new TextRun({ text: safe(nroGlobalWord) + '   ', font: 'Calibri', size: 22 }),
+        new TextRun({ text: 'Fecha y hora de elaboración: ', bold: true, font: 'Calibri', size: 22 }),
+        new TextRun({ text: safe(fechaHoraWord) + '   ', font: 'Calibri', size: 22 }),
+        new TextRun({ text: 'Estado: ', bold: true, font: 'Calibri', size: 22 }),
+        new TextRun({ text: estadoTxt, font: 'Calibri', size: 22 })
+      ]
+    }));
+
+    // Hechos
+    children.push(new Paragraph({ children:[new TextRun({ text:'Hechos', bold: true, font:'Calibri', size: 22 })] }));
+    txt(e.hechos).replace(/\r\n/g,'\n').split('\n').forEach((ln)=>{
+      children.push(new Paragraph({ alignment: AlignmentType.JUSTIFIED, children:[new TextRun({ text: ln, font:'Calibri', size: 22 })] }));
+    });
+
+    // Ubicación + campos
+    children.push(new Paragraph({
+      spacing: { before: 120 },
+      children: [
+        new TextRun({ text: 'Ubicación: ', bold: true, font: 'Calibri', size: 22 }),
+        new TextRun({ text: `${safe(e.departamento)} / ${safe(e.provincia)} / ${safe(e.distrito)}   `, font: 'Calibri', size: 22 }),
+        new TextRun({ text: 'Fecha del peligro: ', bold: true, font: 'Calibri', size: 22 }),
+        new TextRun({ text: safe(e.fechaPeligro) + '   ', font: 'Calibri', size: 22 }),
+        new TextRun({ text: 'Peligro: ', bold: true, font: 'Calibri', size: 22 }),
+        new TextRun({ text: safe(e.peligro) + '   ', font: 'Calibri', size: 22 }),
+        new TextRun({ text: 'Coordenadas: ', bold: true, font: 'Calibri', size: 22 }),
+        new TextRun({ text: coords, font: 'Calibri', size: 22 })
+      ]
+    }));
+
+    // Daños en otros sectores
+    children.push(new Paragraph({ spacing:{ before: 120 }, children:[new TextRun({ text:'Daños en otros sectores', bold: true, font:'Calibri', size: 22 })] }));
+    txt(e.daniosOtros).replace(/\r\n/g,'\n').split('\n').forEach((ln)=>{
+      children.push(new Paragraph({ alignment: AlignmentType.JUSTIFIED, children:[new TextRun({ text: ln, font:'Calibri', size: 22 })] }));
+    });
+
+    // Matriz de daños MIDIS
+    children.push(new Paragraph({ spacing:{ before: 120, after: 60 }, children:[new TextRun({ text:'Daños en el Sector Desarrollo e Inclusión Social', bold: true, font:'Calibri', size: 22 })] }));
+
+    const headerCells = ['Programa','Usuarios afectados','Servicios afectados','Usuarios por servicios','Fallecidos','Módulo afectado'].map(t=>
+      new TableCell({
+        width: { size: 1, type: WidthType.AUTO },
+        children: [new Paragraph({ children:[new TextRun({ text:t, bold: true, font:'Calibri', size: 20 })] })]
+      })
+    );
+
+    const rows = [new TableRow({ children: headerCells })];
+
+    (Array.isArray(window.programas) ? window.programas : (typeof programas !== 'undefined' ? programas : [])).forEach((p)=>{
+      const keyUp = (p||'').toString().toUpperCase();
+      const keyLo = (p||'').toString().toLowerCase();
+      const d = (daniosSrc && (daniosSrc[p] || daniosSrc[keyUp] || daniosSrc[keyLo])) ? (daniosSrc[p] || daniosSrc[keyUp] || daniosSrc[keyLo]) : {};
+      const cells = [
+        p,
+        d.usuariosAfectados || 0,
+        d.serviciosAfectados || 0,
+        d.usuariosPorServicios || 0,
+        d.usuariosFallecidos || 0,
+        d.moduloAfectado || 0,
+      ].map(v=> new TableCell({ children:[new Paragraph({ children:[new TextRun({ text: safe(v), font:'Calibri', size: 20 })] })] }));
+      rows.push(new TableRow({ children: cells }));
+    });
+
+    children.push(new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, rows }));
+
+    // Acciones Complementario
+    children.push(new Paragraph({ spacing:{ before: 180 }, children:[new TextRun({ text:'Acciones del sector Desarrollo e Inclusión Social (Complementario)', bold: true, font:'Calibri', size: 22 })] }));
+    if(Array.isArray(accionesCompAll) && accionesCompAll.length){
+      accionesCompAll.forEach(({__rcIdx, item})=>{
+        let f = '';
+        let d = '';
+        if(item && typeof item === 'object'){
+          f = safe(item.fecha || item.fechaAccion || item.fechaRegistro || '');
+          d = txt(item.descripcion || item.detalle || item.texto || '');
+        }else{
+          d = txt(item);
+        }
+        const tag = `RC ${(__rcIdx+1)}`;
+        const prefix = `[${tag}${f ? ' - ' + f : ''}] `;
+        const lines = (prefix + d).replace(/\r\n/g,'\n').split('\n');
+        lines.forEach((ln)=>{
+          children.push(new Paragraph({ alignment: AlignmentType.JUSTIFIED, children:[new TextRun({ text: ln, font:'Calibri', size: 22 })] }));
+        });
+      });
+    }else{
+      children.push(new Paragraph({ children:[new TextRun({ text:'Sin acciones complementarias registradas.', font:'Calibri', size: 22, italics: true })] }));
+    }
+
+    // Acciones Preliminar
+    children.push(new Paragraph({ spacing:{ before: 180 }, children:[new TextRun({ text:'Acciones del Sector Desarrollo e Inclusión Social (Preliminar)', bold: true, font:'Calibri', size: 22 })] }));
+    if(Array.isArray(e.accionesPreliminar) && e.accionesPreliminar.length){
+      e.accionesPreliminar.forEach((a)=>{
+        const line = `[${safe(a.fecha)}] ${txt(a.descripcion)}`;
+        line.replace(/\r\n/g,'\n').split('\n').forEach((ln)=>{
+          children.push(new Paragraph({ alignment: AlignmentType.JUSTIFIED, children:[new TextRun({ text: ln, font:'Calibri', size: 22 })] }));
+        });
+      });
+    }else{
+      children.push(new Paragraph({ children:[new TextRun({ text:'Sin acciones preliminares registradas.', font:'Calibri', size: 22, italics: true })] }));
+    }
+
+    // Elaborado / Aprobado
+    children.push(new Paragraph({ spacing:{ before: 180 }, children:[
+      new TextRun({ text:'Elaborado por: ', bold: true, font:'Calibri', size: 22 }),
+      new TextRun({ text: safe(elaboradoPorTxt), font:'Calibri', size: 22 })
+    ] }));
+
+    children.push(new Paragraph({ children:[
+      new TextRun({ text:'Aprobado por: ', bold: true, font:'Calibri', size: 22 }),
+      new TextRun({ text: safe(aprobadoPorTxt), font:'Calibri', size: 22 })
+    ] }));
+
+    // Nros globales anteriores
+    let rcHist = '';
+    if(Array.isArray(rcList) && rcList.length){
+      rcHist = rcList.map((rc, idx)=>{
+        const g = safe((rc && (rc.numeroGlobal || rc.numeroReporteRC)) ? (rc.numeroGlobal || rc.numeroReporteRC) : '').trim();
+        const fr = __fmtDateDDMMYYYYDash(safe(rc && rc.fechaRegistro ? rc.fechaRegistro : '').trim());
+        const gTxt = g ? `N° Global ${g}` : 'N° Global';
+        const fTxt = fr ? ` | Fecha de registro ${fr}` : '';
+        return `RC ${idx+1} – ${gTxt}${fTxt}`;
+      }).join(' | ');
+    }else{
+      rcHist = 'Sin RC registrado.';
+    }
+
+    children.push(new Paragraph({ spacing:{ before: 120 }, children:[
+      new TextRun({ text:'Nros globales anteriores: ', bold: true, font:'Calibri', size: 22 }),
+      new TextRun({ text: rcHist, font:'Calibri', size: 22 })
+    ] }));
+
+    const headerChildren = [];
+    if(logoBytes && logoBytes.length){
+      headerChildren.push(new Paragraph({
+        alignment: AlignmentType.LEFT,
+        children: [ new ImageRun({ data: logoBytes, transformation: { width: logoW, height: logoH } }) ]
+      }));
+    }
+
+    const doc = new Document({
+      sections: [{
+        properties: {},
+        headers: {
+          default: new Header({ children: headerChildren })
+        },
+        children
+      }]
+    });
+
+    const blob = await Packer.toBlob(doc);
+    const codigo = safe(e.codigo).trim() || 'reporte';
+    __downloadBlob(blob, `Reporte_${codigo}.docx`);
+  }catch(err){
+    console.error(err);
+    alert('No se pudo generar el Word.');
+  }
+}
 function __listGetPageSize(){
   try{
     const sel = document.getElementById("listPageSize");
@@ -5476,7 +5839,7 @@ function abrirRP(obj){
   const apr = document.getElementById("aprobadoRP");
   if(apr){
     // mostrar aprobador real si existe
-    apr.value = obj.rpAprobadoPor || obj.aprobadoPor || ((obj.rpAprobEstado === "Aprobado") ? __getApproverName() : "");
+    apr.value = obj.rpAprobadoPor || obj.aprobadoPor || "";
     // si venimos de un RP aprobado (bloqueado), asegurar que se restablezca el control
     apr.disabled = false;
   }
@@ -5623,6 +5986,8 @@ try{
     ? `<div class="p-2 bg-light border rounded small">${obj.daniosOtros}</div>`
     : "<span class=\"text-muted\">—</span>";
 
+  const rcLecturaHtml = __buildRCLecturaHtml(obj, {excludeLast:true});
+
   document.getElementById("datosBasicosRC").innerHTML = `
 <b>Código:</b> ${obj.codigo}<br>
 <b>N° Global:</b> ${numeroGlobalMostrar}<br>
@@ -5634,6 +5999,10 @@ try{
 <div class="mt-2"><b>Hechos:</b> ${hechosHtml}</div>
 <div class="mt-2"><b>Daños de otros sectores:</b> ${daniosHtml}</div>
 <div class="mt-2"><b>Acciones del Sector Desarrollo e Inclusión Social (Preliminar):</b> ${accionesPrevHtml}</div>
+${rcLecturaHtml ? `
+<div class="mt-2"><b>Acciones del sector Desarrollo e Inclusión Social (Complementario) – Lectura:</b></div>
+<div class="mt-1">${rcLecturaHtml}</div>
+` : ""}
 `;
   cargarTablaDaniosRC(obj);
   cargarAccionesRC();
@@ -5766,6 +6135,8 @@ function __guardarRCCore(opts={}){
       ? `<div class="p-2 bg-light border rounded small">${em.daniosOtros}</div>`
       : "<span class=\"text-muted\">—</span>";
 
+    const rcLecturaHtml = __buildRCLecturaHtml(em, {excludeLast:true});
+
     document.getElementById("datosBasicosRC").innerHTML = `
 <b>Código:</b> ${em.codigo}<br>
 <b>N° Global:</b> ${numRC ?? ""}<br>
@@ -5777,6 +6148,10 @@ function __guardarRCCore(opts={}){
 <div class="mt-2"><b>Hechos:</b> ${hechosHtml}</div>
 <div class="mt-2"><b>Daños de otros sectores:</b> ${daniosHtml}</div>
 <div class="mt-2"><b>Acciones del Sector Desarrollo e Inclusión Social (Preliminar):</b> ${accionesPrevHtml}</div>
+${rcLecturaHtml ? `
+<div class="mt-2"><b>Acciones del sector Desarrollo e Inclusión Social (Complementario) – Lectura:</b></div>
+<div class="mt-1">${rcLecturaHtml}</div>
+` : ""}
 `;
 
     if(!suppress) alert("RC actualizado con N° de Reporte " + (numRC ?? "") + ".");
@@ -5842,6 +6217,8 @@ function __guardarRCCore(opts={}){
     ? `<div class="p-2 bg-light border rounded small">${em.daniosOtros}</div>`
     : "<span class=\"text-muted\">—</span>";
 
+  const rcLecturaHtml = __buildRCLecturaHtml(em, {excludeLast:true});
+
   document.getElementById("datosBasicosRC").innerHTML = `
 <b>Código:</b> ${em.codigo}<br>
 <b>N° Global:</b> ${numRC}<br>
@@ -5853,6 +6230,10 @@ function __guardarRCCore(opts={}){
 <div class="mt-2"><b>Hechos:</b> ${hechosHtml}</div>
 <div class="mt-2"><b>Daños de otros sectores:</b> ${daniosHtml}</div>
 <div class="mt-2"><b>Acciones del Sector Desarrollo e Inclusión Social (Preliminar):</b> ${accionesPrevHtml}</div>
+${rcLecturaHtml ? `
+<div class="mt-2"><b>Acciones del sector Desarrollo e Inclusión Social (Complementario) – Lectura:</b></div>
+<div class="mt-1">${rcLecturaHtml}</div>
+` : ""}
 `;
 
   if(!suppress) alert("RC guardado con N° de Reporte " + numRC + ".");
@@ -6134,11 +6515,6 @@ document.getElementById("btnWordRC").onclick = () => {
   }
   let rc = emBase.rcReportes[emBase.rcReportes.length - 1];
   let em = JSON.parse(JSON.stringify(emBase));
-  // Asegurar aprobador visible en Word RC
-  try{
-    em.aprobadoPor = emBase.rpAprobadoPor || emBase.aprobadoPor || __getApproverName();
-    em.aprobadoPorEmail = emBase.rpAprobadoPorEmail || emBase.aprobadoPorEmail || null;
-  }catch(e){}
   em.numeroReporteRP = emBase.numeroReporte;
   em.numeroReporteRC = rc.numeroReporteRC;
   em.numeroGlobal = rc.numeroGlobal || rc.numeroReporteRC;
