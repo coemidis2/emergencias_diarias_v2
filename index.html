@@ -384,26 +384,6 @@ body { background: #f5f5f5; }
 
 
 
-        <!-- Filtros adicionales: Seguimiento de descargas Word -->
-        <div class="row g-2 mb-2">
-          <div class="col-md-3">
-            <label class="form-label">Word RP</label>
-            <select id="filtroWordRP" class="form-control">
-              <option value="">(Todos)</option>
-              <option value="desc">Descargados</option>
-              <option value="pend">Pendientes</option>
-            </select>
-          </div>
-          <div class="col-md-3">
-            <label class="form-label">Word RC</label>
-            <select id="filtroWordRC" class="form-control">
-              <option value="">(Todos)</option>
-              <option value="desc">Descargados</option>
-              <option value="pend">Pendientes</option>
-            </select>
-          </div>
-        </div>
-
         <!-- Leyenda de colores -->
         <div class="mb-3" style="font-family: Calibri, Arial, sans-serif; font-size:9pt;">
           <strong>Leyenda:</strong>
@@ -447,8 +427,8 @@ body { background: #f5f5f5; }
             <th>RP Estado</th>
             <th class="col-rp">RP</th>
             <th class="col-rc">RC</th>
-            <th>Word RP</th>
-            <th>Word RC</th>
+            
+            
             <th class="col-admin-edit">Modificar</th>
             <th class="col-admin-del">Eliminar</th>
             <th>Ver</th>
@@ -2081,15 +2061,6 @@ if(isAdmin){
     const btnCierre = document.getElementById("btnCerrarEmergencia");
     if(btnCierre){
       btnCierre.textContent = isAdmin ? "Cerrar emergencia" : "Solicitar cierre";
-	      // REGISTRADOR: quitar botón "Solicitar cierre" en Reporte Complementario (RC)
-	      try{
-	        if(isReg){
-	          btnCierre.classList.add("d-none");
-	          btnCierre.disabled = true;
-	        }else{
-	          btnCierre.classList.remove("d-none");
-	        }
-	      }catch(e){}
     }
 
     // Habilitar envío a aprobación cuando corresponda (se habilita al guardar)
@@ -2654,9 +2625,17 @@ function __syncRCActionButtons(){
     // REGISTRADOR: ocultar "Solicitar cierre" cuando el RC fue devuelto Observado (y el RP está aprobado)
     try{
       if(bCerrar){
-	        // Por requerimiento: el REGISTRADOR no debe ver este botón en RC.
-	        bCerrar.classList.add("d-none");
-	        bCerrar.disabled = true;
+        let hideClose = false;
+        if(em && String(em.rpAprobEstado||"") === "Aprobado" && Array.isArray(em.rcReportes) && em.rcReportes.length>0){
+          const last = em.rcReportes[em.rcReportes.length-1];
+          if(last && String(last.aprobEstado||"") === "Observado") hideClose = true;
+        }
+        if(hideClose){
+          bCerrar.classList.add("d-none");
+          bCerrar.disabled = true;
+        }else{
+          bCerrar.classList.remove("d-none");
+        }
       }
     }catch(e){}
   }catch(e){}
@@ -5451,8 +5430,8 @@ function cargarTablaEmergencias() {
 <td>${__rpEstadoEtiqueta(e)}</td>
 <td class="col-rp"><button class="btn btn-sm btn-outline-primary btnRP" ${((__isRegistrador() && e.cerrada) || (__isAdmin && __isAdmin() && String(e.rpAprobEstado||"Borrador")==="Aprobado")) ? "disabled" : ""}>RP</button></td>
 <td class="col-rc"><button class="btn btn-sm btn-primary btnRC" ${ (e.cerrada || (__isRegistrador() && String(e.rpAprobEstado||"Borrador")!=="Aprobado")) ? "disabled" : ""}>RC</button></td>
-<td>${__wordBadge(stWordRP)}</td>
-<td>${__wordBadge(stWordRC)}</td>
+
+
 <td class="col-admin-edit">
   <div class="btn-group btn-group-sm" role="group">
     <button class="btn btn-sm btn-outline-warning btnEditRP" title="Modificar RP">✏️RP</button>
