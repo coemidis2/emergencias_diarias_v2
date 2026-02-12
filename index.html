@@ -2020,6 +2020,8 @@ if(isAdmin){
     const btnCierre = document.getElementById("btnCerrarEmergencia");
     if(btnCierre){
       btnCierre.textContent = isAdmin ? "Cerrar emergencia" : "Solicitar cierre";
+      btnCierre.classList.toggle("d-none", isReg);
+      if(isReg) btnCierre.disabled = true;
     }
 
     // Habilitar envío a aprobación cuando corresponda (se habilita al guardar)
@@ -2552,6 +2554,11 @@ function __syncRCActionButtons(){
       return;
     }
 
+    if(bCerrar){
+      bCerrar.classList.add("d-none");
+      bCerrar.disabled = true;
+    }
+
     const btn = document.getElementById("btnGuardarEnviarRC");
     if(!btn) return;
 
@@ -2593,7 +2600,8 @@ function __syncRCActionButtons(){
           bCerrar.classList.add("d-none");
           bCerrar.disabled = true;
         }else{
-          bCerrar.classList.remove("d-none");
+          bCerrar.classList.add("d-none");
+          bCerrar.disabled = true;
         }
       }
     }catch(e){}
