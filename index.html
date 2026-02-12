@@ -1894,6 +1894,16 @@ const btnGERP = document.getElementById("btnGuardarEnviarRP");
 const btnGARP = document.getElementById("btnGuardarAprobarRPAdmin");
 const isReg   = currentUser?.role === __ROLES.REG;
 
+// Ocultar botones Word (RP/RC) para Administrador y Registrador (según solicitud)
+try{
+  const __hideWordBtns = (currentUser?.role === __ROLES.ADMIN || currentUser?.role === __ROLES.REG);
+  const bw1 = document.getElementById("btnWordRP");
+  const bw2 = document.getElementById("btnWordRC");
+  if(bw1) bw1.classList.toggle("d-none", __hideWordBtns);
+  if(bw2) bw2.classList.toggle("d-none", __hideWordBtns);
+}catch(e){}
+
+
   // Lista de Emergencias: Exportar Excel (Admin/Registrador)
   try{
     const bX = document.getElementById("btnExportExcelLista");
