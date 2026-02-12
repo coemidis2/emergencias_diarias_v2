@@ -2061,6 +2061,9 @@ if(isAdmin){
     const btnCierre = document.getElementById("btnCerrarEmergencia");
     if(btnCierre){
       btnCierre.textContent = isAdmin ? "Cerrar emergencia" : "Solicitar cierre";
+      // Registrador: quitar el botón "Solicitar cierre" en RC
+      btnCierre.classList.toggle("d-none", !!isReg);
+      if(isReg){ btnCierre.disabled = true; }
     }
 
     // Habilitar envío a aprobación cuando corresponda (se habilita al guardar)
@@ -2621,21 +2624,11 @@ function __syncRCActionButtons(){
     }
 
     btn.disabled = !enabled;
-
-    // REGISTRADOR: ocultar "Solicitar cierre" cuando el RC fue devuelto Observado (y el RP está aprobado)
+    // REGISTRADOR: quitar el botón "Solicitar cierre" en RC
     try{
       if(bCerrar){
-        let hideClose = false;
-        if(em && String(em.rpAprobEstado||"") === "Aprobado" && Array.isArray(em.rcReportes) && em.rcReportes.length>0){
-          const last = em.rcReportes[em.rcReportes.length-1];
-          if(last && String(last.aprobEstado||"") === "Observado") hideClose = true;
-        }
-        if(hideClose){
-          bCerrar.classList.add("d-none");
-          bCerrar.disabled = true;
-        }else{
-          bCerrar.classList.remove("d-none");
-        }
+        bCerrar.classList.add("d-none");
+        bCerrar.disabled = true;
       }
     }catch(e){}
   }catch(e){}
