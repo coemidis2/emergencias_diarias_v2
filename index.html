@@ -691,6 +691,11 @@ body { background: #f5f5f5; }
 
       <!-- Mapa -->
       <div class="mb-3">
+<div class="d-flex align-items-center gap-1 mb-1" id="dashMapFilters">
+          <button type="button" class="btn btn-sm btn-danger" id="dashMapBtnActivo">Activo</button>
+          <button type="button" class="btn btn-sm btn-warning" id="dashMapBtnProceso">En proceso</button>
+          <button type="button" class="btn btn-sm btn-success" id="dashMapBtnCerrado">Cerrado</button>
+        </div>
         <div id="dashMap" style="width:30cm;height:30cm;border:1px solid #999;"></div>
       </div>
 
@@ -711,7 +716,7 @@ body { background: #f5f5f5; }
       <!-- 1. Activas del día -->
       <div class="mb-3">
         <div class="d-flex justify-content-between align-items-center mb-1">
-          <h5 class="text-primary mb-0">Emergencias activas del día</h5>
+          <h5 class="text-primary mb-0"> </h5>
           <button class="btn btn-sm btn-outline-primary" id="dashBtnWordActivas" title="Exportar Excel">Exportar Excel</button>
         </div>
 
@@ -6659,6 +6664,42 @@ document.getElementById("btnWordRC").onclick = () => {
 
 let dashMap = null;
 let dashLayer = null;
+let __dashMapStatusVisible = { "Activo": true, "En proceso": true, "Cerrada": true };
+
+function __dashMapIsVisible(statusName){
+  return __dashMapStatusVisible[String(statusName||"")] !== false;
+}
+
+function __dashMapSetBtnState(btn, on){
+  if(!btn) return;
+  // Visual: activo => botón sólido, inactivo => outline
+  const base = btn.id === "dashMapBtnActivo" ? "danger"
+            : btn.id === "dashMapBtnProceso" ? "warning"
+            : "success";
+  btn.classList.remove("btn-"+base, "btn-outline-"+base);
+  btn.classList.add(on ? ("btn-"+base) : ("btn-outline-"+base));
+}
+
+function __dashMapSyncButtons(){
+  __dashMapSetBtnState(document.getElementById("dashMapBtnActivo"),  __dashMapIsVisible("Activo"));
+  __dashMapSetBtnState(document.getElementById("dashMapBtnProceso"), __dashMapIsVisible("En proceso"));
+  __dashMapSetBtnState(document.getElementById("dashMapBtnCerrado"), __dashMapIsVisible("Cerrada"));
+}
+
+function __dashMapToggleStatus(statusName){
+  statusName = String(statusName||"");
+  __dashMapStatusVisible[statusName] = !__dashMapIsVisible(statusName);
+  __dashMapSyncButtons();
+  try{
+    // Redibuja usando el último filtro del dashboard
+    if(typeof __dashLastFiltered !== "undefined" && Array.isArray(__dashLastFiltered)){
+      __dashRenderMap(__dashLastFiltered);
+    }else{
+      __dashRenderMap(__dashGetFiltered());
+    }
+  }catch(e){ /* silencio */ }
+}
+
 
 let dashChartEvento = null;
 let dashChartRegion = null;
@@ -6851,6 +6892,7 @@ function __dashRenderMap(data){
     if(isNaN(lat) || isNaN(lon)) return;
 
     const st = __dashGetStatus(e);
+    if(!__dashMapIsVisible(st.name)) return;
     const marker = L.circleMarker([lat, lon], {
       radius: 8,
       color: st.color,
@@ -7513,6 +7555,18 @@ document.addEventListener("DOMContentLoaded", ()=>{
   const btnAplicar = document.getElementById("dashBtnAplicar");
   const soloMidis = document.getElementById("dashSoloMidis");
   const btnWordActivas = document.getElementById("dashBtnWordActivas");
+
+  // Filtros del Mapa (Activo / En proceso / Cerrado)
+  const btnMapActivo  = document.getElementById("dashMapBtnActivo");
+  const btnMapProceso = document.getElementById("dashMapBtnProceso");
+  const btnMapCerrado = document.getElementById("dashMapBtnCerrado");
+
+  if(btnMapActivo)  btnMapActivo.addEventListener("click", ()=>__dashMapToggleStatus("Activo"));
+  if(btnMapProceso) btnMapProceso.addEventListener("click", ()=>__dashMapToggleStatus("En proceso"));
+  if(btnMapCerrado) btnMapCerrado.addEventListener("click", ()=>__dashMapToggleStatus("Cerrada"));
+
+  __dashMapSyncButtons();
+
 
 
   if(btnHoy) btnHoy.addEventListener("click", ()=>{
