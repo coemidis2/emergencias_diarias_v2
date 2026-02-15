@@ -2726,25 +2726,39 @@ function __renderAprobaciones(){
   });
 
   tbody.querySelectorAll("[data-apr]").forEach(b=>{
-    b.addEventListener("click", ()=>{
+    b.addEventListener("click", async ()=>{
       const ref = JSON.parse(b.getAttribute("data-apr"));
+      try{ if(__isApiConfigured && __isApiConfigured() && navigator.onLine){ await __syncPullAuto(); } }catch(_e){}
       __aprobar(ref);
       __saveEmergencias();
       __renderAprobaciones();
       cargarTablaEmergencias?.();
       dashboardRefresh?.();
+      try{
+        if(__isApiConfigured && __isApiConfigured() && navigator.onLine){
+          await __syncPush();
+          await __syncPullAuto();
+        }
+      }catch(_e){}
     });
   });
   tbody.querySelectorAll("[data-obs]").forEach(b=>{
-    b.addEventListener("click", ()=>{
+    b.addEventListener("click", async ()=>{
       const ref = JSON.parse(b.getAttribute("data-obs"));
       const obs = prompt("Ingrese observación (obligatorio):");
       if(!obs) return;
+      try{ if(__isApiConfigured && __isApiConfigured() && navigator.onLine){ await __syncPullAuto(); } }catch(_e){}
       __observar(ref, obs);
       __saveEmergencias();
       __renderAprobaciones();
       cargarTablaEmergencias?.();
       dashboardRefresh?.();
+      try{
+        if(__isApiConfigured && __isApiConfigured() && navigator.onLine){
+          await __syncPush();
+          await __syncPullAuto();
+        }
+      }catch(_e){}
     });
   });
 }
@@ -2864,6 +2878,12 @@ function __enviarRP(){
   __audit("ENVIAR_RP_APROBACION", "emergencia", em.codigo, null);
   __saveEmergencias();
   cargarTablaEmergencias();
+  // Sync inmediato (si hay servidor) para que el Admin lo vea al instante
+  try{
+    if(__isApiConfigured && __isApiConfigured() && navigator.onLine){
+      (async ()=>{ try{ await __syncPush(); await __syncPullAuto(); }catch(_e){} })();
+    }
+  }catch(_e){}
   alert("RP enviado a aprobación.");
 }
 
@@ -2908,6 +2928,12 @@ function __enviarRC(opts={}){
   // Guardar estado en emergencia (para reportes/lista)
   __saveEmergencias();
   cargarTablaEmergencias();
+  // Sync inmediato (si hay servidor) para que el Admin lo vea al instante
+  try{
+    if(__isApiConfigured && __isApiConfigured() && navigator.onLine){
+      (async ()=>{ try{ await __syncPush(); await __syncPullAuto(); }catch(_e){} })();
+    }
+  }catch(_e){}
   if(!suppress) alert("RC enviado a aprobación.");
   return true;
 }
@@ -2919,6 +2945,48 @@ function __solicitarCierre(){
     return;
   }
   const em = emergenciaSeleccionada;
+  const codigoSel = String(em.codigo || "").trim();
+
+  // Sync rápido para evitar el "rebote" (queda solo en local y luego el pull lo revive)
+  const __syncAfterCierre = ()=>{
+    (async ()=>{
+      try{
+        if(__isApiConfigured && __isApiConfigured() && navigator.onLine){
+          const push = await __syncPush();
+
+          // Si hubo rechazados (no propietario / inválido), avisar con códigos
+          if(push && push.denied && push.denied.length){
+            const codes = [];
+            try{
+              for(const it of push.denied){
+                if(typeof it === "string") codes.push(String(it));
+                else if(it) codes.push(String(it.codigo || it.code || it.id || ""));
+              }
+            }catch(e){}
+            const clean = codes.map(c=>String(c||"").trim()).filter(Boolean);
+            const shown = clean.slice(0, 20).join(", ");
+            alert("Sync: algunos registros fueron rechazados (no propietario / registro cerrado / inválido)." + (shown ? ("
+Códigos: " + shown + (clean.length>20 ? " ..." : "")) : "") + "
+Sugerencia: primero actualiza (Pull). Si el registro ya estaba cerrado por el Administrador, tu versión local estaba desfasada. Si además es tema de propietario, el Administrador debe corregirlo.");
+          }
+
+          // refrescar local desde servidor
+          try{ await __syncPull(__getLastPull()); }catch(_e){}
+          try{
+            const fresh = emergencias.find(e => String(e?.codigo||"").trim() === codigoSel);
+            if(fresh) emergenciaSeleccionada = fresh;
+          }catch(e){}
+          try{ await __calcPending(); }catch(_e){}
+        }else{
+          // sin server o sin internet: se queda local como pendiente de sync
+          try{ em.estado_sync = 'Pendiente'; }catch(_e){}
+          try{ __saveEmergencias(); }catch(_e){}
+        }
+      }catch(e){
+        console.warn("Sync post-cierre falló:", e);
+      }
+    })();
+  };
 
   if(currentUser.role === __ROLES.ADMIN){
     // Admin cierra directo
@@ -2931,6 +2999,9 @@ function __solicitarCierre(){
     __touch(em);
     __saveEmergencias();
     cargarTablaEmergencias();
+
+    __syncAfterCierre();
+
     alert("Emergencia cerrada.");
     return;
   }
@@ -2948,6 +3019,8 @@ function __solicitarCierre(){
   __touch(em);
   __saveEmergencias();
   cargarTablaEmergencias();
+
+  __syncAfterCierre();
 
   // Bloquear TODO el RC para el Registrador (solo visualización) hasta que el Admin apruebe/observe el cierre
   try{
@@ -3037,6 +3110,14 @@ document.addEventListener("DOMContentLoaded", ()=>{
     __aprobar({kind:"rp", codigo});
     __saveEmergencias();
     cargarTablaEmergencias();
+
+    // Sync inmediato para que el Registrador vea el aprobado
+    try{
+      if(__isApiConfigured && __isApiConfigured() && navigator.onLine){
+        (async ()=>{ try{ await __syncPush(); await __syncPullAuto(); }catch(_e){} })();
+      }
+    }catch(_e){}
+
 
     // Al aprobar, dejar el RP en solo lectura (solo Retornar activo)
     try{
@@ -6365,6 +6446,13 @@ document.getElementById("btnGuardarAprobarRCAdmin")?.addEventListener("click", (
     __saveEmergencias();
     cargarTablaEmergencias();
 
+    // Sync inmediato para que el Registrador vea el aprobado
+    try{
+      if(__isApiConfigured && __isApiConfigured() && navigator.onLine){
+        (async ()=>{ try{ await __syncPush(); await __syncPullAuto(); }catch(_e){} })();
+      }
+    }catch(_e){}
+
     // Bloquear edición tras aprobación
     try{ setRCEnabled(false); }catch(e){}
     try{ __applyRCLockUI && __applyRCLockUI(); }catch(e){}
@@ -6384,6 +6472,13 @@ document.getElementById("btnGuardarEnviarRC")?.addEventListener("click", ()=>{
   // Enviar a aprobación (silencioso) y notificar una sola vez
   const sent = __enviarRC({suppressAlert:true});
   if(!sent) return;
+
+  // Sync inmediato para que el Administrador vea el pendiente y para evitar rebotes
+  try{
+    if(__isApiConfigured && __isApiConfigured() && navigator.onLine){
+      (async ()=>{ try{ await __syncPush(); await __syncPullAuto(); }catch(_e){} })();
+    }
+  }catch(_e){}
 
   alert("RC guardado y enviado a aprobación.");
   // Bloquear edición hasta decisión
@@ -8362,6 +8457,8 @@ async function __syncPush(){
         codigo: codigo,
         payload: e,
         hash: h,
+        if_match: map[codigo] || "",
+
         created_at: e.createdAt || e.fechaRegistro || now,
         updated_at: now,
         device_id: deviceId
@@ -8550,7 +8647,19 @@ async function __syncAll(){
 
     const isCons = currentUser && currentUser.role === __ROLES.CONS;
 
-    // push (si corresponde)
+    // 1) PULL primero (evita empujar "data vieja" encima del servidor)
+    const pull1 = await __syncPull(__getLastPull());
+
+    // recalcular pendientes
+    await __calcPending();
+
+    // Si hay conflictos local vs servidor, NO hacemos push (evita "revivir" estados cerrados)
+    if(pull1.conflicts && pull1.conflicts.length){
+      alert('Pull: se detectaron conflictos (local vs servidor). Se canceló el Push para no sobrescribir el servidor. Revisa el log de conflictos y actualiza tu registro antes de volver a sincronizar.');
+      return;
+    }
+
+    // 2) PUSH (si corresponde)
     if(!isCons){
       const push = await __syncPush();
       if(push.conflicts && push.conflicts.length){
@@ -8566,17 +8675,17 @@ async function __syncAll(){
         }catch(e){}
         const clean = codes.map(c=>String(c||"").trim()).filter(Boolean);
         const shown = clean.slice(0, 20).join(", ");
-        alert("Sync: algunos registros fueron rechazados (no propietario o inválidos)." + (shown ? ("\nCódigos: " + shown + (clean.length>20 ? " ..." : "")) : "") + "\nSugerencia: actualiza (Pull) y, si corresponde, el Administrador debe corregir el propietario del registro.");
+        alert("Sync: algunos registros fueron rechazados (no propietario / registro cerrado / inválido)." + (shown ? ("
+Códigos: " + shown + (clean.length>20 ? " ..." : "")) : "") + "
+Sugerencia: primero actualiza (Pull). Si el registro ya estaba cerrado por el Administrador, tu versión local estaba desfasada. Si además es tema de propietario, el Administrador debe corregirlo.");
       }
     }
 
-    // pull siempre
-    const pull = await __syncPull(__getLastPull());
-
-    // recalcular pendientes
+    // 3) PULL final para refrescar lo confirmado en servidor (y hashes)
+    const pull2 = await __syncPull(__getLastPull());
     await __calcPending();
 
-    if(pull.conflicts && pull.conflicts.length){
+    if(pull2.conflicts && pull2.conflicts.length){
       alert('Pull: se detectaron conflictos (local vs servidor). No se sobreescribió tu edición local.');
     }
 
@@ -9653,10 +9762,21 @@ document.addEventListener('DOMContentLoaded', async function(){
           __LIST_SORT.key = "codigo";
           __LIST_SORT.dir = -1;
           __listUpdateSortUI();
-          cargarTablaEmergencias();
+          (async ()=>{
+            try{ await __syncPullAuto(); }catch(_e){}
+            try{ cargarTablaEmergencias(); }catch(_e){}
+          })();
         }catch(_e){}
       });
     }
+  }catch(e){}
+
+  // Auto-actualización de estados en Lista (evita que el Registrador vea 'no aprobado' por rato)
+  try{
+    setInterval(()=>{
+      const isActive = document.querySelector('a[href="#listaTab"]')?.classList.contains("active");
+      if(isActive) __syncPullAuto();
+    }, 15000);
   }catch(e){}
 
 
