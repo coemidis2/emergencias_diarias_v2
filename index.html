@@ -2965,9 +2965,7 @@ function __solicitarCierre(){
             }catch(e){}
             const clean = codes.map(c=>String(c||"").trim()).filter(Boolean);
             const shown = clean.slice(0, 20).join(", ");
-            alert("Sync: algunos registros fueron rechazados (no propietario / registro cerrado / inválido)." + (shown ? ("
-Códigos: " + shown + (clean.length>20 ? " ..." : "")) : "") + "
-Sugerencia: primero actualiza (Pull). Si el registro ya estaba cerrado por el Administrador, tu versión local estaba desfasada. Si además es tema de propietario, el Administrador debe corregirlo.");
+            alert("Sync: algunos registros fueron rechazados (no propietario / registro cerrado / inválido)." + (shown ? ("\nCódigos: " + shown + (clean.length>20 ? " ..." : "")) : "") + "\nSugerencia: primero actualiza (Pull). Si el registro ya estaba cerrado por el Administrador, tu versión local estaba desfasada. Si además es tema de propietario, el Administrador debe corregirlo.");
           }
 
           // refrescar local desde servidor
@@ -8675,9 +8673,7 @@ async function __syncAll(){
         }catch(e){}
         const clean = codes.map(c=>String(c||"").trim()).filter(Boolean);
         const shown = clean.slice(0, 20).join(", ");
-        alert("Sync: algunos registros fueron rechazados (no propietario / registro cerrado / inválido)." + (shown ? ("
-Códigos: " + shown + (clean.length>20 ? " ..." : "")) : "") + "
-Sugerencia: primero actualiza (Pull). Si el registro ya estaba cerrado por el Administrador, tu versión local estaba desfasada. Si además es tema de propietario, el Administrador debe corregirlo.");
+        alert("Sync: algunos registros fueron rechazados (no propietario / registro cerrado / inválido)." + (shown ? ("\nCódigos: " + shown + (clean.length>20 ? " ..." : "")) : "") + "\nSugerencia: primero actualiza (Pull). Si el registro ya estaba cerrado por el Administrador, tu versión local estaba desfasada. Si además es tema de propietario, el Administrador debe corregirlo.");
       }
     }
 
