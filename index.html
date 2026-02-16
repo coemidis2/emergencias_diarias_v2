@@ -9629,6 +9629,67 @@ function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO){
       return;
     }
 
+    const __fmtAcciones = (a)=>{
+      let arr = a;
+      if(typeof arr === "string"){
+        try{ arr = JSON.parse(arr); }catch(_e){}
+      }
+      if(!Array.isArray(arr)){
+        return String(arr || "");
+      }
+      return arr.map(x=>{
+        const f = (x && (x.fecha || x.f)) ? String(x.fecha || x.f) : "";
+        const d = (x && (x.descripcion || x.desc || x.detalle || x.texto)) ? String(x.descripcion || x.desc || x.detalle || x.texto) : "";
+        const line = (f ? (f + ": ") : "") + d;
+        return line.trim();
+      }).filter(Boolean).join("
+");
+    };
+
+    const __fmtDaniosMIDIS = (src)=>{
+      let o = src;
+      if(typeof o === "string"){
+        try{ o = JSON.parse(o); }catch(_e){}
+      }
+      if(!o || typeof o !== "object") return "";
+      const progs = (Array.isArray(programas) && programas.length) ? programas : Object.keys(o);
+      if(!progs || !progs.length) return "";
+      const lines = [];
+      progs.forEach(p=>{
+        const name = String(p||"").trim();
+        if(!name) return;
+        const keyUp = name.toUpperCase();
+        const keyLo = name.toLowerCase();
+        const d = (o && (o[name] || o[keyUp] || o[keyLo])) ? (o[name] || o[keyUp] || o[keyLo]) : {};
+        const ua  = Number(d?.usuariosAfectados || 0);
+        const sa  = Number(d?.serviciosAfectados || 0);
+        const ups = Number(d?.usuariosPorServicios || 0);
+        const uf  = Number(d?.usuariosFallecidos || 0);
+        const ma  = Number(d?.moduloAfectado || 0);
+        lines.push(`${name}: UA=${ua}, SA=${sa}, UPS=${ups}, UF=${uf}, MA=${ma}`);
+      });
+      return lines.join("
+");
+    };
+
+    const __fmtAccionesComplementario = (em)=>{
+      let rcs = em?.rcReportes;
+      if(typeof rcs === "string"){
+        try{ rcs = JSON.parse(rcs); }catch(_e){}
+      }
+      if(!Array.isArray(rcs) || !rcs.length) return "";
+      const all = [];
+      rcs.forEach(rc=>{
+        let a = (typeof __dashGetAccionesComplementarioFromRC==="function")
+          ? __dashGetAccionesComplementarioFromRC(rc)
+          : (rc && (rc.acciones ?? rc.accionesRC ?? rc.accionesComplementario ?? rc.accionesComplementarias ?? rc.accionesComp));
+        const t = __fmtAcciones(a);
+        if(String(t||"").trim()) all.push(String(t).trim());
+      });
+      return all.join("
+");
+    };
+
     const items = [];
     (Array.isArray(emergencias) ? emergencias : []).forEach(em=>{
       try{
@@ -9636,6 +9697,11 @@ function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO){
         const dt = __excelParseElab(em);
         if(!dt) return;
         if(dt.getTime() < d0.getTime() || dt.getTime() > d1.getTime()) return;
+
+        const danosOtros = String(em.daniosOtros || "");
+        const danosMIDIS = __fmtDaniosMIDIS(em.daniosMIDIS);
+        const accPre     = __fmtAcciones(em.accionesPreliminar);
+        const accComp    = __fmtAccionesComplementario(em);
 
         items.push({
           dt: dt.getTime(),
@@ -9646,7 +9712,11 @@ function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO){
             String(em.departamento||""),
             String(em.provincia||""),
             String(em.distrito||""),
-            String(em.hechos||"")
+            String(em.hechos||""),
+            danosOtros,
+            danosMIDIS,
+            accPre,
+            accComp
           ]
         });
       }catch(_e){}
@@ -9671,7 +9741,12 @@ function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO){
     aoa.push([{v:`Total registros: ${items.length}`, t:"s", s:subStyle}]);
     aoa.push([]); // línea en blanco
 
-    const headers = ["Código","Peligro","Fecha de peligro","Departamento","Provincia","Distrito","Hechos"];
+    const headers = [
+      "Código","Peligro","Fecha de peligro","Departamento","Provincia","Distrito","Hechos",
+      "Daños en otros sectores","Daños en el Sector Desarrollo e Inclusión Social",
+      "Acciones del Sector Desarrollo e Inclusión Social (Preliminar)",
+      "Acciones del sector Desarrollo e Inclusión Social (Complementario)"
+    ];
     aoa.push(headers.map(h=>({v:h, t:"s", s:hdrStyle})));
 
     for(const it of items){
@@ -9680,11 +9755,11 @@ function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO){
 
     const ws = XLSX.utils.aoa_to_sheet(aoa);
 
-    // merges: título / rango / total (sobre 7 columnas)
+    // merges: título / rango / total (sobre 11 columnas)
     ws["!merges"] = [
-      {s:{r:0,c:0}, e:{r:0,c:6}},
-      {s:{r:1,c:0}, e:{r:1,c:6}},
-      {s:{r:2,c:0}, e:{r:2,c:6}}
+      {s:{r:0,c:0}, e:{r:0,c:10}},
+      {s:{r:1,c:0}, e:{r:1,c:10}},
+      {s:{r:2,c:0}, e:{r:2,c:10}}
     ];
 
     // Anchos de columna
@@ -9695,7 +9770,11 @@ function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO){
       {wch:18}, // Departamento
       {wch:18}, // Provincia
       {wch:18}, // Distrito
-      {wch:70}  // Hechos
+      {wch:70}, // Hechos
+      {wch:55}, // Daños otros sectores
+      {wch:70}, // Daños MIDIS
+      {wch:70}, // Acciones preliminar
+      {wch:70}  // Acciones complementario
     ];
 
     const wb = XLSX.utils.book_new();
@@ -9708,6 +9787,7 @@ function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO){
     alert("Ocurrió un error al exportar a Excel.");
   }
 }
+
 
 
 // ---- Hook DOMContentLoaded (extra) ----
