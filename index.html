@@ -306,9 +306,20 @@ body { background: #f5f5f5; }
             <input type="text" id="filtroCodigo" class="form-control" placeholder="Buscar por código">
           </div>
           <div class="col-md-3">
-            <label class="form-label">Fecha de peligro</label>
+            <label class="form-label">N° Global</label>
+            <input type="text" id="filtroNGlobal" class="form-control" placeholder="Buscar por N° Global">
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Fecha de peligro (desde)</label>
             <input type="date" id="filtroFechaPeligro" class="form-control">
           </div>
+          <div class="col-md-3">
+            <label class="form-label">Fecha de peligro (hasta)</label>
+            <input type="date" id="filtroFechaPeligroHasta" class="form-control">
+          </div>
+        </div>
+
+        <div class="row g-2 mb-2">
           <div class="col-md-3">
             <label class="form-label">Estado</label>
             <select id="filtroEstado" class="form-control">
@@ -317,9 +328,6 @@ body { background: #f5f5f5; }
               <option value="Cerrada">Cerrada</option>
             </select>
           </div>
-        </div>
-
-        <div class="row g-2 mb-2">
           <div class="col-md-3">
             <label class="form-label">Peligro</label>
             <select id="filtroPeligro" class="form-control">
@@ -3370,7 +3378,9 @@ document.addEventListener("DOMContentLoaded", function () {
   // Filtros: cada cambio vuelve a cargar la tabla con filtros aplicados
   const filtros = [
     "filtroCodigo",
+    "filtroNGlobal",
     "filtroFechaPeligro",
+    "filtroFechaPeligroHasta",
     "filtroEstado",
     "filtroPeligro",
     "filtroDepartamento",
@@ -5394,9 +5404,11 @@ function cargarTablaEmergencias() {
 
   // Leer filtros
   const fCodigo = normalizarTexto(document.getElementById("filtroCodigo")?.value || "");
+  const fNGlobal = normalizarTexto(document.getElementById("filtroNGlobal")?.value || "");
   const fFechaPeligro = document.getElementById("filtroFechaPeligro")?.value || "";
+  const fFechaPeligroHasta = document.getElementById("filtroFechaPeligroHasta")?.value || "";
   const fEstado = document.getElementById("filtroEstado")?.value || "";
-  const fPeligro = document.getElementById("filtroPeligro")?.value || "";
+const fPeligro = document.getElementById("filtroPeligro")?.value || "";
   const fDep = normalizarTexto(document.getElementById("filtroDepartamento")?.value || "");
   const fProv = normalizarTexto(document.getElementById("filtroProvincia")?.value || "");
 
@@ -5411,8 +5423,31 @@ function cargarTablaEmergencias() {
   const filtered = [];
   emergencias.forEach(e => {
     if(__isDeleted(e)) return;
-    if (fCodigo && !normalizarTexto(e.codigo).includes(fCodigo)) return;
-    if (fFechaPeligro && (e.fechaPeligro || "") !== fFechaPeligro) return;
+        if (fCodigo && !normalizarTexto(e.codigo).includes(fCodigo)) return;
+    // N° Global (busca en RP y en todos los RC)
+    if (fNGlobal) {
+      let okNG = false;
+      const ngRP = normalizarTexto(String((e && (e.numeroGlobal || e.numeroReporte)) ? (e.numeroGlobal || e.numeroReporte) : ""));
+      if (ngRP && ngRP.includes(fNGlobal)) okNG = true;
+      if (!okNG) {
+        const rcListNG = (typeof __getRCList === "function") ? __getRCList(e) : (e && e.rcReportes ? e.rcReportes : []);
+        if (Array.isArray(rcListNG)) {
+          for (const rc of rcListNG) {
+            const ngRC = normalizarTexto(String((rc && (rc.numeroGlobal || rc.numeroReporteRC || rc.numGlobal || rc.nroGlobal)) ? (rc.numeroGlobal || rc.numeroReporteRC || rc.numGlobal || rc.nroGlobal) : ""));
+            if (ngRC && ngRC.includes(fNGlobal)) { okNG = true; break; }
+          }
+        }
+      }
+      if (!okNG) return;
+    }
+        // Fecha de peligro: rango (desde / hasta)
+    if (fFechaPeligro || fFechaPeligroHasta) {
+      const fp = String(e.fechaPeligro || "").slice(0, 10);
+      if (!fp) return;
+      if (fFechaPeligro && fp < fFechaPeligro) return;
+      if (fFechaPeligroHasta && fp > fFechaPeligroHasta) return;
+    }
+
 
     if (fEstado === "Abierta" && e.cerrada) return;
     if (fEstado === "Cerrada" && !e.cerrada) return;
@@ -5477,7 +5512,7 @@ function cargarTablaEmergencias() {
 
   // 2.1) Paginación: reset de página si cambian los filtros
   try{
-    const filterKey = JSON.stringify({ fCodigo, fFechaPeligro, fEstado, fPeligro, fDep, fProv, fRegistrador, fFechaElab, fTipoRep, fWordRP, fWordRC });
+    const filterKey = JSON.stringify({ fCodigo, fNGlobal, fFechaPeligro, fFechaPeligroHasta, fEstado, fPeligro, fDep, fProv, fRegistrador, fFechaElab, fTipoRep, fWordRP, fWordRC });
     if(__LIST_PAGER.lastFilterKey !== filterKey){
       __LIST_PAGER.page = 1;
       __LIST_PAGER.lastFilterKey = filterKey;
