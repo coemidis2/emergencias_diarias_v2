@@ -9629,57 +9629,62 @@ function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO){
       return;
     }
 
-    // ---- Formateadores (texto) ----
-    const __nl = "\n";
-    const __fmt = (v)=> String(v ?? "").replace(/\r\n/g,"\n").replace(/\r/g,"\n");
-    const __fmtAcciones = (arr, tag)=>{
-      try{
-        const a = Array.isArray(arr) ? arr : [];
-        if(a.length===0) return "";
-        return a.map(x=>{
-          const f = __fmt(x?.fecha || "");
-          const d = __fmt(x?.descripcion || "");
-          const pre = tag ? (tag + " ") : "";
-          return `${pre}[${f}] ${d}`.trim();
-        }).join(__nl);
-      }catch(e){ return ""; }
+    const __fmtAcciones = (a)=>{
+      let arr = a;
+      if(typeof arr === "string"){
+        try{ arr = JSON.parse(arr); }catch(_e){}
+      }
+      if(!Array.isArray(arr)){
+        return String(arr || "");
+      }
+      return arr.map(x=>{
+        const f = (x && (x.fecha || x.f)) ? String(x.fecha || x.f) : "";
+        const d = (x && (x.descripcion || x.desc || x.detalle || x.texto)) ? String(x.descripcion || x.desc || x.detalle || x.texto) : "";
+        const line = (f ? (f + ": ") : "") + d;
+        return line.trim();
+      }).filter(Boolean).join("\n");
     };
-    const __fmtDaniosMIDIS = (m)=>{
-      try{
-        const dm = (m && typeof m==="object") ? m : {};
-        const order = (Array.isArray(programas) && programas.length) ? programas : Object.keys(dm);
-        const lines = [];
-        for(const p of order){
-          const v = dm[p] || {};
-          const ua = Number(v.usuariosAfectados)||0;
-          const sa = Number(v.serviciosAfectados)||0;
-          const ups= Number(v.usuariosPorServicios)||0;
-          const uf = Number(v.usuariosFallecidos)||0;
-          const mod= Number(v.moduloAfectado)||0;
-          lines.push(`${p}: UA=${ua}; SA=${sa}; UPS=${ups}; F=${uf}; Mod=${mod}`);
-        }
-        return lines.join(__nl);
-      }catch(e){ return ""; }
+
+    const __fmtDaniosMIDIS = (src)=>{
+      let o = src;
+      if(typeof o === "string"){
+        try{ o = JSON.parse(o); }catch(_e){}
+      }
+      if(!o || typeof o !== "object") return "";
+      const progs = (Array.isArray(programas) && programas.length) ? programas : Object.keys(o);
+      if(!progs || !progs.length) return "";
+      const lines = [];
+      progs.forEach(p=>{
+        const name = String(p||"").trim();
+        if(!name) return;
+        const keyUp = name.toUpperCase();
+        const keyLo = name.toLowerCase();
+        const d = (o && (o[name] || o[keyUp] || o[keyLo])) ? (o[name] || o[keyUp] || o[keyLo]) : {};
+        const ua  = Number(d?.usuariosAfectados || 0);
+        const sa  = Number(d?.serviciosAfectados || 0);
+        const ups = Number(d?.usuariosPorServicios || 0);
+        const uf  = Number(d?.usuariosFallecidos || 0);
+        const ma  = Number(d?.moduloAfectado || 0);
+        lines.push(`${name}: UA=${ua}, SA=${sa}, UPS=${ups}, UF=${uf}, MA=${ma}`);
+      });
+      return lines.join("\n");
     };
-    const __fmtAccionesRCAll = (em)=>{
-      try{
-        // Preferencia: recorrer rcReportes (todas las acciones por RC)
-        if(Array.isArray(em?.rcReportes) && em.rcReportes.length){
-          const out = [];
-          for(const rc of em.rcReportes){
-            const num = rc?.numeroGlobal ?? rc?.numeroReporteRC ?? "";
-            const acts = Array.isArray(rc?.acciones) ? rc.acciones : [];
-            for(const a of acts){
-              const f = __fmt(a?.fecha || "");
-              const d = __fmt(a?.descripcion || "");
-              out.push(`[RC ${num}] [${f}] ${d}`.trim());
-            }
-          }
-          return out.join(__nl);
-        }
-        // Respaldo: accionesRCGlobal (último RC)
-        return __fmtAcciones(em?.accionesRCGlobal, "[RC]");
-      }catch(e){ return ""; }
+
+    const __fmtAccionesComplementario = (em)=>{
+      let rcs = em?.rcReportes;
+      if(typeof rcs === "string"){
+        try{ rcs = JSON.parse(rcs); }catch(_e){}
+      }
+      if(!Array.isArray(rcs) || !rcs.length) return "";
+      const all = [];
+      rcs.forEach(rc=>{
+        let a = (typeof __dashGetAccionesComplementarioFromRC==="function")
+          ? __dashGetAccionesComplementarioFromRC(rc)
+          : (rc && (rc.acciones ?? rc.accionesRC ?? rc.accionesComplementario ?? rc.accionesComplementarias ?? rc.accionesComp));
+        const t = __fmtAcciones(a);
+        if(String(t||"").trim()) all.push(String(t).trim());
+      });
+      return all.join("\n");
     };
 
     const items = [];
@@ -9690,6 +9695,11 @@ function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO){
         if(!dt) return;
         if(dt.getTime() < d0.getTime() || dt.getTime() > d1.getTime()) return;
 
+        const danosOtros = String(em.daniosOtros || "");
+        const danosMIDIS = __fmtDaniosMIDIS(em.daniosMIDIS);
+        const accPre     = __fmtAcciones(em.accionesPreliminar);
+        const accComp    = __fmtAccionesComplementario(em);
+
         items.push({
           dt: dt.getTime(),
           row: [
@@ -9699,11 +9709,11 @@ function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO){
             String(em.departamento||""),
             String(em.provincia||""),
             String(em.distrito||""),
-            __fmt(em.hechos||""),
-            __fmt(em.daniosOtros||""),
-            __fmtDaniosMIDIS(em.daniosMIDIS),
-            __fmtAcciones(em.accionesPreliminar),
-            __fmtAccionesRCAll(em)
+            String(em.hechos||""),
+            danosOtros,
+            danosMIDIS,
+            accPre,
+            accComp
           ]
         });
       }catch(_e){}
@@ -9729,15 +9739,8 @@ function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO){
     aoa.push([]); // línea en blanco
 
     const headers = [
-      "Código",
-      "Peligro",
-      "Fecha de peligro",
-      "Departamento",
-      "Provincia",
-      "Distrito",
-      "Hechos",
-      "Daños en otros sectores",
-      "Daños en el Sector Desarrollo e Inclusión Social",
+      "Código","Peligro","Fecha de peligro","Departamento","Provincia","Distrito","Hechos",
+      "Daños en otros sectores","Daños en el Sector Desarrollo e Inclusión Social",
       "Acciones del Sector Desarrollo e Inclusión Social (Preliminar)",
       "Acciones del sector Desarrollo e Inclusión Social (Complementario)"
     ];
@@ -9765,10 +9768,10 @@ function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO){
       {wch:18}, // Provincia
       {wch:18}, // Distrito
       {wch:70}, // Hechos
-      {wch:70}, // Daños en otros sectores
+      {wch:55}, // Daños otros sectores
       {wch:70}, // Daños MIDIS
-      {wch:70}, // Acciones Preliminar
-      {wch:70}  // Acciones Complementario
+      {wch:70}, // Acciones preliminar
+      {wch:70}  // Acciones complementario
     ];
 
     const wb = XLSX.utils.book_new();
@@ -9781,6 +9784,7 @@ function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO){
     alert("Ocurrió un error al exportar a Excel.");
   }
 }
+
 
 
 // ---- Hook DOMContentLoaded (extra) ----
