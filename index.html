@@ -4321,22 +4321,32 @@ function verEmergencia(e) {
   // Elaborado / Aprobado
   html += `<div class="ver-subline" style="margin-top:8px"><span class="ver-lbl">Elaborado por:</span> ${__safe(elaboradoPorTxt)}</div>`;
   html += `<div class="ver-subline"><span class="ver-lbl">Aprobado por:</span> ${__safe(aprobadoPorTxt)}</div>`;
-
   // Historial: Nros globales anteriores
   html += `<div class="ver-subline ver-rc-hist"><span class="ver-lbl">Nros globales anteriores:</span> `;
+  const histParts = [];
+  try{
+    const g = __safe((e && (e.numeroGlobal || e.numeroReporte)) ? (e.numeroGlobal || e.numeroReporte) : "").trim();
+    const fr0 = __safe((e && (e.fechaRegistro || e.fechaHora || e.createdAt || e.__serverCreatedAt)) ? (e.fechaRegistro || e.fechaHora || e.createdAt || e.__serverCreatedAt) : "").trim();
+    const fr = __safe(__listDateOnly(fr0)).trim();
+    const gTxt = g ? `N° Global ${g}` : "N° Global";
+    const fTxt = fr ? ` | Fecha de registro ${fr}` : "";
+    histParts.push(`<span class="rc-block" id="ver_rp_block">RP – ${gTxt}${fTxt}</span>`);
+  }catch(e){}
   if (Array.isArray(rcList) && rcList.length > 0) {
-    html += rcList.map((rc, idx)=>{
+    histParts.push(...rcList.map((rc, idx)=>{
       const g = __safe((rc && (rc.numeroGlobal || rc.numeroReporteRC)) ? (rc.numeroGlobal || rc.numeroReporteRC) : "").trim();
       const fr = __safe(rc && rc.fechaRegistro ? rc.fechaRegistro : "").trim();
       const gTxt = g ? `N° Global ${g}` : "N° Global";
       const fTxt = fr ? ` | Fecha de registro ${fr}` : "";
       return `<span class="rc-block" id="ver_rc_block_${idx}">RC ${idx+1} – ${gTxt}${fTxt}</span>`;
-    }).join(', ');
+    }));
+  }
+  if(histParts.length){
+    html += histParts.join(', ');
   } else {
-    html += `<em>Sin RC registrado.</em>`;
+    html += `<em>Sin registros.</em>`;
   }
   html += `</div>`;
-
   html += `</div>`;
 
   cont.innerHTML = html;
