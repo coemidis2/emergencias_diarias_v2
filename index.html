@@ -1,6 +1,9 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
+<!-- BUILD: 2026-02-20 autopull-cooldown -->
+<script>window.__BUILD_ID='2026-02-20 autopull-cooldown';console.log('BUILD',window.__BUILD_ID);</script>
+
 <!-- build: VER_PRINT_RC_ALWAYS_VISIBLE v4 2026-01-11 -->
 <meta charset="UTF-8" />
 <title>Registro de Emergencias MIDIS</title>
@@ -356,6 +359,10 @@ body { background: #f5f5f5; }
           <div class="col-md-3">
             <label class="form-label">Provincia</label>
             <input type="text" id="filtroProvincia" class="form-control" placeholder="Provincia">
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Distrito</label>
+            <input type="text" id="filtroDistrito" class="form-control" placeholder="Distrito">
           </div>
         </div>
 
@@ -3375,6 +3382,7 @@ document.addEventListener("DOMContentLoaded", function () {
     "filtroPeligro",
     "filtroDepartamento",
     "filtroProvincia",
+    "filtroDistrito",
     "filtroRegistrador",
     "filtroFechaElaboracion",
     "filtroTipoReporte",
@@ -5399,6 +5407,7 @@ function cargarTablaEmergencias() {
   const fPeligro = document.getElementById("filtroPeligro")?.value || "";
   const fDep = normalizarTexto(document.getElementById("filtroDepartamento")?.value || "");
   const fProv = normalizarTexto(document.getElementById("filtroProvincia")?.value || "");
+  const fDist = normalizarTexto(document.getElementById("filtroDistrito")?.value || "");
 
   const fRegistrador = normalizarTexto(document.getElementById("filtroRegistrador")?.value || "");
   const fFechaElab = document.getElementById("filtroFechaElaboracion")?.value || "";
@@ -5421,6 +5430,7 @@ function cargarTablaEmergencias() {
 
     if (fDep && !normalizarTexto(e.departamento).includes(fDep)) return;
     if (fProv && !normalizarTexto(e.provincia).includes(fProv)) return;
+    if (fDist && !normalizarTexto(e.distrito).includes(fDist)) return;
 
     // Filtro Tipo (RP/RC): RP = solo RP (sin RC), RC = con RC
     const rcList = (typeof __getRCList === "function") ? __getRCList(e) : [];
@@ -8694,15 +8704,18 @@ async function __syncAll(){
   }
 }
 
-// Auto-pull con protección anti-bucle / anti-ráfagas.
-// Nota: el UI puede disparar __syncPullAuto desde varios lugares (intervals, shown.bs.tab, etc.).
-// Este guard evita múltiples pulls seguidos que inflan "Pendientes" y saturan la red.
-window.__PULL_AUTO_INFLIGHT = window.__PULL_AUTO_INFLIGHT || false;
-window.__PULL_AUTO_LAST_AT  = window.__PULL_AUTO_LAST_AT  || 0;
-window.__PULL_AUTO_MIN_GAP_MS = window.__PULL_AUTO_MIN_GAP_MS || 20000; // 20s
-
 async function __syncPullAuto(){
+  // Candado anti-bucle: evita múltiples Pull simultáneos y limita la frecuencia.
   try{
+    if(window.__PULL_AUTO_INFLIGHT) return;
+    const now = Date.now();
+    const last = window.__PULL_AUTO_LAST || 0;
+    // mínimo 5s entre auto-pulls (evita spam por listeners duplicados)
+    if(now - last < 5000) return;
+
+    window.__PULL_AUTO_INFLIGHT = true;
+    window.__PULL_AUTO_LAST = now;
+
     if(!__isApiConfigured()){
       __updateSyncUI(0);
       return;
@@ -8712,14 +8725,6 @@ async function __syncPullAuto(){
       __updateSyncUI(0);
       return;
     }
-
-    // Anti-ráfaga: si ya hay un pull en curso o se ejecutó hace poco, salimos.
-    const now = Date.now();
-    if(window.__PULL_AUTO_INFLIGHT) return;
-    if((now - (window.__PULL_AUTO_LAST_AT||0)) < (window.__PULL_AUTO_MIN_GAP_MS||20000)) return;
-
-    window.__PULL_AUTO_INFLIGHT = true;
-    window.__PULL_AUTO_LAST_AT = now;
 
     await __syncPull(__getLastPull());
     await __calcPending();
