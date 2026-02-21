@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-<!-- BUILD: 2026-02-20 autopull-cooldown-v140 -->
+<!-- BUILD: 2026-02-20 autopull-cooldown-v141 -->
 <script>window.__BUILD_ID='2026-02-20 autopull-cooldown-v3';console.log('BUILD',window.__BUILD_ID);</script>
 
 <!-- build: VER_PRINT_RC_ALWAYS_VISIBLE v4 2026-01-11 -->
@@ -4149,7 +4149,7 @@ document.getElementById("btnGuardarEnviarRP").onclick = async () => {
 // Archivo: cobertura_programas.json (se reemplaza bimensualmente)
 window.__COBERTURA_PROGRAMAS_CACHE = window.__COBERTURA_PROGRAMAS_CACHE || null;
 
-async async function __loadCoberturaProgramas(){
+async function __loadCoberturaProgramas(){
   // Cache en memoria para no hacer múltiples fetch
   if(window.__COBERTURA_PROGRAMAS_CACHE) return window.__COBERTURA_PROGRAMAS_CACHE;
   const url = 'cobertura_programas.json?v=' + Date.now(); // bust cache
@@ -4176,7 +4176,7 @@ function __normKeyCobertura(s){
     .replace(/\s+/g,' ');
 }
 
-async async function __getCoberturaRow(em){
+async function __getCoberturaRow(em){
   if(!em) return null;
   const dep = __normKeyCobertura(em.departamento);
   const prov = __normKeyCobertura(em.provincia);
@@ -4198,7 +4198,7 @@ async async function __getCoberturaRow(em){
   return r2 || null;
 }
 
-async async function __renderCoberturaAnexo(em, containerId){
+async function __renderCoberturaAnexo(em, containerId){
   try{
     const el = document.getElementById(containerId);
     if(!el) return;
