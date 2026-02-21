@@ -3426,104 +3426,6 @@ document.addEventListener("DOMContentLoaded", function () {
 });
 
 // ===================== FUNCIÓN CÓDIGO RP =====================
-// IMPORTANTE:
-// - Antes el código RP se generaba localmente (por max correlativo). Eso produce DUPLICADOS cuando hay varios
-//   Registradores/equipos sin sincronizar.
-// - Solución "para siempre": el Worker entrega códigos únicos (secuencia central) y el navegador consume un POOL
-//   reservado en localStorage.
-// - Si no hay pool disponible, NO generamos código local (para no volver a duplicar). Se debe estar online y sincronizar.
-
-const __CODES_POOL_KEY = "midis_codes_pool_v1";
-const __CODES_INFLIGHT = {};
-
-function __codesPoolLoad(){
-  try{ return JSON.parse(__lsGet(__CODES_POOL_KEY) || "{}"); }catch(e){ return {}; }
-}
-function __codesPoolSave(obj){
-  try{ __lsSet(__CODES_POOL_KEY, JSON.stringify(obj||{})); }catch(e){}
-}
-function __codesPoolGetArr(tipo, year){
-  const y = String(year);
-  const p = __codesPoolLoad() || {};
-  if(!p[tipo]) p[tipo] = {};
-  if(!Array.isArray(p[tipo][y])) p[tipo][y] = [];
-  return { p, arr: p[tipo][y], y };
-}
-function __codesPoolCount(tipo, year){
-  try{
-    const y = String(year);
-    const p = __codesPoolLoad();
-    const arr = (p && p[tipo] && Array.isArray(p[tipo][y])) ? p[tipo][y] : [];
-    return arr.length;
-  }catch(e){ return 0; }
-}
-function __codesPoolTake(tipo, year){
-  try{
-    const { p, arr, y } = __codesPoolGetArr(tipo, year);
-    const code = arr.shift();
-    p[tipo][y] = arr;
-    __codesPoolSave(p);
-    return code ? String(code) : null;
-  }catch(e){ return null; }
-}
-
-async function __codesPoolEnsure(tipo, year, minLeft, reserveCount){
-  let inflightKey = null;
-  try{
-    tipo = String(tipo || "RP").toUpperCase();
-    year = Number(year) || (new Date().getFullYear());
-    minLeft = Number(minLeft || 5) || 5;
-    reserveCount = Number(reserveCount || 20) || 20;
-
-    if(!__isApiConfigured()) return false;
-    if(!navigator.onLine) return false;
-
-    const token = (typeof __tokenGet === "function") ? __tokenGet() : null;
-    if(!token) return false;
-
-    inflightKey = tipo + "_" + String(year);
-    if(__CODES_INFLIGHT[inflightKey]) return true;
-    if(__codesPoolCount(tipo, year) > minLeft) return true;
-
-    __CODES_INFLIGHT[inflightKey] = true;
-
-    const out = await __api(`/codes/reserve?tipo=${encodeURIComponent(tipo)}&year=${encodeURIComponent(String(year))}&count=${encodeURIComponent(String(reserveCount))}`,
-      { method:"GET", token: token }
-    );
-
-    if(!out.res || !out.res.ok || !out.data || out.data.ok !== true) return false;
-
-    const codes = Array.isArray(out.data.codes) ? out.data.codes : [];
-    if(!codes.length) return false;
-
-    const { p, arr, y } = __codesPoolGetArr(tipo, year);
-    // merge sin duplicar
-    const set = new Set(arr.map(x=>String(x)));
-    for(const c of codes){
-      const s = String(c || "").trim();
-      if(s && !set.has(s)){
-        arr.push(s);
-        set.add(s);
-      }
-    }
-    p[tipo][y] = arr;
-    __codesPoolSave(p);
-    return true;
-  }catch(e){
-    return false;
-  }finally{
-    try{ if(inflightKey) __CODES_INFLIGHT[inflightKey] = false; }catch(_e){}
-  }
-}
-
-function __codesPrewarm(){
-  try{
-    const y = new Date().getFullYear();
-    // reserva base para el año actual (sube el pool para trabajar offline sin duplicar)
-    setTimeout(()=>{ __codesPoolEnsure("RP", y, 5, 20); }, 50);
-  }catch(e){}
-}
-
 function generarCodigoRP() {
   // Año según la fecha del peligro (si existe), si no: año actual
   let fechaPeligro = document.getElementById("fechaPeligroRP")?.value || "";
@@ -3536,15 +3438,40 @@ function generarCodigoRP() {
     year = new Date().getFullYear();
   }
 
-  // 1) Tomar de pool (servidor) para evitar duplicados entre equipos
-  const pooled = __codesPoolTake("RP", year);
-  if(pooled) return pooled;
+  // Calcular correlativo a partir de emergencias existentes (local + lo jalado del servidor)
+  const arr = Array.isArray(emergencias) ? emergencias : (__loadEmergencias ? __loadEmergencias() : []);
+  let maxSeq = 0;
+  for (const e of arr) {
+    const c = String(e?.codigo || "").trim();
+    const m = /^RP-(\d+)-(\d{4})$/i.exec(c);
+    if (!m) continue;
+    const n = parseInt(m[1], 10);
+    const y = parseInt(m[2], 10);
+    if (y === year && Number.isFinite(n) && n > maxSeq) maxSeq = n;
+  }
 
-  // 2) Intentar reservar en segundo plano (no bloquea)
-  try{ if(navigator.onLine) __codesPoolEnsure("RP", year, 5, 20); }catch(e){}
+  // Respaldo local (evita que Admin/Registrador repitan código en el mismo equipo si están sin sincronizar)
+  try{
+    const k = "rp_seq_" + String(year);
+    const v = Number(__lsGet ? (__lsGet(k) || "0") : "0") || 0;
+    if(v > maxSeq) maxSeq = v;
+  }catch(e){}
 
-  // 3) No generamos local (evita duplicados). Forzamos a sincronizar / estar online.
-  return "";
+  // Siguiente correlativo y aseguramos que no exista ya (por si hay duplicados locales)
+  let next = maxSeq + 1;
+  while (true) {
+    const width = Math.max(2, String(next).length);
+    const correl = String(next).padStart(width, "0");
+    const code = `RP-${correl}-${year}`;
+    try{
+      if (typeof __findEmergIdxByCodigo === "function" && __findEmergIdxByCodigo(code) !== -1) { next++; continue; }
+    }catch(e){}
+    try{
+      const k = "rp_seq_" + String(year);
+      if(__lsSet) __lsSet(k, String(next));
+    }catch(e){}
+    return code;
+  }
 }
 
 // ===================== DAÑOS RP =====================
@@ -3980,11 +3907,6 @@ function __saveRP(opts){
     codigoActual = generarCodigoRP();
     const c = document.getElementById("codigoRP");
     if(c) c.value = codigoActual;
-
-    if(!codigoActual){
-      alert("Conéctate y sincroniza para reservar más códigos");
-      return null;
-    }
   }
 
   // Buscar existente
@@ -8478,9 +8400,6 @@ async function __bootstrapAuth(){
     __applyRoleAccess();
     try{ __initAppData(); }catch(e){}
 
-    // Pre-reservar códigos RP (evita duplicados entre equipos incluso trabajando offline)
-    try{ __codesPrewarm(); }catch(e){}
-
     // Auto pull al iniciar
     setTimeout(function(){ __syncPullAuto(); }, 250);
 
@@ -8987,6 +8906,12 @@ async function __syncAll(){
 
 async function __syncPullAuto(){
   try{
+    // Evitar múltiples pulls en paralelo / en bucle
+    if(window.__SYNC_PULL_AUTO_INFLIGHT) return;
+    const now = Date.now();
+    // throttle: no más de 1 pull cada 4s (por pestañas/timers duplicados)
+    if(window.__SYNC_PULL_AUTO_LAST && (now - window.__SYNC_PULL_AUTO_LAST) < 4000) return;
+
     if(!__isApiConfigured()){
       __updateSyncUI(0);
       return;
@@ -8997,14 +8922,20 @@ async function __syncPullAuto(){
       return;
     }
 
+    window.__SYNC_PULL_AUTO_INFLIGHT = true;
+    window.__SYNC_PULL_AUTO_LAST = now;
+
     await __syncPull(__getLastPull());
     await __calcPending();
 
   }catch(e){
     // silencioso
     __updateSyncUI(0);
+  } finally {
+    window.__SYNC_PULL_AUTO_INFLIGHT = false;
   }
 }
+
 
 
 // ===================== SEGUIMIENTO REPORTES (ADMIN) =====================
@@ -10137,10 +10068,13 @@ document.addEventListener('DOMContentLoaded', async function(){
 
   // Auto-actualización de estados en Lista (evita que el Registrador vea 'no aprobado' por rato)
   try{
-    setInterval(()=>{
-      const isActive = document.querySelector('a[href="#listaTab"]')?.classList.contains("active");
-      if(isActive) __syncPullAuto();
-    }, 15000);
+    // Evitar múltiples timers si el init se ejecuta más de una vez (por cambios de sesión/UI)
+    if(!window.__LISTA_AUTOPULL_TIMER){
+      window.__LISTA_AUTOPULL_TIMER = setInterval(()=>{
+        const isActive = document.querySelector('a[href="#listaTab"]')?.classList.contains("active");
+        if(isActive) __syncPullAuto();
+      }, 15000);
+    }
   }catch(e){}
 
 
