@@ -8705,32 +8705,24 @@ async function __syncAll(){
 }
 
 async function __syncPullAuto(){
-  // Candado anti-bucle: evita múltiples Pull simultáneos y limita la frecuencia.
   try{
-    if(window.__PULL_AUTO_INFLIGHT) return;
+    // Auto-pull guard (anti-bucle / anti-ráfaga)
+    window.__PULL_AUTO_MIN_GAP_MS = window.__PULL_AUTO_MIN_GAP_MS || 20000; // 20s
     const now = Date.now();
     const last = window.__PULL_AUTO_LAST || 0;
-    // mínimo 5s entre auto-pulls (evita spam por listeners duplicados)
-    if(now - last < 5000) return;
+    if(window.__PULL_AUTO_INFLIGHT) return;
+    if(last && (now - last) < window.__PULL_AUTO_MIN_GAP_MS) return;
+
+    if(!__isApiConfigured()){ __updateSyncUI(0); return; }
+    if(!navigator.onLine){ __updateSyncUI(0); return; }
 
     window.__PULL_AUTO_INFLIGHT = true;
     window.__PULL_AUTO_LAST = now;
-
-    if(!__isApiConfigured()){
-      __updateSyncUI(0);
-      return;
-    }
-    // No forzar si no hay internet
-    if(!navigator.onLine){
-      __updateSyncUI(0);
-      return;
-    }
 
     await __syncPull(__getLastPull());
     await __calcPending();
 
   }catch(e){
-    // silencioso
     __updateSyncUI(0);
   } finally {
     window.__PULL_AUTO_INFLIGHT = false;
@@ -9867,12 +9859,15 @@ document.addEventListener('DOMContentLoaded', async function(){
   }catch(e){}
 
   // Auto-actualización de estados en Lista (evita que el Registrador vea 'no aprobado' por rato)
-  try{
-    setInterval(()=>{
+// Guard: evitar duplicar el timer si el script se inicializa más de una vez
+try{
+  if(!window.__LISTA_AUTOPULL_TIMER){
+    window.__LISTA_AUTOPULL_TIMER = setInterval(()=>{
       const isActive = document.querySelector('a[href="#listaTab"]')?.classList.contains("active");
       if(isActive) __syncPullAuto();
     }, 15000);
-  }catch(e){}
+  }
+}catch(e){}
 
 
   // Exportar Excel (Lista de Emergencias) - solo Admin/Registrador (botón ya está oculto por rol)
