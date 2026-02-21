@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-<!-- BUILD: 2026-02-20 autopull-cooldown-v3 -->
+<!-- BUILD: 2026-02-20 autopull-cooldown-v140 -->
 <script>window.__BUILD_ID='2026-02-20 autopull-cooldown-v3';console.log('BUILD',window.__BUILD_ID);</script>
 
 <!-- build: VER_PRINT_RC_ALWAYS_VISIBLE v4 2026-01-11 -->
@@ -4149,7 +4149,7 @@ document.getElementById("btnGuardarEnviarRP").onclick = async () => {
 // Archivo: cobertura_programas.json (se reemplaza bimensualmente)
 window.__COBERTURA_PROGRAMAS_CACHE = window.__COBERTURA_PROGRAMAS_CACHE || null;
 
-async function __loadCoberturaProgramas(){
+async async function __loadCoberturaProgramas(){
   // Cache en memoria para no hacer múltiples fetch
   if(window.__COBERTURA_PROGRAMAS_CACHE) return window.__COBERTURA_PROGRAMAS_CACHE;
   const url = 'cobertura_programas.json?v=' + Date.now(); // bust cache
@@ -4165,11 +4165,22 @@ function __normKey(s){
   return (s===null||s===undefined) ? '' : String(s).trim().toUpperCase();
 }
 
-async function __getCoberturaRow(em){
+function __normKeyCobertura(s){
+  // Normaliza para matching (sin tildes, espacios homogéneos)
+  if(s===null||s===undefined) return '';
+  return String(s)
+    .trim()
+    .toUpperCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g,'')
+    .replace(/\s+/g,' ');
+}
+
+async async function __getCoberturaRow(em){
   if(!em) return null;
-  const dep = __normKey(em.departamento);
-  const prov = __normKey(em.provincia);
-  const dist = __normKey(em.distrito);
+  const dep = __normKeyCobertura(em.departamento);
+  const prov = __normKeyCobertura(em.provincia);
+  const dist = __normKeyCobertura(em.distrito);
   const ubigeo = String(em.ubigeo || em.codigoUbigeo || em.codUbigeo || em.ubigeoDistrito || '').trim();
 
   const data = await __loadCoberturaProgramas();
@@ -4183,11 +4194,11 @@ async function __getCoberturaRow(em){
   }
 
   // 2) Match por Depto + Provincia + Distrito (evita homónimos)
-  const r2 = rows.find(x => __normKey(x && x.departamento)===dep && __normKey(x && x.provincia)===prov && __normKey(x && x.distrito)===dist);
+  const r2 = rows.find(x => __normKeyCobertura(x && x.departamento)===dep && __normKeyCobertura(x && x.provincia)===prov && __normKeyCobertura(x && x.distrito)===dist);
   return r2 || null;
 }
 
-async function __renderCoberturaAnexo(em, containerId){
+async async function __renderCoberturaAnexo(em, containerId){
   try{
     const el = document.getElementById(containerId);
     if(!el) return;
