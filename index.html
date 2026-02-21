@@ -4143,6 +4143,108 @@ document.getElementById("btnGuardarEnviarRP").onclick = async () => {
   }
 };
 
+
+
+// ===================== COBERTURA PROGRAMAS (ANEXO JSON, SIN BD) =====================
+// Archivo: cobertura_programas.json (se reemplaza bimensualmente)
+window.__COBERTURA_PROGRAMAS_CACHE = window.__COBERTURA_PROGRAMAS_CACHE || null;
+
+async function __loadCoberturaProgramas(){
+  // Cache en memoria para no hacer múltiples fetch
+  if(window.__COBERTURA_PROGRAMAS_CACHE) return window.__COBERTURA_PROGRAMAS_CACHE;
+  const url = 'cobertura_programas.json?v=' + Date.now(); // bust cache
+  const res = await fetch(url, { cache: 'no-store' });
+  if(!res.ok) throw new Error('No se pudo cargar cobertura_programas.json');
+  const data = await res.json();
+  // Esperado: { version, labels, rows }
+  window.__COBERTURA_PROGRAMAS_CACHE = data;
+  return data;
+}
+
+function __normKey(s){
+  return (s===null||s===undefined) ? '' : String(s).trim().toUpperCase();
+}
+
+async function __getCoberturaRow(em){
+  if(!em) return null;
+  const dep = __normKey(em.departamento);
+  const prov = __normKey(em.provincia);
+  const dist = __normKey(em.distrito);
+  const ubigeo = String(em.ubigeo || em.codigoUbigeo || em.codUbigeo || em.ubigeoDistrito || '').trim();
+
+  const data = await __loadCoberturaProgramas();
+  const rows = (data && Array.isArray(data.rows)) ? data.rows : [];
+  if(!rows.length) return null;
+
+  // 1) Si hay ubigeo, es la mejor llave
+  if(ubigeo){
+    const r = rows.find(x => x && String(x.ubigeo||'').trim() === ubigeo);
+    if(r) return r;
+  }
+
+  // 2) Match por Depto + Provincia + Distrito (evita homónimos)
+  const r2 = rows.find(x => __normKey(x && x.departamento)===dep && __normKey(x && x.provincia)===prov && __normKey(x && x.distrito)===dist);
+  return r2 || null;
+}
+
+async function __renderCoberturaAnexo(em, containerId){
+  try{
+    const el = document.getElementById(containerId);
+    if(!el) return;
+    el.innerHTML = '<div class="text-muted"><em>Cargando anexo de cobertura…</em></div>';
+
+    const data = await __loadCoberturaProgramas();
+    const labels = (data && data.labels) ? data.labels : {};
+    const version = (data && data.version) ? data.version : '';
+
+    const row = await __getCoberturaRow(em);
+    if(!row){
+      el.innerHTML = '<div class="mt-2">'
+        + '<div class="ver-section-title" style="margin-top:8px">Anexo: Cobertura de los Programas Nacionales + Distrito – Departamento</div>'
+        + '<em>No se encontró coincidencia para ' + (em.departamento||'') + ' / ' + (em.provincia||'') + ' / ' + (em.distrito||'') + '.</em>'
+        + (version ? ('<div class="text-muted" style="font-size:12px">Fuente: cobertura_programas.json (v' + version + ')</div>') : '')
+        + '</div>';
+      return;
+    }
+
+    const dep = (row.departamento||em.departamento||'');
+    const prov = (row.provincia||em.provincia||'');
+    const dist = (row.distrito||em.distrito||'');
+    const ub = (row.ubigeo||'');
+
+    const labelKeys = Object.keys(labels || {});
+    const useKeys = labelKeys.length ? labelKeys : Object.keys((row.cobertura||{}));
+
+    let html = '<div class="mt-2">'
+      + '<div class="ver-section-title" style="margin-top:8px">Anexo: Cobertura de los Programas Nacionales + Distrito – Departamento</div>'
+      + '<div class="text-muted" style="font-size:12px;margin-bottom:6px">'
+      + dep + ' / ' + prov + ' / ' + dist + (ub ? (' (UBIGEO ' + ub + ')') : '')
+      + (version ? (' — Fuente: cobertura_programas.json (v' + version + ')') : '')
+      + '</div>'
+      + '<div class="table-responsive">'
+      + '<table class="table table-sm table-bordered" style="font-size:12.5px">'
+      + '<thead><tr><th style="width:70%">Programa / Indicador</th><th style="width:30%">Valor</th></tr></thead>'
+      + '<tbody>';
+
+    useKeys.forEach(k=>{
+      const lbl = (labels && labels[k]) ? labels[k] : k;
+      const val = (row.cobertura && row.cobertura[k]!==undefined && row.cobertura[k]!==null) ? row.cobertura[k] : 0;
+      html += '<tr><td>' + lbl + '</td><td style="text-align:right">' + val + '</td></tr>';
+    });
+
+    html += '</tbody></table></div></div>';
+    el.innerHTML = html;
+
+    window.__VER_COBERTURA_CTX = { row, labels, version };
+  }catch(err){
+    console.error(err);
+    try{
+      const el = document.getElementById(containerId);
+      if(el) el.innerHTML = '<div class="text-danger"><strong>Anexo:</strong> No se pudo cargar cobertura_programas.json.</div>';
+    }catch(_e){}
+  }
+}
+
 // ===================== FUNCIÓN VER EMERGENCIA CERRADA =====================
 function verEmergencia(e) {
   const cont = document.getElementById("contenidoVerEmergencia");
@@ -4340,9 +4442,21 @@ function verEmergencia(e) {
   }
   html += `</div>`;
 
+  // Anexo (Cobertura) debajo de Nros globales anteriores (solo emergencia cerrada)
+  if(isCerrada){
+    html += `<div id="ver_anexo_cobertura"></div>`;
+  }
+
   html += `</div>`;
 
   cont.innerHTML = html;
+
+  // Renderizar Anexo de Cobertura (fetch JSON, sin BD)
+  try{
+    if(isCerrada){
+      __renderCoberturaAnexo(e, 'ver_anexo_cobertura');
+    }
+  }catch(_e){}
 
 // Configurar impresión RC (PDF) en el footer del modal (siempre visible)
 try{
@@ -4852,7 +4966,21 @@ async function __verToWord(){
     const e = ctx && ctx.e ? ctx.e : window.__VER_EMERG_ACTUAL;
     if(!e){ alert('No hay emergencia seleccionada.'); return; }
 
-    if(!window.docx){
+    
+
+    // Cobertura (Anexo) desde JSON (sin BD)
+    let __covRow = null;
+    let __covLabels = {};
+    let __covVersion = '';
+    try{
+      const __covData = await __loadCoberturaProgramas();
+      __covLabels = (__covData && __covData.labels) ? __covData.labels : {};
+      __covVersion = (__covData && __covData.version) ? __covData.version : '';
+      __covRow = await __getCoberturaRow(e);
+    }catch(_e){
+      __covRow = null;
+    }
+if(!window.docx){
       alert('No se pudo cargar el generador Word. Verifique su conexión a internet.');
       return;
     }
