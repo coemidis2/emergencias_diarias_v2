@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-<!-- BUILD: 2026-02-20 autopull-cooldown-v142 -->
+<!-- BUILD: 2026-02-20 autopull-cooldown-v143 -->
 <script>window.__BUILD_ID='2026-02-20 autopull-cooldown-v3';console.log('BUILD',window.__BUILD_ID);</script>
 
 <!-- build: VER_PRINT_RC_ALWAYS_VISIBLE v4 2026-01-11 -->
@@ -4264,7 +4264,7 @@ function verEmergencia(e) {
   window.__VER_EMERG_ACTUAL = e;
   const rcList = __getRCList(e);
 
-  const isCerrada = !!e.cerrada;
+  const isCerrada = !!(e && (e.cerrada || String(e.cierreEstado||"").trim()==="Aprobado"));
   const isConsulta = (typeof currentUser !== "undefined" && currentUser && currentUser.role === __ROLES.CONS);
 
   // ===== Formato unificado (RP + RC) solicitado para Ver/PDF =====
@@ -4272,7 +4272,7 @@ function verEmergencia(e) {
   const __txt = (v)=> __safe(v).replace(/\r\n/g,"\n");
 
   const lastRC = (Array.isArray(rcList) && rcList.length) ? rcList[rcList.length - 1] : null;
-  const estadoTxt = e.cerrada ? "Cerrada" : "Abierta";
+  const estadoTxt = isCerrada ? "Cerrada" : "Abierta";
 
   const peligroTxt = __safe(e.peligro).trim();
   const distritoTxt = __safe(e.distrito).trim();
@@ -4465,7 +4465,7 @@ function verEmergencia(e) {
   // Renderizar Anexo de Cobertura (fetch JSON, sin BD)
   try{
     if(isCerrada){
-      __renderCoberturaAnexo(e, 'ver_anexo_cobertura');
+      window.__VER_COBERTURA_PROMISE = __renderCoberturaAnexo(e, 'ver_anexo_cobertura');
     }
   }catch(_e){}
 
@@ -4474,6 +4474,8 @@ try{
   const isAdmin = (typeof __isAdmin === "function" ? __isAdmin() : (typeof __isAdministrador === "function" ? __isAdministrador() : false));
 
     const isRegOrCons = (typeof currentUser !== "undefined" && currentUser && (currentUser.role === __ROLES.REG || currentUser.role === __ROLES.CONS));
+
+
 
     // Botón Word (solo Administrador y Registrador)
     try{
@@ -4654,13 +4656,30 @@ function __buildRCLecturaHtml(em, opts){
   }
 }
 
-function __printRC_PDF(idxOpt){
+async function __printRC_PDF(idxOpt){
   try{
     const e = window.__VER_EMERG_ACTUAL;
     if(!e){ alert("No hay emergencia seleccionada."); return; }
 
     const isAdmin = (typeof __isAdmin === "function" ? __isAdmin() : (typeof __isAdministrador === "function" ? __isAdministrador() : false));
     const isRegOrCons = (typeof currentUser !== "undefined" && currentUser && (currentUser.role === __ROLES.REG || currentUser.role === __ROLES.CONS));
+
+    const isCerrada = !!(e && (e.cerrada || String(e.cierreEstado||"").trim()==="Aprobado"));
+
+    // Asegurar que el Anexo de Cobertura esté cargado antes de clonar/imprimir
+    try{
+      if(isCerrada){
+        if(window.__VER_COBERTURA_PROMISE){
+          await window.__VER_COBERTURA_PROMISE;
+        }else{
+          const _el = document.getElementById('ver_anexo_cobertura');
+          if(_el){
+            window.__VER_COBERTURA_PROMISE = __renderCoberturaAnexo(e, 'ver_anexo_cobertura');
+            await window.__VER_COBERTURA_PROMISE;
+          }
+        }
+      }
+    }catch(_e){}
 
     // === Solo Administrador: imprimir RP + RC con un solo botón ===
     if(isAdmin || isRegOrCons){
@@ -4977,19 +4996,21 @@ async function __verToWord(){
     const e = ctx && ctx.e ? ctx.e : window.__VER_EMERG_ACTUAL;
     if(!e){ alert('No hay emergencia seleccionada.'); return; }
 
-    
+    const __isCerradaWord = !!(e && (e.cerrada || String(e.cierreEstado||\"\").trim()===\"Aprobado\"));
 
     // Cobertura (Anexo) desde JSON (sin BD)
     let __covRow = null;
     let __covLabels = {};
     let __covVersion = '';
-    try{
-      const __covData = await __loadCoberturaProgramas();
-      __covLabels = (__covData && __covData.labels) ? __covData.labels : {};
-      __covVersion = (__covData && __covData.version) ? __covData.version : '';
-      __covRow = await __getCoberturaRow(e);
-    }catch(_e){
-      __covRow = null;
+    if(__isCerradaWord){
+      try{
+        const __covData = await __loadCoberturaProgramas();
+        __covLabels = (__covData && __covData.labels) ? __covData.labels : {};
+        __covVersion = (__covData && __covData.version) ? __covData.version : '';
+        __covRow = await __getCoberturaRow(e);
+      }catch(_e){
+        __covRow = null;
+      }
     }
 if(!window.docx){
       alert('No se pudo cargar el generador Word. Verifique su conexión a internet.');
@@ -5008,7 +5029,7 @@ if(!window.docx){
 
     const rcList = (ctx && Array.isArray(ctx.rcList)) ? ctx.rcList : __getRCList(e);
     const lastRC = (ctx && ctx.lastRC!==undefined) ? ctx.lastRC : (rcList && rcList.length ? rcList[rcList.length-1] : null);
-    const estadoTxt = (ctx && ctx.estadoTxt) ? ctx.estadoTxt : (e.cerrada ? 'Cerrada' : 'Abierta');
+    const estadoTxt = (ctx && ctx.estadoTxt) ? ctx.estadoTxt : (__isCerradaWord ? 'Cerrada' : 'Abierta');
 
     const peligroTxt = safe(e.peligro).trim();
     const distritoTxt = safe(e.distrito).trim();
@@ -5216,6 +5237,53 @@ if(!window.docx){
       new TextRun({ text:'Nros globales anteriores: ', bold: true, font:'Calibri', size: 22 }),
       new TextRun({ text: rcHist, font:'Calibri', size: 22 })
     ] }));
+
+
+// Anexo: Cobertura de los Programas (solo emergencia cerrada) — leído desde cobertura_programas.json (sin BD)
+if(__isCerradaWord){
+  children.push(new Paragraph({ spacing:{ before: 180, after: 60 }, children:[
+    new TextRun({ text:'Anexo: Cobertura de los Programas Nacionales + Distrito – Departamento', bold: true, font:'Calibri', size: 22 })
+  ] }));
+
+  if(__covRow && __covRow.cobertura){
+    const dep = safe(__covRow.departamento || e.departamento || '');
+    const prov = safe(__covRow.provincia || e.provincia || '');
+    const dist = safe(__covRow.distrito || e.distrito || '');
+    const ub = safe(__covRow.ubigeo || '');
+    const fuente = (__covVersion ? (`Fuente: cobertura_programas.json (v${__covVersion})`) : 'Fuente: cobertura_programas.json');
+    const ubTxt = `${dep} / ${prov} / ${dist}${ub ? ` (UBIGEO ${ub})` : ''}${fuente ? ` — ${fuente}` : ''}`;
+
+    children.push(new Paragraph({ spacing:{ after: 60 }, children:[
+      new TextRun({ text: ubTxt, font:'Calibri', size: 18, color:'666666' })
+    ] }));
+
+    const labelKeys = Object.keys(__covLabels || {});
+    const useKeys = labelKeys.length ? labelKeys : Object.keys((__covRow.cobertura || {}));
+
+    const rows = [];
+    rows.push(new TableRow({ children:[
+      new TableCell({ children:[ new Paragraph({ children:[ new TextRun({ text:'Programa / Indicador', bold:true, font:'Calibri', size:22 }) ] }) ] }),
+      new TableCell({ children:[ new Paragraph({ alignment: AlignmentType.RIGHT, children:[ new TextRun({ text:'Valor', bold:true, font:'Calibri', size:22 }) ] }) ] })
+    ] }));
+
+    useKeys.forEach(k=>{
+      const lbl = (__covLabels && __covLabels[k]) ? __covLabels[k] : k;
+      const val = (__covRow.cobertura && __covRow.cobertura[k]!==undefined && __covRow.cobertura[k]!==null) ? __covRow.cobertura[k] : 0;
+      rows.push(new TableRow({ children:[
+        new TableCell({ children:[ new Paragraph({ children:[ new TextRun({ text: safe(lbl), font:'Calibri', size:22 }) ] }) ] }),
+        new TableCell({ children:[ new Paragraph({ alignment: AlignmentType.RIGHT, children:[ new TextRun({ text: safe(val), font:'Calibri', size:22 }) ] }) ] })
+      ] }));
+    });
+
+    children.push(new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, rows }));
+  }else{
+    const dep = safe(e.departamento || '');
+    const prov = safe(e.provincia || '');
+    const dist = safe(e.distrito || '');
+    const msg = `No se encontró coincidencia para ${dep} / ${prov} / ${dist}.`;
+    children.push(new Paragraph({ children:[ new TextRun({ text: msg, font:'Calibri', size: 22, italics: true }) ] }));
+  }
+}
 
     // Anexo: Cobertura de Programas (solo emergencia cerrada) — leído desde cobertura_programas.json (sin BD)
     if(!!e.cerrada){
