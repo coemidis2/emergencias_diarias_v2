@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-<!-- BUILD: 2026-02-20 autopull-cooldown-v143 -->
+<!-- BUILD: 2026-02-20 autopull-cooldown-v144 -->
 <script>window.__BUILD_ID='2026-02-20 autopull-cooldown-v3';console.log('BUILD',window.__BUILD_ID);</script>
 
 <!-- build: VER_PRINT_RC_ALWAYS_VISIBLE v4 2026-01-11 -->
@@ -4453,10 +4453,8 @@ function verEmergencia(e) {
   }
   html += `</div>`;
 
-  // Anexo (Cobertura) debajo de Nros globales anteriores (solo emergencia cerrada)
-  if(isCerrada){
-    html += `<div id="ver_anexo_cobertura"></div>`;
-  }
+  // Anexo (Cobertura) debajo de Nros globales anteriores (Abiertas y Cerradas)
+  html += `<div id="ver_anexo_cobertura"></div>`;
 
   html += `</div>`;
 
@@ -4464,9 +4462,7 @@ function verEmergencia(e) {
 
   // Renderizar Anexo de Cobertura (fetch JSON, sin BD)
   try{
-    if(isCerrada){
-      window.__VER_COBERTURA_PROMISE = __renderCoberturaAnexo(e, 'ver_anexo_cobertura');
-    }
+    window.__VER_COBERTURA_PROMISE = __renderCoberturaAnexo(e, 'ver_anexo_cobertura');
   }catch(_e){}
 
 // Configurar impresión RC (PDF) en el footer del modal (siempre visible)
@@ -4668,15 +4664,13 @@ async function __printRC_PDF(idxOpt){
 
     // Asegurar que el Anexo de Cobertura esté cargado antes de clonar/imprimir
     try{
-      if(isCerrada){
-        if(window.__VER_COBERTURA_PROMISE){
+      if(window.__VER_COBERTURA_PROMISE){
+        await window.__VER_COBERTURA_PROMISE;
+      }else{
+        const _el = document.getElementById('ver_anexo_cobertura');
+        if(_el){
+          window.__VER_COBERTURA_PROMISE = __renderCoberturaAnexo(e, 'ver_anexo_cobertura');
           await window.__VER_COBERTURA_PROMISE;
-        }else{
-          const _el = document.getElementById('ver_anexo_cobertura');
-          if(_el){
-            window.__VER_COBERTURA_PROMISE = __renderCoberturaAnexo(e, 'ver_anexo_cobertura');
-            await window.__VER_COBERTURA_PROMISE;
-          }
         }
       }
     }catch(_e){}
