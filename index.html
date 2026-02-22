@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-<!-- BUILD: 2026-02-20 autopull-cooldown-v148 -->
+<!-- BUILD: 2026-02-20 autopull-cooldown-v149 -->
 <script>window.__BUILD_ID='2026-02-20 autopull-cooldown-v3';console.log('BUILD',window.__BUILD_ID);</script>
 
 <!-- build: VER_PRINT_RC_ALWAYS_VISIBLE v4 2026-01-11 -->
@@ -4211,7 +4211,7 @@ async function __renderCoberturaAnexo(em, containerId){
     const row = await __getCoberturaRow(em);
     if(!row){
       el.innerHTML = '<div class="mt-2">'
-        + '<div class="ver-section-title" style="margin-top:8px">Anexo: Cobertura de los Programas Nacionales</div>'
+        + '<div class="ver-section-title" style="margin-top:8px">Anexo 1: Cobertura de los Programas Nacionales</div>'
         + '<em>No se encontró coincidencia para ' + (em.departamento||'') + ' / ' + (em.provincia||'') + ' / ' + (em.distrito||'') + '.</em>'
         + (version ? ('<div class="text-muted" style="font-size:12px">Fuente: InfoMidis (v' + version + ')</div>') : '')
         + '</div>';
@@ -4227,10 +4227,10 @@ async function __renderCoberturaAnexo(em, containerId){
     const useKeys = labelKeys.length ? labelKeys : Object.keys((row.cobertura||{}));
 
     let html = '<div class="mt-2">'
-      + '<div class="ver-section-title" style="margin-top:8px">Anexo: Cobertura de los Programas Nacionales + Distrito – Departamento</div>'
+      + '<div class="ver-section-title" style="margin-top:8px">Anexo 1: Cobertura de los Programas Nacionales</div>'
       + '<div class="text-muted" style="font-size:12px;margin-bottom:6px">'
       + dep + ' / ' + prov + ' / ' + dist + (ub ? (' (UBIGEO ' + ub + ')') : '')
-      + (version ? (' — Fuente: cobertura_programas.json (v' + version + ')') : '')
+      + (version ? (' — Fuente: InfoMidis (v' + version + ')') : '')
       + '</div>'
       + '<div class="table-responsive">'
       + '<table class="table table-sm table-bordered" style="font-size:12.5px">'
@@ -4251,7 +4251,7 @@ async function __renderCoberturaAnexo(em, containerId){
     console.error(err);
     try{
       const el = document.getElementById(containerId);
-      if(el) el.innerHTML = '<div class="text-danger"><strong>Anexo:</strong> No se pudo cargar cobertura_programas.json.</div>';
+      if(el) el.innerHTML = '<div class="text-danger"><strong>Anexo 1:</strong> No se pudo cargar cobertura_programas.json.</div>';
     }catch(_e){}
   }
 }
@@ -5242,7 +5242,7 @@ if(!window.docx){
 // Anexo: Cobertura de los Programas (abiertas y cerradas) — leído desde cobertura_programas.json (sin BD)
 if(true){
   children.push(new Paragraph({ spacing:{ before: 180, after: 60 }, children:[
-    new TextRun({ text:'Anexo: Cobertura de los Programas Nacionales + Distrito – Departamento', bold: true, font:'Calibri', size: 22 })
+    new TextRun({ text:'Anexo 1: Cobertura de los Programas Nacionales', bold: true, font:'Calibri', size: 22 })
   ] }));
 
   if(__covRow && __covRow.cobertura){
