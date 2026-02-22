@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-<!-- BUILD: 2026-02-20 autopull-cooldown-v144 -->
+<!-- BUILD: 2026-02-20 autopull-cooldown-v145 -->
 <script>window.__BUILD_ID='2026-02-20 autopull-cooldown-v3';console.log('BUILD',window.__BUILD_ID);</script>
 
 <!-- build: VER_PRINT_RC_ALWAYS_VISIBLE v4 2026-01-11 -->
@@ -3731,7 +3731,7 @@ function __lockRPForm(locked){
       if(!b) return;
 
       // Admin: siempre habilitado (evita que queden botones "pegados" en disabled por un lock previo)
-      if(isAdmin || isRegOrCons){
+      if(isAdmin){
         b.disabled = false;
         return;
       }
@@ -4453,8 +4453,10 @@ function verEmergencia(e) {
   }
   html += `</div>`;
 
-  // Anexo (Cobertura) debajo de Nros globales anteriores (Abiertas y Cerradas)
-  html += `<div id="ver_anexo_cobertura"></div>`;
+  // Anexo (Cobertura) debajo de Nros globales anteriores (solo emergencia cerrada)
+  if(isCerrada){
+    html += `<div id="ver_anexo_cobertura"></div>`;
+  }
 
   html += `</div>`;
 
@@ -4462,7 +4464,9 @@ function verEmergencia(e) {
 
   // Renderizar Anexo de Cobertura (fetch JSON, sin BD)
   try{
-    window.__VER_COBERTURA_PROMISE = __renderCoberturaAnexo(e, 'ver_anexo_cobertura');
+    if(isCerrada){
+      window.__VER_COBERTURA_PROMISE = __renderCoberturaAnexo(e, 'ver_anexo_cobertura');
+    }
   }catch(_e){}
 
 // Configurar impresión RC (PDF) en el footer del modal (siempre visible)
@@ -4490,7 +4494,7 @@ try{
   const btnDrop = document.getElementById("btnPrintRCDrop");
   const menu = document.getElementById("menuPrintRC");
 
-  if(isAdmin || isRegOrCons){
+  if(isAdmin){
     if(btnLast){
       btnLast.disabled = !hasPrintable;
       btnLast.title = "Imprimir RP y RC (PDF)";
@@ -4664,19 +4668,21 @@ async function __printRC_PDF(idxOpt){
 
     // Asegurar que el Anexo de Cobertura esté cargado antes de clonar/imprimir
     try{
-      if(window.__VER_COBERTURA_PROMISE){
-        await window.__VER_COBERTURA_PROMISE;
-      }else{
-        const _el = document.getElementById('ver_anexo_cobertura');
-        if(_el){
-          window.__VER_COBERTURA_PROMISE = __renderCoberturaAnexo(e, 'ver_anexo_cobertura');
+      if(isCerrada){
+        if(window.__VER_COBERTURA_PROMISE){
           await window.__VER_COBERTURA_PROMISE;
+        }else{
+          const _el = document.getElementById('ver_anexo_cobertura');
+          if(_el){
+            window.__VER_COBERTURA_PROMISE = __renderCoberturaAnexo(e, 'ver_anexo_cobertura');
+            await window.__VER_COBERTURA_PROMISE;
+          }
         }
       }
     }catch(_e){}
 
     // === Solo Administrador: imprimir RP + RC con un solo botón ===
-    if(isAdmin || isRegOrCons){
+    if(isAdmin){
       const contSrc = document.getElementById("contenidoVerEmergencia");
       if(!contSrc){ alert("No se encontró el contenido para imprimir."); return; }
 
@@ -4990,7 +4996,7 @@ async function __verToWord(){
     const e = ctx && ctx.e ? ctx.e : window.__VER_EMERG_ACTUAL;
     if(!e){ alert('No hay emergencia seleccionada.'); return; }
 
-    const __isCerradaWord = !!(e && (e.cerrada || String(e.cierreEstado||\"\").trim()===\"Aprobado\"));
+    const __isCerradaWord = !!(e && (e.cerrada || String(e.cierreEstado||"").trim()==="Aprobado"));
 
     // Cobertura (Anexo) desde JSON (sin BD)
     let __covRow = null;
