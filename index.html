@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-<!-- BUILD: 2026-02-20 autopull-cooldown-v145 -->
+<!-- BUILD: 2026-02-20 autopull-cooldown-v146 -->
 <script>window.__BUILD_ID='2026-02-20 autopull-cooldown-v3';console.log('BUILD',window.__BUILD_ID);</script>
 
 <!-- build: VER_PRINT_RC_ALWAYS_VISIBLE v4 2026-01-11 -->
@@ -4453,8 +4453,8 @@ function verEmergencia(e) {
   }
   html += `</div>`;
 
-  // Anexo (Cobertura) debajo de Nros globales anteriores (solo emergencia cerrada)
-  if(isCerrada){
+  // Anexo (Cobertura) debajo de Nros globales anteriores (abiertas y cerradas)
+  if(true){
     html += `<div id="ver_anexo_cobertura"></div>`;
   }
 
@@ -4464,7 +4464,7 @@ function verEmergencia(e) {
 
   // Renderizar Anexo de Cobertura (fetch JSON, sin BD)
   try{
-    if(isCerrada){
+    if(true){
       window.__VER_COBERTURA_PROMISE = __renderCoberturaAnexo(e, 'ver_anexo_cobertura');
     }
   }catch(_e){}
@@ -4668,7 +4668,7 @@ async function __printRC_PDF(idxOpt){
 
     // Asegurar que el Anexo de Cobertura esté cargado antes de clonar/imprimir
     try{
-      if(isCerrada){
+      if(true){
         if(window.__VER_COBERTURA_PROMISE){
           await window.__VER_COBERTURA_PROMISE;
         }else{
@@ -5002,7 +5002,7 @@ async function __verToWord(){
     let __covRow = null;
     let __covLabels = {};
     let __covVersion = '';
-    if(__isCerradaWord){
+    if(true){
       try{
         const __covData = await __loadCoberturaProgramas();
         __covLabels = (__covData && __covData.labels) ? __covData.labels : {};
@@ -5239,8 +5239,8 @@ if(!window.docx){
     ] }));
 
 
-// Anexo: Cobertura de los Programas (solo emergencia cerrada) — leído desde cobertura_programas.json (sin BD)
-if(__isCerradaWord){
+// Anexo: Cobertura de los Programas (abiertas y cerradas) — leído desde cobertura_programas.json (sin BD)
+if(true){
   children.push(new Paragraph({ spacing:{ before: 180, after: 60 }, children:[
     new TextRun({ text:'Anexo: Cobertura de los Programas Nacionales + Distrito – Departamento', bold: true, font:'Calibri', size: 22 })
   ] }));
@@ -5285,8 +5285,8 @@ if(__isCerradaWord){
   }
 }
 
-    // Anexo: Cobertura de Programas (solo emergencia cerrada) — leído desde cobertura_programas.json (sin BD)
-    if(!!e.cerrada){
+    // Anexo: Cobertura de Programas (abiertas y cerradas) — leído desde cobertura_programas.json (sin BD)
+    if(true){
       children.push(new Paragraph({ spacing:{ before: 180, after: 60 }, children:[
         new TextRun({ text:'Anexo: Cobertura de los Programas Nacionales + Distrito – Departamento', bold: true, font:'Calibri', size: 22 })
       ] }));
