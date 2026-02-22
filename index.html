@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-<!-- BUILD: 2026-02-20 autopull-cooldown-v147 -->
+<!-- BUILD: 2026-02-20 autopull-cooldown-v148 -->
 <script>window.__BUILD_ID='2026-02-20 autopull-cooldown-v3';console.log('BUILD',window.__BUILD_ID);</script>
 
 <!-- build: VER_PRINT_RC_ALWAYS_VISIBLE v4 2026-01-11 -->
@@ -4211,9 +4211,9 @@ async function __renderCoberturaAnexo(em, containerId){
     const row = await __getCoberturaRow(em);
     if(!row){
       el.innerHTML = '<div class="mt-2">'
-        + '<div class="ver-section-title" style="margin-top:8px">Anexo: Cobertura de los Programas Nacionales + Distrito – Departamento</div>'
+        + '<div class="ver-section-title" style="margin-top:8px">Anexo: Cobertura de los Programas Nacionales</div>'
         + '<em>No se encontró coincidencia para ' + (em.departamento||'') + ' / ' + (em.provincia||'') + ' / ' + (em.distrito||'') + '.</em>'
-        + (version ? ('<div class="text-muted" style="font-size:12px">Fuente: cobertura_programas.json (v' + version + ')</div>') : '')
+        + (version ? ('<div class="text-muted" style="font-size:12px">Fuente: InfoMidis (v' + version + ')</div>') : '')
         + '</div>';
       return;
     }
