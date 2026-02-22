@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-<!-- BUILD: 2026-02-20 autopull-cooldown-v141 -->
+<!-- BUILD: 2026-02-20 autopull-cooldown-v142 -->
 <script>window.__BUILD_ID='2026-02-20 autopull-cooldown-v3';console.log('BUILD',window.__BUILD_ID);</script>
 
 <!-- build: VER_PRINT_RC_ALWAYS_VISIBLE v4 2026-01-11 -->
@@ -5216,6 +5216,59 @@ if(!window.docx){
       new TextRun({ text:'Nros globales anteriores: ', bold: true, font:'Calibri', size: 22 }),
       new TextRun({ text: rcHist, font:'Calibri', size: 22 })
     ] }));
+
+    // Anexo: Cobertura de Programas (solo emergencia cerrada) — leído desde cobertura_programas.json (sin BD)
+    if(!!e.cerrada){
+      children.push(new Paragraph({ spacing:{ before: 180, after: 60 }, children:[
+        new TextRun({ text:'Anexo: Cobertura de los Programas Nacionales + Distrito – Departamento', bold: true, font:'Calibri', size: 22 })
+      ] }));
+
+      if(__covRow){
+        const _dep = safe(__covRow.departamento || e.departamento);
+        const _prov = safe(__covRow.provincia || e.provincia);
+        const _dist = safe(__covRow.distrito || e.distrito);
+        const _ubi = safe(__covRow.ubigeo || '');
+        const _src = (_dep + ' / ' + _prov + ' / ' + _dist) + (_ubi ? (' (UBIGEO ' + _ubi + ')') : '') + (__covVersion ? (' — Fuente: cobertura_programas.json (v' + __covVersion + ')') : '');
+
+        children.push(new Paragraph({ children:[
+          new TextRun({ text: _src, font:'Calibri', size: 20, italics: true })
+        ] }));
+
+        const _labels = (__covLabels && typeof __covLabels === 'object') ? __covLabels : {};
+        const _labelKeys = Object.keys(_labels || {});
+        const _useKeys = _labelKeys.length ? _labelKeys : Object.keys((__covRow.cobertura || {}));
+
+        const covHeaderCells = [
+          new TableCell({ width:{ size:70, type: WidthType.PERCENTAGE }, children:[
+            new Paragraph({ children:[ new TextRun({ text:'Programa / Indicador', bold: true, font:'Calibri', size: 20 }) ] })
+          ]}),
+          new TableCell({ width:{ size:30, type: WidthType.PERCENTAGE }, children:[
+            new Paragraph({ children:[ new TextRun({ text:'Valor', bold: true, font:'Calibri', size: 20 }) ] })
+          ]})
+        ];
+        const covRows = [ new TableRow({ children: covHeaderCells }) ];
+
+        (_useKeys || []).forEach(k=>{
+          const lbl = (_labels && _labels[k]) ? _labels[k] : k;
+          const val = (__covRow.cobertura && __covRow.cobertura[k]!==undefined && __covRow.cobertura[k]!==null) ? __covRow.cobertura[k] : 0;
+          covRows.push(new TableRow({ children:[
+            new TableCell({ children:[ new Paragraph({ children:[ new TextRun({ text: safe(lbl), font:'Calibri', size: 20 }) ] }) ] }),
+            new TableCell({ children:[ new Paragraph({ alignment: AlignmentType.RIGHT, children:[ new TextRun({ text: safe(val), font:'Calibri', size: 20 }) ] }) ] })
+          ] }));
+        });
+
+        if(covRows.length > 1){
+          children.push(new Table({ width:{ size: 100, type: WidthType.PERCENTAGE }, rows: covRows }));
+        }else{
+          children.push(new Paragraph({ children:[new TextRun({ text:'Sin datos de cobertura para mostrar.', font:'Calibri', size: 22, italics: true })] }));
+        }
+      }else{
+        children.push(new Paragraph({ children:[
+          new TextRun({ text: `No se encontró coincidencia de cobertura para ${safe(e.departamento)} / ${safe(e.provincia)} / ${safe(e.distrito)}.`, font:'Calibri', size: 22, italics: true })
+        ] }));
+      }
+    }
+
 
     const headerChildren = [];
     if(logoBytes && logoBytes.length){
