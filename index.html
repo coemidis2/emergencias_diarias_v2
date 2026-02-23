@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-<!-- BUILD: 2026-02-20 autopull-cooldown-v149 -->
+<!-- BUILD: 2026-02-20 autopull-cooldown-v150 -->
 <script>window.__BUILD_ID='2026-02-20 autopull-cooldown-v3';console.log('BUILD',window.__BUILD_ID);</script>
 
 <!-- build: VER_PRINT_RC_ALWAYS_VISIBLE v4 2026-01-11 -->
@@ -3731,7 +3731,7 @@ function __lockRPForm(locked){
       if(!b) return;
 
       // Admin: siempre habilitado (evita que queden botones "pegados" en disabled por un lock previo)
-      if(isAdmin){
+      if(isAdmin || isRegOrCons){
         b.disabled = false;
         return;
       }
@@ -4211,9 +4211,9 @@ async function __renderCoberturaAnexo(em, containerId){
     const row = await __getCoberturaRow(em);
     if(!row){
       el.innerHTML = '<div class="mt-2">'
-        + '<div class="ver-section-title" style="margin-top:8px">Anexo 1: Cobertura de los Programas Nacionales</div>'
+        + '<div class="ver-section-title" style="margin-top:8px">Anexo: Cobertura de los Programas Nacionales + Distrito – Departamento</div>'
         + '<em>No se encontró coincidencia para ' + (em.departamento||'') + ' / ' + (em.provincia||'') + ' / ' + (em.distrito||'') + '.</em>'
-        + (version ? ('<div class="text-muted" style="font-size:12px">Fuente: InfoMidis (v' + version + ')</div>') : '')
+        + (version ? ('<div class="text-muted" style="font-size:12px">Fuente: cobertura_programas.json (v' + version + ')</div>') : '')
         + '</div>';
       return;
     }
@@ -4227,10 +4227,10 @@ async function __renderCoberturaAnexo(em, containerId){
     const useKeys = labelKeys.length ? labelKeys : Object.keys((row.cobertura||{}));
 
     let html = '<div class="mt-2">'
-      + '<div class="ver-section-title" style="margin-top:8px">Anexo 1: Cobertura de los Programas Nacionales</div>'
+      + '<div class="ver-section-title" style="margin-top:8px">Anexo: Cobertura de los Programas Nacionales + Distrito – Departamento</div>'
       + '<div class="text-muted" style="font-size:12px;margin-bottom:6px">'
       + dep + ' / ' + prov + ' / ' + dist + (ub ? (' (UBIGEO ' + ub + ')') : '')
-      + (version ? (' — Fuente: InfoMidis (v' + version + ')') : '')
+      + (version ? (' — Fuente: cobertura_programas.json (v' + version + ')') : '')
       + '</div>'
       + '<div class="table-responsive">'
       + '<table class="table table-sm table-bordered" style="font-size:12.5px">'
@@ -4251,7 +4251,7 @@ async function __renderCoberturaAnexo(em, containerId){
     console.error(err);
     try{
       const el = document.getElementById(containerId);
-      if(el) el.innerHTML = '<div class="text-danger"><strong>Anexo 1:</strong> No se pudo cargar cobertura_programas.json.</div>';
+      if(el) el.innerHTML = '<div class="text-danger"><strong>Anexo:</strong> No se pudo cargar cobertura_programas.json.</div>';
     }catch(_e){}
   }
 }
@@ -4264,7 +4264,7 @@ function verEmergencia(e) {
   window.__VER_EMERG_ACTUAL = e;
   const rcList = __getRCList(e);
 
-  const isCerrada = !!(e && (e.cerrada || String(e.cierreEstado||"").trim()==="Aprobado"));
+  const isCerrada = !!e.cerrada;
   const isConsulta = (typeof currentUser !== "undefined" && currentUser && currentUser.role === __ROLES.CONS);
 
   // ===== Formato unificado (RP + RC) solicitado para Ver/PDF =====
@@ -4272,7 +4272,7 @@ function verEmergencia(e) {
   const __txt = (v)=> __safe(v).replace(/\r\n/g,"\n");
 
   const lastRC = (Array.isArray(rcList) && rcList.length) ? rcList[rcList.length - 1] : null;
-  const estadoTxt = isCerrada ? "Cerrada" : "Abierta";
+  const estadoTxt = e.cerrada ? "Cerrada" : "Abierta";
 
   const peligroTxt = __safe(e.peligro).trim();
   const distritoTxt = __safe(e.distrito).trim();
@@ -4453,8 +4453,8 @@ function verEmergencia(e) {
   }
   html += `</div>`;
 
-  // Anexo (Cobertura) debajo de Nros globales anteriores (abiertas y cerradas)
-  if(true){
+  // Anexo (Cobertura) debajo de Nros globales anteriores (solo emergencia cerrada)
+  if(isCerrada){
     html += `<div id="ver_anexo_cobertura"></div>`;
   }
 
@@ -4464,8 +4464,8 @@ function verEmergencia(e) {
 
   // Renderizar Anexo de Cobertura (fetch JSON, sin BD)
   try{
-    if(true){
-      window.__VER_COBERTURA_PROMISE = __renderCoberturaAnexo(e, 'ver_anexo_cobertura');
+    if(isCerrada){
+      __renderCoberturaAnexo(e, 'ver_anexo_cobertura');
     }
   }catch(_e){}
 
@@ -4474,8 +4474,6 @@ try{
   const isAdmin = (typeof __isAdmin === "function" ? __isAdmin() : (typeof __isAdministrador === "function" ? __isAdministrador() : false));
 
     const isRegOrCons = (typeof currentUser !== "undefined" && currentUser && (currentUser.role === __ROLES.REG || currentUser.role === __ROLES.CONS));
-
-
 
     // Botón Word (solo Administrador y Registrador)
     try{
@@ -4494,7 +4492,7 @@ try{
   const btnDrop = document.getElementById("btnPrintRCDrop");
   const menu = document.getElementById("menuPrintRC");
 
-  if(isAdmin){
+  if(isAdmin || isRegOrCons){
     if(btnLast){
       btnLast.disabled = !hasPrintable;
       btnLast.title = "Imprimir RP y RC (PDF)";
@@ -4656,7 +4654,7 @@ function __buildRCLecturaHtml(em, opts){
   }
 }
 
-async function __printRC_PDF(idxOpt){
+function __printRC_PDF(idxOpt){
   try{
     const e = window.__VER_EMERG_ACTUAL;
     if(!e){ alert("No hay emergencia seleccionada."); return; }
@@ -4664,25 +4662,8 @@ async function __printRC_PDF(idxOpt){
     const isAdmin = (typeof __isAdmin === "function" ? __isAdmin() : (typeof __isAdministrador === "function" ? __isAdministrador() : false));
     const isRegOrCons = (typeof currentUser !== "undefined" && currentUser && (currentUser.role === __ROLES.REG || currentUser.role === __ROLES.CONS));
 
-    const isCerrada = !!(e && (e.cerrada || String(e.cierreEstado||"").trim()==="Aprobado"));
-
-    // Asegurar que el Anexo de Cobertura esté cargado antes de clonar/imprimir
-    try{
-      if(true){
-        if(window.__VER_COBERTURA_PROMISE){
-          await window.__VER_COBERTURA_PROMISE;
-        }else{
-          const _el = document.getElementById('ver_anexo_cobertura');
-          if(_el){
-            window.__VER_COBERTURA_PROMISE = __renderCoberturaAnexo(e, 'ver_anexo_cobertura');
-            await window.__VER_COBERTURA_PROMISE;
-          }
-        }
-      }
-    }catch(_e){}
-
     // === Solo Administrador: imprimir RP + RC con un solo botón ===
-    if(isAdmin){
+    if(isAdmin || isRegOrCons){
       const contSrc = document.getElementById("contenidoVerEmergencia");
       if(!contSrc){ alert("No se encontró el contenido para imprimir."); return; }
 
@@ -4996,21 +4977,19 @@ async function __verToWord(){
     const e = ctx && ctx.e ? ctx.e : window.__VER_EMERG_ACTUAL;
     if(!e){ alert('No hay emergencia seleccionada.'); return; }
 
-    const __isCerradaWord = !!(e && (e.cerrada || String(e.cierreEstado||"").trim()==="Aprobado"));
+    
 
     // Cobertura (Anexo) desde JSON (sin BD)
     let __covRow = null;
     let __covLabels = {};
     let __covVersion = '';
-    if(true){
-      try{
-        const __covData = await __loadCoberturaProgramas();
-        __covLabels = (__covData && __covData.labels) ? __covData.labels : {};
-        __covVersion = (__covData && __covData.version) ? __covData.version : '';
-        __covRow = await __getCoberturaRow(e);
-      }catch(_e){
-        __covRow = null;
-      }
+    try{
+      const __covData = await __loadCoberturaProgramas();
+      __covLabels = (__covData && __covData.labels) ? __covData.labels : {};
+      __covVersion = (__covData && __covData.version) ? __covData.version : '';
+      __covRow = await __getCoberturaRow(e);
+    }catch(_e){
+      __covRow = null;
     }
 if(!window.docx){
       alert('No se pudo cargar el generador Word. Verifique su conexión a internet.');
@@ -5029,7 +5008,7 @@ if(!window.docx){
 
     const rcList = (ctx && Array.isArray(ctx.rcList)) ? ctx.rcList : __getRCList(e);
     const lastRC = (ctx && ctx.lastRC!==undefined) ? ctx.lastRC : (rcList && rcList.length ? rcList[rcList.length-1] : null);
-    const estadoTxt = (ctx && ctx.estadoTxt) ? ctx.estadoTxt : (__isCerradaWord ? 'Cerrada' : 'Abierta');
+    const estadoTxt = (ctx && ctx.estadoTxt) ? ctx.estadoTxt : (e.cerrada ? 'Cerrada' : 'Abierta');
 
     const peligroTxt = safe(e.peligro).trim();
     const distritoTxt = safe(e.distrito).trim();
@@ -5237,53 +5216,6 @@ if(!window.docx){
       new TextRun({ text:'Nros globales anteriores: ', bold: true, font:'Calibri', size: 22 }),
       new TextRun({ text: rcHist, font:'Calibri', size: 22 })
     ] }));
-
-
-// Anexo: Cobertura de los Programas (abiertas y cerradas) — leído desde cobertura_programas.json (sin BD)
-if(true){
-  children.push(new Paragraph({ spacing:{ before: 180, after: 60 }, children:[
-    new TextRun({ text:'Anexo 1: Cobertura de los Programas Nacionales', bold: true, font:'Calibri', size: 22 })
-  ] }));
-
-  if(__covRow && __covRow.cobertura){
-    const dep = safe(__covRow.departamento || e.departamento || '');
-    const prov = safe(__covRow.provincia || e.provincia || '');
-    const dist = safe(__covRow.distrito || e.distrito || '');
-    const ub = safe(__covRow.ubigeo || '');
-    const fuente = (__covVersion ? (`Fuente: cobertura_programas.json (v${__covVersion})`) : 'Fuente: cobertura_programas.json');
-    const ubTxt = `${dep} / ${prov} / ${dist}${ub ? ` (UBIGEO ${ub})` : ''}${fuente ? ` — ${fuente}` : ''}`;
-
-    children.push(new Paragraph({ spacing:{ after: 60 }, children:[
-      new TextRun({ text: ubTxt, font:'Calibri', size: 18, color:'666666' })
-    ] }));
-
-    const labelKeys = Object.keys(__covLabels || {});
-    const useKeys = labelKeys.length ? labelKeys : Object.keys((__covRow.cobertura || {}));
-
-    const rows = [];
-    rows.push(new TableRow({ children:[
-      new TableCell({ children:[ new Paragraph({ children:[ new TextRun({ text:'Programa / Indicador', bold:true, font:'Calibri', size:22 }) ] }) ] }),
-      new TableCell({ children:[ new Paragraph({ alignment: AlignmentType.RIGHT, children:[ new TextRun({ text:'Valor', bold:true, font:'Calibri', size:22 }) ] }) ] })
-    ] }));
-
-    useKeys.forEach(k=>{
-      const lbl = (__covLabels && __covLabels[k]) ? __covLabels[k] : k;
-      const val = (__covRow.cobertura && __covRow.cobertura[k]!==undefined && __covRow.cobertura[k]!==null) ? __covRow.cobertura[k] : 0;
-      rows.push(new TableRow({ children:[
-        new TableCell({ children:[ new Paragraph({ children:[ new TextRun({ text: safe(lbl), font:'Calibri', size:22 }) ] }) ] }),
-        new TableCell({ children:[ new Paragraph({ alignment: AlignmentType.RIGHT, children:[ new TextRun({ text: safe(val), font:'Calibri', size:22 }) ] }) ] })
-      ] }));
-    });
-
-    children.push(new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, rows }));
-  }else{
-    const dep = safe(e.departamento || '');
-    const prov = safe(e.provincia || '');
-    const dist = safe(e.distrito || '');
-    const msg = `No se encontró coincidencia para ${dep} / ${prov} / ${dist}.`;
-    children.push(new Paragraph({ children:[ new TextRun({ text: msg, font:'Calibri', size: 22, italics: true }) ] }));
-  }
-}
 
     const headerChildren = [];
     if(logoBytes && logoBytes.length){
@@ -9911,7 +9843,7 @@ function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO){
     const items = [];
     (Array.isArray(emergencias) ? emergencias : []).forEach(em=>{
       try{
-        if(typeof __isDeletedLocal==="function" && __isDeletedLocal(em)) return;
+        if(typeof __isDeleted==="function" && __isDeleted(em)) return;
         const dt = __excelParseElab(em);
         if(!dt) return;
         if(dt.getTime() < d0.getTime() || dt.getTime() > d1.getTime()) return;
