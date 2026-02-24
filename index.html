@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-<!-- BUILD: 2026-02-20 autopull-cooldown-v151 -->
+<!-- BUILD: 2026-02-20 autopull-cooldown-v153 -->
 <script>window.__BUILD_ID='2026-02-20 autopull-cooldown-v3';console.log('BUILD',window.__BUILD_ID);</script>
 
 <!-- build: VER_PRINT_RC_ALWAYS_VISIBLE v4 2026-01-11 -->
@@ -2959,7 +2959,7 @@ function __solicitarCierre(){
     (async ()=>{
       try{
         if(__isApiConfigured && __isApiConfigured() && navigator.onLine){
-          const push = await __syncPush();
+          const push = await __syncPush({ skipCodes: (typeof conflictCodes !== "undefined") ? conflictCodes : [] });
 
           // Si hubo rechazados (no propietario / inválido), avisar con códigos
           if(push && push.denied && push.denied.length){
@@ -8646,7 +8646,7 @@ async function __createUserFromAdmin(){
 }
 
 // ---- SYNC ----
-async function __syncPush(){
+async function __syncPush(opts={}){
   if(!__isApiConfigured()) throw new Error('server_not_configured');
   if(!navigator.onLine) throw new Error('offline');
 
@@ -8660,10 +8660,16 @@ async function __syncPush(){
   const arr = Array.isArray(emergencias) ? emergencias : __loadEmergencias();
   const deviceId = __getDeviceId();
 
+  // Si hay conflictos detectados en Pull, podemos omitir esos códigos para no pisar servidor.
+  const __skipCodes = (opts && Array.isArray(opts.skipCodes)) ? opts.skipCodes : [];
+  const __skipSet = new Set(__skipCodes.map(x=>String(x||'').trim()).filter(Boolean));
+
+
   const toSend = [];
   for(const e of arr){
     const codigo = String(e && e.codigo ? e.codigo : '').trim();
     if(!codigo) continue;
+    if(__skipSet.has(codigo)) continue;
     const h = await __sha256(JSON.stringify(e));
     if(map[codigo] !== h){
       try{ e.estado_sync = 'Pendiente'; }catch(_e){}
@@ -8817,13 +8823,6 @@ async function __syncPull(since){
         continue;
       }
 
-      // Local modificado y servidor SIN cambios desde el último sync: NO sobreescribir.
-      // Esto evita que el auto-pull “reviva” estados pendientes (p.ej. aprobaciones) antes del push.
-      if(localDirty && lastSynced && serverHash && serverHash === lastSynced){
-        // mantenemos local[i] para que __syncPush lo envíe al servidor
-        continue;
-      }
-
       try{ serverPayload.estado_sync = 'Sincronizado'; }catch(_e){}
       local[i] = serverPayload;
     }else{
@@ -8875,10 +8874,19 @@ async function __syncAll(){
     // recalcular pendientes
     await __calcPending();
 
-    // Si hay conflictos local vs servidor, NO hacemos push (evita "revivir" estados cerrados)
-    if(pull1.conflicts && pull1.conflicts.length){
-      alert('Pull: se detectaron conflictos (local vs servidor). Se canceló el Push para no sobrescribir el servidor. Revisa el log de conflictos y actualiza tu registro antes de volver a sincronizar.');
-      return;
+    // Si hay conflictos local vs servidor, NO empujamos esos códigos (evita "revivir" estados cerrados)
+    const conflictCodes = (pull1.conflicts && Array.isArray(pull1.conflicts))
+      ? pull1.conflicts
+          .map(it => (typeof it === "string") ? it : (it ? String(it.codigo || it.code || it.id || "") : ""))
+          .map(s => String(s || "").trim())
+          .filter(Boolean)
+      : [];
+
+    if(conflictCodes.length){
+      const shown = conflictCodes.slice(0, 15).join(", ");
+      alert('Pull: se detectaron conflictos (local vs servidor). Se sincronizará el resto y se omitirán estos códigos para no sobrescribir el servidor:\n' +
+            shown + (conflictCodes.length>15 ? " ..." : "") +
+            '\nRevisa el log de conflictos (midis_sync_conflicts_v1) para resolverlos.');
     }
 
     // 2) PUSH (si corresponde)
@@ -9918,7 +9926,7 @@ function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO){
     const items = [];
     (Array.isArray(emergencias) ? emergencias : []).forEach(em=>{
       try{
-        if(typeof __isDeleted==="function" && __isDeleted(em)) return;
+        if(typeof __isDeletedLocal==="function" && __isDeletedLocal(em)) return;
         const dt = __excelParseElab(em);
         if(!dt) return;
         if(dt.getTime() < d0.getTime() || dt.getTime() > d1.getTime()) return;
