@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-<!-- BUILD: 2026-02-20 autopull-cooldown-v150 -->
+<!-- BUILD: 2026-02-20 autopull-cooldown-v151 -->
 <script>window.__BUILD_ID='2026-02-20 autopull-cooldown-v3';console.log('BUILD',window.__BUILD_ID);</script>
 
 <!-- build: VER_PRINT_RC_ALWAYS_VISIBLE v4 2026-01-11 -->
@@ -8814,6 +8814,13 @@ async function __syncPull(since){
 
       if(localDirty && lastSynced && serverHash && serverHash !== lastSynced){
         conflicts.push({ codigo: codigo, reason: 'both_modified', server_updated_at: serverUpdated });
+        continue;
+      }
+
+      // Local modificado y servidor SIN cambios desde el último sync: NO sobreescribir.
+      // Esto evita que el auto-pull “reviva” estados pendientes (p.ej. aprobaciones) antes del push.
+      if(localDirty && lastSynced && serverHash && serverHash === lastSynced){
+        // mantenemos local[i] para que __syncPush lo envíe al servidor
         continue;
       }
 
