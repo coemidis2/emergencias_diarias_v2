@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-<!-- BUILD: 2026-02-20 autopull-cooldown-v166 -->
+<!-- BUILD: 2026-02-20 autopull-cooldown-v167 -->
 <script>window.__BUILD_ID='2026-02-20 autopull-cooldown-v3';console.log('BUILD',window.__BUILD_ID);</script>
 
 <!-- build: VER_PRINT_RC_ALWAYS_VISIBLE v4 2026-01-11 -->
@@ -8944,7 +8944,7 @@ async function __syncAll(){
       const arr0 = Array.isArray(emergencias) ? emergencias : __loadEmergencias();
       const mapSize = Object.keys(map0||{}).length;
       const arrSize = Array.isArray(arr0) ? arr0.length : 0;
-      if(arrSize === 0 || mapSize === 0 || (arrSize > 0 && mapSize < Math.floor(arrSize * 0.6))){
+      if(mapSize === 0 || (arrSize > 0 && mapSize < Math.floor(arrSize * 0.6))){
         await __syncPull('1970-01-01T00:00:00.000Z');
       }
     }catch(e){}
@@ -8963,14 +8963,7 @@ async function __syncAll(){
 
     // 2) PUSH (si corresponde)
     if(!isCons){
-      let push = await __syncPush();
-      // reintento 1 vez si el único conflicto es missing_if_match (rehidratación de hashes)
-      try{
-        const onlyMissing = push && Array.isArray(push.conflicts) && push.conflicts.length>0 && push.conflicts.every(x=>String((x&&x.reason)||'')==='missing_if_match');
-        if(onlyMissing){
-          push = await __syncPush();
-        }
-      }catch(_e){}
+      const push = await __syncPush();
       if(push.conflicts && push.conflicts.length){
         alert('Sync: hubo conflictos de edición. Se registró en el log de conflictos.');
       }
@@ -8989,18 +8982,7 @@ async function __syncAll(){
     }
 
     // 3) PULL final para refrescar lo confirmado en servidor (y hashes)
-    const pull2 = // si no hay datos locales pero lastPull quedó avanzado, rehidratar completo 1 vez
-    try{
-      const arr0 = Array.isArray(emergencias) ? emergencias : __loadEmergencias();
-      if((!arr0 || arr0.length===0) && !window.__PULL_AUTO_FULL_DONE){
-        window.__PULL_AUTO_FULL_DONE = true;
-        await __syncPull('1970-01-01T00:00:00.000Z');
-      }else{
-        await __syncPull(__getLastPull());
-      }
-    }catch(_e){
-      await __syncPull(__getLastPull());
-    }
+    const pull2 = await __syncPull(__getLastPull());
     await __calcPending();
 
     if(pull2.conflicts && pull2.conflicts.length){
