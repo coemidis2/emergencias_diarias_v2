@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-<!-- BUILD: 2026-02-20 autopull-cooldown-v164 -->
+<!-- BUILD: 2026-02-20 autopull-cooldown-v165 -->
 <script>window.__BUILD_ID='2026-02-20 autopull-cooldown-v3';console.log('BUILD',window.__BUILD_ID);</script>
 
 <!-- build: VER_PRINT_RC_ALWAYS_VISIBLE v4 2026-01-11 -->
@@ -8744,12 +8744,12 @@ async function __syncPush(){
 
     // Auto-rehidratar hashmap cuando Worker exige if_match
     try{
-      for(const it of conf){
+      for(const it of allConf){
         if(!it) continue;
         const codigo = String(it.codigo || "").trim();
         const reason = String(it.reason || "");
         const sh = String(it.server_hash || "");
-        if(codigo && (reason === "missing_if_match" || reason === "missing_if_match") && sh){
+        if(codigo && reason === "missing_if_match" && sh){
           map[codigo] = sh;
 
           // Si lo local (limpio) ya es igual al servidor, marcar sincronizado para no insistir
@@ -8963,8 +8963,19 @@ async function __syncAll(){
 
     // 2) PUSH (si corresponde)
     if(!isCons){
-      const push = await __syncPush();
+      const push0 = await __syncPush();
+      // Si el Worker exige if_match y el cliente aún no tiene hashes, reintentamos 1 vez
+      let push = push0;
+      try{
+        const onlyMissing = (push0 && Array.isArray(push0.conflicts) && push0.conflicts.length>0)
+          ? push0.conflicts.every(x=>String(x && x.reason || "") === "missing_if_match")
+          : false;
+        if(onlyMissing){
+          push = await __syncPush();
+        }
+      }catch(e){}
       if(push.conflicts && push.conflicts.length){
+
         alert('Sync: hubo conflictos de edición. Se registró en el log de conflictos.');
       }
       if(push.denied && push.denied.length){
