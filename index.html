@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-<!-- BUILD: 2026-02-20 autopull-cooldown-v168 -->
+<!-- BUILD: 2026-02-20 autopull-cooldown-v169 -->
 <script>window.__BUILD_ID='2026-02-20 autopull-cooldown-v3';console.log('BUILD',window.__BUILD_ID);</script>
 
 <!-- build: VER_PRINT_RC_ALWAYS_VISIBLE v4 2026-01-11 -->
@@ -8798,6 +8798,32 @@ async function __syncPush(){
     __saveEmergencias();
   }catch(e){}
 
+  // --- Auto-rehidratar hashmap cuando Worker exige if_match ---
+  try{
+    for(const it of allConf){
+      if(!it) continue;
+      const codigo = String(it.codigo || "").trim();
+      const reason = String(it.reason || "");
+      const sh = String(it.server_hash || "");
+      if(codigo && reason === "missing_if_match" && sh){
+        map[codigo] = sh;
+
+        // si lo local YA es igual al servidor, marcar sincronizado
+        for(const e of arr){
+          if(e && String(e.codigo||"").trim() === codigo){
+            try{
+              const lh = await __syncHash(e);
+              if(lh === sh){
+                e.estado_sync = "Sincronizado";
+              }
+            }catch(_e){}
+            break;
+          }
+        }
+      }
+    }
+  }catch(e){}
+
   __setHashMap(map);
 
   if(allConf.length || allDen.length){
@@ -8937,24 +8963,46 @@ async function __syncAll(){
     }
 
     const isCons = currentUser && currentUser.role === __ROLES.CONS;
-    // Rehidratación defensiva:
-    // - Si el hashmap está vacío/incompleto => full pull 1970 (evita missing_if_match)
-    // - Si por algún motivo el storage quedó con muy pocos registros (p.ej. Ctrl+Shift+R/limpieza parcial),
-    //   hacemos un full pull 1 vez por navegador para recuperar el snapshot completo.
+
+    // Rehidratación defensiva (evita missing_if_match y evita quedarse con pocos registros)
     try{
-      const FULL_KEY = "midis_sync_fullpull_done_v1";
-      const fullDone = (__lsGet(FULL_KEY) === "1");
+      const FULL_DONE_KEY = "midis_sync_fullpull_done_v1";
+      const MAXSEEN_KEY   = "midis_sync_maxseen_v1";
+
       const map0 = __getHashMap();
       const arr0 = Array.isArray(emergencias) ? emergencias : __loadEmergencias();
       const mapSize = Object.keys(map0||{}).length;
       const arrSize = Array.isArray(arr0) ? arr0.length : 0;
 
-      const needsHydrate = (mapSize === 0) || (arrSize > 0 && mapSize < Math.floor(arrSize * 0.6));
-      const needsFullOnce = (!fullDone && arrSize > 0 && arrSize < 200);
+      // actualizar maxSeen (máximo de registros que ESTE navegador ya logró tener)
+      let maxSeen = 0;
+      try{ maxSeen = Number(__lsGet(MAXSEEN_KEY) || 0) || 0; }catch(_e){ maxSeen = 0; }
+      if(arrSize > maxSeen){
+        try{ __lsSet(MAXSEEN_KEY, String(arrSize)); }catch(_e){}
+        maxSeen = arrSize;
+      }
 
-      if(needsHydrate || needsFullOnce){
+      let fullDone = false;
+      try{ fullDone = (__lsGet(FULL_DONE_KEY) === "1"); }catch(_e){ fullDone = false; }
+
+      const needHydrateHash = (mapSize === 0) || (arrSize > 0 && mapSize < Math.floor(arrSize * 0.6));
+      // si antes viste muchos y ahora ves poquísimos, recupera snapshot completo
+      const needRecover = (maxSeen >= 500 && arrSize > 0 && arrSize < Math.floor(maxSeen * 0.5));
+      // si estás viendo muy pocos y ya tienes lastPull distinto a 1970, hacer full pull 1 vez
+      const lastPull = __getLastPull();
+      const needFullOnce = (!fullDone) && (arrSize < 200) && (lastPull !== "1970-01-01T00:00:00.000Z");
+
+      if(needHydrateHash || needRecover || needFullOnce || arrSize === 0){
         await __syncPull('1970-01-01T00:00:00.000Z');
-        try{ __lsSet(FULL_KEY, "1"); }catch(_e){}
+        try{ __lsSet(FULL_DONE_KEY, "1"); }catch(_e){}
+        // actualizar maxSeen tras el full pull
+        try{
+          const arr1 = Array.isArray(emergencias) ? emergencias : __loadEmergencias();
+          const n1 = Array.isArray(arr1) ? arr1.length : 0;
+          if(n1 > maxSeen){
+            try{ __lsSet(MAXSEEN_KEY, String(n1)); }catch(_e){}
+          }
+        }catch(_e){}
       }
     }catch(e){}
 
@@ -8972,7 +9020,18 @@ async function __syncAll(){
 
     // 2) PUSH (si corresponde)
     if(!isCons){
-      const push = await __syncPush();
+      const push0 = await __syncPush();
+      // Si el Worker exige if_match y el cliente aún no tenía hashes, reintentamos 1 vez
+      let push = push0;
+      try{
+        const onlyMissing = (push0 && Array.isArray(push0.conflicts) && push0.conflicts.length>0)
+          ? push0.conflicts.every(x=>String(x && x.reason || "") === "missing_if_match")
+          : false;
+        if(onlyMissing){
+          push = await __syncPush();
+        }
+      }catch(_e){}
+
       if(push.conflicts && push.conflicts.length){
         alert('Sync: hubo conflictos de edición. Se registró en el log de conflictos.');
       }
