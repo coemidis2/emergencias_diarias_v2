@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-<!-- BUILD: 2026-02-20 autopull-cooldown-v161 -->
+<!-- BUILD: 2026-02-20 autopull-cooldown-v162 -->
 <script>window.__BUILD_ID='2026-02-20 autopull-cooldown-v3';console.log('BUILD',window.__BUILD_ID);</script>
 
 <!-- build: VER_PRINT_RC_ALWAYS_VISIBLE v4 2026-01-11 -->
@@ -8190,6 +8190,22 @@ function __updateSyncUI(pending){
   }
 }
 
+
+// === SYNC: payload limpio para hash y para enviar al Worker ===
+function __syncCleanPayload(obj){
+  const x = JSON.parse(JSON.stringify(obj || {}));
+  // Campos SOLO locales (no deben entrar al hash ni viajar al servidor)
+  delete x.estado_sync;
+  delete x.sync_denied_at;
+  delete x.sync_denied_reason;
+  delete x.__serverUpdatedAt;
+  delete x.__serverCreatedAt;
+  return x;
+}
+async function __syncHashClean(obj){
+  return await __sha256(JSON.stringify(__syncCleanPayload(obj)));
+}
+
 async function __calcPending(){
   try{
     const map = __getHashMap();
@@ -8200,7 +8216,7 @@ async function __calcPending(){
       if(!codigo) continue;
       if(typeof __isDeleted === "function" && __isDeleted(e)) continue;
       if(String(e && e.estado_sync ? e.estado_sync : "") === "Rechazado") continue;
-      const h = await __sha256(JSON.stringify(e));
+      const h = await __syncHashClean(e);
       if(map[codigo] !== h) pending++;
     }
     __updateSyncUI(pending);
@@ -8664,13 +8680,13 @@ async function __syncPush(){
   for(const e of arr){
     const codigo = String(e && e.codigo ? e.codigo : '').trim();
     if(!codigo) continue;
-    const h = await __sha256(JSON.stringify(e));
+    const h = await __syncHashClean(e);
     if(map[codigo] !== h){
       try{ e.estado_sync = 'Pendiente'; }catch(_e){}
       const now = __nowIso();
       toSend.push({
         codigo: codigo,
-        payload: e,
+        payload: clean,
         hash: h,
         if_match: map[codigo] || "",
 
@@ -8683,7 +8699,7 @@ async function __syncPush(){
 
   if(toSend.length === 0) return { ok:true, acked:[], empty:true };
 
-  const batchSize = 150;
+  const batchSize = 30;
   const allAcked = [];
   const allConf = [];
   const allDen = [];
@@ -8765,7 +8781,7 @@ async function __syncPush(){
         // si lo local YA es igual al servidor, marcar sincronizado
         for(const e of arr){
           if(e && String(e.codigo||"").trim() === codigo){
-            const lh = await __sha256(JSON.stringify(e));
+            const lh = await __sha256(JSON.stringify(__syncCleanPayload(e)));
             if(lh === sh){
               e.estado_sync = "Sincronizado";
             }
@@ -8859,7 +8875,7 @@ async function __syncPull(since){
 
     const i = idx[codigo];
     if(i !== undefined){
-      const localHash = await __sha256(JSON.stringify(local[i]));
+      const localHash = await __syncHashClean(local[i]);
       const lastSynced = map[codigo];
       const localDirty = (lastSynced && localHash !== lastSynced);
 
