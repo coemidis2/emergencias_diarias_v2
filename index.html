@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-<!-- BUILD: 2026-02-20 autopull-cooldown-v154 -->
+<!-- BUILD: 2026-02-20 autopull-cooldown-v155 -->
 <script>window.__BUILD_ID='2026-02-20 autopull-cooldown-v3';console.log('BUILD',window.__BUILD_ID);</script>
 
 <!-- build: VER_PRINT_RC_ALWAYS_VISIBLE v4 2026-01-11 -->
@@ -8665,6 +8665,7 @@ async function __syncPush(){
 
   const token = __tokenGet(); // opcional
 
+  // Consultor: solo Pull
   if(currentUser && currentUser.role === __ROLES.CONS){
     return { ok:true, acked:[], skipped:true };
   }
@@ -8677,8 +8678,12 @@ async function __syncPush(){
   for(const e of arr){
     const codigo = String(e && e.codigo ? e.codigo : '').trim();
     if(!codigo) continue;
+    // No empujar eliminados (tombstones / _deleted)
+    if(typeof __isDeleted === "function" && __isDeleted(e)) continue;
+
     const clean = __syncCleanPayload(e);
     const h = await __sha256(JSON.stringify(clean));
+
     if(map[codigo] !== h){
       try{ e.estado_sync = 'Pendiente'; }catch(_e){}
       const now = __nowIso();
@@ -8687,7 +8692,6 @@ async function __syncPush(){
         payload: clean,
         hash: h,
         if_match: map[codigo] || "",
-
         created_at: e.createdAt || e.fechaRegistro || now,
         updated_at: now,
         device_id: deviceId
@@ -8695,9 +8699,14 @@ async function __syncPush(){
     }
   }
 
-  if(toSend.length === 0) return { ok:true, acked:[], empty:true };
+  if(toSend.length === 0){
+    // asegurar UI consistente
+    try{ await __calcPending(); }catch(e){}
+    return { ok:true, acked:[], empty:true };
+  }
 
-  const batchSize = 150;
+  // Batches más pequeños para evitar 500 por carga (D1 / Worker)
+  const batchSize = 30;
   const allAcked = [];
   const allConf = [];
   const allDen = [];
@@ -8705,11 +8714,18 @@ async function __syncPush(){
   for(let i=0;i<toSend.length;i+=batchSize){
     const batch = toSend.slice(i, i+batchSize);
     const out = await __api('/sync/push', { method:'POST', token: token, body:{ records: batch } });
-    if(out.res && out.res.status === 401){
-    throw new Error('unauthorized');
-  }
 
-  if(!out.res || !out.res.ok){
+    if(out.res && out.res.status === 401){
+      // Persistir avances antes de salir
+      try{ __setHashMap(map); }catch(e){}
+      try{ __saveEmergencias(); }catch(e){}
+      throw new Error('unauthorized');
+    }
+
+    if(!out.res || !out.res.ok){
+      // Persistir avances antes de salir (evita “revivir” aprobaciones tras refresh)
+      try{ __setHashMap(map); }catch(e){}
+      try{ __saveEmergencias(); }catch(e){}
       const err = out.data && out.data.error ? out.data.error : 'push_failed';
       throw new Error(err);
     }
@@ -8718,6 +8734,7 @@ async function __syncPush(){
     const conf  = out.data && Array.isArray(out.data.conflicts) ? out.data.conflicts : [];
     const den   = out.data && Array.isArray(out.data.denied) ? out.data.denied : [];
 
+    // --- aplicar ACK ---
     for(const c of acked){
       allAcked.push(c);
       // actualizar mapa local con hash del batch
@@ -8731,42 +8748,50 @@ async function __syncPush(){
       for(const e of arr){
         if(e && String(e.codigo||'').trim() === c){
           try{ e.estado_sync = 'Sincronizado'; }catch(_e){}
+          // limpiar flags de rechazo si existían
+          try{ delete e.sync_denied_at; }catch(_e){}
+          try{ delete e.sync_denied_reason; }catch(_e){}
           break;
         }
       }
     }
 
+    // --- acumular conflictos ---
     for(const x of conf) allConf.push(x);
-    for(const x of den) allDen.push(x);
-  }
 
-  // Marcar rechazados en local (evita que queden "pegados" como Pendientes)
-  try{
-    const now = __nowIso();
-    for(const it of allDen){
-      let codigo = "";
-      let reason = "denied";
-      if(typeof it === "string"){
-        codigo = it;
-      }else if(it){
-        codigo = String(it.codigo || it.code || it.id || "").trim();
-        reason = String(it.reason || it.error || it.msg || it.message || "denied");
-      }
-      codigo = String(codigo || "").trim();
-      if(!codigo) continue;
-      for(const e of arr){
-        if(e && String(e.codigo || "").trim() === codigo){
-          e.estado_sync = "Rechazado";
-          e.sync_denied_at = now;
-          e.sync_denied_reason = reason;
-          break;
+    // --- marcar rechazados (por rol/propietario/inválido) ---
+    try{
+      const now = __nowIso();
+      for(const it of den){
+        allDen.push(it);
+        let codigo = "";
+        let reason = "denied";
+        if(typeof it === "string"){
+          codigo = it;
+        }else if(it){
+          codigo = String(it.codigo || it.code || it.id || "").trim();
+          reason = String(it.reason || it.error || it.msg || it.message || "denied");
+        }
+        codigo = String(codigo || "").trim();
+        if(!codigo) continue;
+        for(const e of arr){
+          if(e && String(e.codigo || "").trim() === codigo){
+            e.estado_sync = "Rechazado";
+            e.sync_denied_at = now;
+            e.sync_denied_reason = reason;
+            break;
+          }
         }
       }
-    }
-    __saveEmergencias();
-  }catch(e){}
+    }catch(e){}
 
-  __setHashMap(map);
+    // Persistir avance por lote (clave para que no se “deshaga” con Ctrl+Shift+R)
+    try{ __setHashMap(map); }catch(e){}
+    try{ __saveEmergencias(); }catch(e){}
+
+    // mini-pausa (evita ráfagas)
+    try{ await new Promise(r=>setTimeout(r, 60)); }catch(e){}
+  }
 
   if(allConf.length || allDen.length){
     let old = [];
@@ -8774,6 +8799,9 @@ async function __syncPush(){
     old.push({ at: __nowIso(), conflicts: allConf, denied: allDen });
     try{ __lsSet(__SYNC_KEYS.conflicts, JSON.stringify(old)); }catch(e){}
   }
+
+  // recalcular pendientes al final
+  try{ await __calcPending(); }catch(e){}
 
   return { ok:true, acked: allAcked, conflicts: allConf, denied: allDen };
 }
