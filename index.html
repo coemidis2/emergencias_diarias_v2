@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-<!-- BUILD: 2026-02-20 autopull-cooldown-v169 -->
+<!-- BUILD: 2026-02-20 autopull-cooldown-v170 -->
 <script>window.__BUILD_ID='2026-02-20 autopull-cooldown-v3';console.log('BUILD',window.__BUILD_ID);</script>
 
 <!-- build: VER_PRINT_RC_ALWAYS_VISIBLE v4 2026-01-11 -->
@@ -7972,7 +7972,9 @@ const __SYNC_KEYS = {
   lastPull: "midis_sync_lastpull_v1",
   hashMap: "midis_sync_hashmap_v1",
   conflicts: "midis_sync_conflicts_v1",
-  deviceId: "midis_sync_deviceid_v1"
+  deviceId: "midis_sync_deviceid_v1",
+  maxSeen: "midis_sync_maxseen_v1",
+  fullPullAdmin: "midis_sync_fullpull_admin_v1"
 };
 
 // === SYNC helpers: payload limpio y hash consistente con el servidor ===
@@ -7983,6 +7985,7 @@ function __syncCleanPayload(obj){
   delete x.sync_denied_at;
   delete x.sync_denied_reason;
   delete x.__serverUpdatedAt;
+  delete x.__serverHash;
   delete x.__serverCreatedAt;
   return x;
 }
@@ -8216,8 +8219,21 @@ async function __calcPending(){
       if(!codigo) continue;
       if(typeof __isDeleted === "function" && __isDeleted(e)) continue;
       if(String(e && e.estado_sync ? e.estado_sync : "") === "Rechazado") continue;
+
+    // Registrador: solo empujar sus propios registros y solo si están en Borrador/Observado
+    try{
+      const role = currentUser ? currentUser.role : "";
+      if(role === __ROLES.REG){
+        const me = String(currentUser && currentUser.email ? currentUser.email : "").trim().toLowerCase();
+        const owner = String(__segRegistrar(e) || "").trim().toLowerCase();
+        const stage = __segStage(e);
+        if(owner && me && owner !== me) continue;
+        if(!(stage === "Borrador" || stage === "Observado")) continue;
+      }
+    }catch(_e){}
       const h = await __syncHash(e);
-      if(map[codigo] !== h) pending++;
+      const base = (map[codigo] || e.__serverHash || "");
+      if(base && base !== h) pending++;
     }
     __updateSyncUI(pending);
     return pending;
@@ -8788,40 +8804,23 @@ async function __syncPush(){
       if(!codigo) continue;
       for(const e of arr){
         if(e && String(e.codigo || "").trim() === codigo){
-          e.estado_sync = "Rechazado";
-          e.sync_denied_at = now;
-          e.sync_denied_reason = reason;
+          const rlow = String(reason||"").toLowerCase();
+          const soft = (rlow.includes('not_owner') || rlow.includes('no_owner') || rlow.includes('not_edit') || rlow.includes('closed') || rlow.includes('forbidden') || rlow.includes('invalid_role'));
+          if(soft){
+            e.estado_sync = "Sincronizado";
+            e.sync_denied_at = now;
+            e.sync_denied_reason = reason;
+            try{ map[codigo] = await __syncHash(e); }catch(_e){}
+          }else{
+            e.estado_sync = "Rechazado";
+            e.sync_denied_at = now;
+            e.sync_denied_reason = reason;
+          }
           break;
         }
       }
     }
     __saveEmergencias();
-  }catch(e){}
-
-  // --- Auto-rehidratar hashmap cuando Worker exige if_match ---
-  try{
-    for(const it of allConf){
-      if(!it) continue;
-      const codigo = String(it.codigo || "").trim();
-      const reason = String(it.reason || "");
-      const sh = String(it.server_hash || "");
-      if(codigo && reason === "missing_if_match" && sh){
-        map[codigo] = sh;
-
-        // si lo local YA es igual al servidor, marcar sincronizado
-        for(const e of arr){
-          if(e && String(e.codigo||"").trim() === codigo){
-            try{
-              const lh = await __syncHash(e);
-              if(lh === sh){
-                e.estado_sync = "Sincronizado";
-              }
-            }catch(_e){}
-            break;
-          }
-        }
-      }
-    }
   }catch(e){}
 
   __setHashMap(map);
@@ -8907,9 +8906,21 @@ async function __syncPull(since){
       const lastSynced = map[codigo] || "";
       const localHash = await __syncHash(local[i]);
       const localDirty = (lastSynced && localHash !== lastSynced);
-
-      // Si local tiene cambios y el servidor también cambió, conflicto real
+      // Si local tiene cambios y el servidor también cambió: conflicto, pero auto-resolvemos si el usuario NO puede editar ese estado
       if(localDirty && lastSynced && serverHash && serverHash !== lastSynced){
+        try{
+          const role = currentUser ? currentUser.role : "";
+          const isAdmin = (role === __ROLES.ADMIN);
+          const st = __segStage(serverPayload);
+          const editableReg = (role === __ROLES.REG) && (st === "Borrador" || st === "Observado");
+          if(!isAdmin && !editableReg){
+            try{ serverPayload.estado_sync = 'Sincronizado'; }catch(_e){}
+            try{ serverPayload.__serverHash = serverHash; serverPayload.__serverUpdatedAt = serverUpdated; }catch(_e){}
+            local[i] = serverPayload;
+            if(serverHash) map[codigo] = serverHash;
+            continue;
+          }
+        }catch(_e){}
         conflicts.push({ codigo: codigo, reason: 'both_modified', server_updated_at: serverUpdated });
         continue;
       }
@@ -8920,9 +8931,11 @@ async function __syncPull(since){
       }
 
       try{ serverPayload.estado_sync = 'Sincronizado'; }catch(_e){}
+      try{ serverPayload.__serverHash = serverHash; serverPayload.__serverUpdatedAt = serverUpdated; }catch(_e){}
       local[i] = serverPayload;
     }else{
       try{ serverPayload.estado_sync = 'Sincronizado'; }catch(_e){}
+      try{ serverPayload.__serverHash = serverHash; serverPayload.__serverUpdatedAt = serverUpdated; }catch(_e){}
       local.push(serverPayload);
       idx[codigo] = local.length - 1;
     }
@@ -8964,45 +8977,34 @@ async function __syncAll(){
 
     const isCons = currentUser && currentUser.role === __ROLES.CONS;
 
-    // Rehidratación defensiva (evita missing_if_match y evita quedarse con pocos registros)
+    // Guardar el máximo de registros vistos (para detectar 'dataset encogido' tras recargar)
     try{
-      const FULL_DONE_KEY = "midis_sync_fullpull_done_v1";
-      const MAXSEEN_KEY   = "midis_sync_maxseen_v1";
+      const arrX = Array.isArray(emergencias) ? emergencias : __loadEmergencias();
+      const arrSizeX = Array.isArray(arrX) ? arrX.length : 0;
+      const prevMax = Number(__lsGet(__SYNC_KEYS.maxSeen) || 0) || 0;
+      if(arrSizeX > prevMax) __lsSet(__SYNC_KEYS.maxSeen, String(arrSizeX));
+    }catch(e){}
 
+    // Admin: si el dataset local está 'chico', forzar un pull completo (una vez por sesión/local)
+    try{
+      const role = currentUser ? currentUser.role : "";
+      const arrX = Array.isArray(emergencias) ? emergencias : __loadEmergencias();
+      const arrSizeX = Array.isArray(arrX) ? arrX.length : 0;
+      const did = __lsGet(__SYNC_KEYS.fullPullAdmin) || "";
+      if(role === __ROLES.ADMIN && (arrSizeX < 200 || !did)){
+        await __syncPull('1970-01-01T00:00:00.000Z');
+        try{ __lsSet(__SYNC_KEYS.fullPullAdmin, __nowIso()); }catch(_e){}
+      }
+    }catch(e){}
+
+    // Si el hashmap está vacío/incompleto, primero rehidratamos desde 1970 para evitar missing_if_match
+    try{
       const map0 = __getHashMap();
       const arr0 = Array.isArray(emergencias) ? emergencias : __loadEmergencias();
       const mapSize = Object.keys(map0||{}).length;
       const arrSize = Array.isArray(arr0) ? arr0.length : 0;
-
-      // actualizar maxSeen (máximo de registros que ESTE navegador ya logró tener)
-      let maxSeen = 0;
-      try{ maxSeen = Number(__lsGet(MAXSEEN_KEY) || 0) || 0; }catch(_e){ maxSeen = 0; }
-      if(arrSize > maxSeen){
-        try{ __lsSet(MAXSEEN_KEY, String(arrSize)); }catch(_e){}
-        maxSeen = arrSize;
-      }
-
-      let fullDone = false;
-      try{ fullDone = (__lsGet(FULL_DONE_KEY) === "1"); }catch(_e){ fullDone = false; }
-
-      const needHydrateHash = (mapSize === 0) || (arrSize > 0 && mapSize < Math.floor(arrSize * 0.6));
-      // si antes viste muchos y ahora ves poquísimos, recupera snapshot completo
-      const needRecover = (maxSeen >= 500 && arrSize > 0 && arrSize < Math.floor(maxSeen * 0.5));
-      // si estás viendo muy pocos y ya tienes lastPull distinto a 1970, hacer full pull 1 vez
-      const lastPull = __getLastPull();
-      const needFullOnce = (!fullDone) && (arrSize < 200) && (lastPull !== "1970-01-01T00:00:00.000Z");
-
-      if(needHydrateHash || needRecover || needFullOnce || arrSize === 0){
+      if(mapSize === 0 || (arrSize > 0 && mapSize < Math.floor(arrSize * 0.6))){
         await __syncPull('1970-01-01T00:00:00.000Z');
-        try{ __lsSet(FULL_DONE_KEY, "1"); }catch(_e){}
-        // actualizar maxSeen tras el full pull
-        try{
-          const arr1 = Array.isArray(emergencias) ? emergencias : __loadEmergencias();
-          const n1 = Array.isArray(arr1) ? arr1.length : 0;
-          if(n1 > maxSeen){
-            try{ __lsSet(MAXSEEN_KEY, String(n1)); }catch(_e){}
-          }
-        }catch(_e){}
       }
     }catch(e){}
 
@@ -9020,18 +9022,7 @@ async function __syncAll(){
 
     // 2) PUSH (si corresponde)
     if(!isCons){
-      const push0 = await __syncPush();
-      // Si el Worker exige if_match y el cliente aún no tenía hashes, reintentamos 1 vez
-      let push = push0;
-      try{
-        const onlyMissing = (push0 && Array.isArray(push0.conflicts) && push0.conflicts.length>0)
-          ? push0.conflicts.every(x=>String(x && x.reason || "") === "missing_if_match")
-          : false;
-        if(onlyMissing){
-          push = await __syncPush();
-        }
-      }catch(_e){}
-
+      const push = await __syncPush();
       if(push.conflicts && push.conflicts.length){
         alert('Sync: hubo conflictos de edición. Se registró en el log de conflictos.');
       }
