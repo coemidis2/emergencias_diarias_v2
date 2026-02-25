@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-<!-- BUILD: 2026-02-20 autopull-cooldown-v155 -->
+<!-- BUILD: 2026-02-20 autopull-cooldown-v156 -->
 <script>window.__BUILD_ID='2026-02-20 autopull-cooldown-v3';console.log('BUILD',window.__BUILD_ID);</script>
 
 <!-- build: VER_PRINT_RC_ALWAYS_VISIBLE v4 2026-01-11 -->
@@ -8659,6 +8659,8 @@ function __syncCleanPayload(obj){
 async function __syncHash(obj){
   return await __sha256(JSON.stringify(__syncCleanPayload(obj)));
 }
+
+
 async function __syncPush(){
   if(!__isApiConfigured()) throw new Error('server_not_configured');
   if(!navigator.onLine) throw new Error('offline');
@@ -8678,6 +8680,7 @@ async function __syncPush(){
   for(const e of arr){
     const codigo = String(e && e.codigo ? e.codigo : '').trim();
     if(!codigo) continue;
+
     // No empujar eliminados (tombstones / _deleted)
     if(typeof __isDeleted === "function" && __isDeleted(e)) continue;
 
@@ -8723,7 +8726,7 @@ async function __syncPush(){
     }
 
     if(!out.res || !out.res.ok){
-      // Persistir avances antes de salir (evita “revivir” aprobaciones tras refresh)
+      // Persistir avances antes de salir (evita “revivir” cosas tras refresh)
       try{ __setHashMap(map); }catch(e){}
       try{ __saveEmergencias(); }catch(e){}
       const err = out.data && out.data.error ? out.data.error : 'push_failed';
