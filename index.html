@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-<!-- BUILD: 2026-02-20 autopull-cooldown-v158 -->
+<!-- BUILD: 2026-02-20 autopull-cooldown-v159 -->
 <script>window.__BUILD_ID='2026-02-20 autopull-cooldown-v3';console.log('BUILD',window.__BUILD_ID);</script>
 
 <!-- build: VER_PRINT_RC_ALWAYS_VISIBLE v4 2026-01-11 -->
@@ -8190,6 +8190,7 @@ function __updateSyncUI(pending){
   }
 }
 
+
 async function __calcPending(){
   try{
     const map = __getHashMap();
@@ -8200,7 +8201,7 @@ async function __calcPending(){
       if(!codigo) continue;
       if(typeof __isDeleted === "function" && __isDeleted(e)) continue;
       if(String(e && e.estado_sync ? e.estado_sync : "") === "Rechazado") continue;
-      const h = await __sha256(JSON.stringify(e));
+      const h = await __syncHash(e);
       if(map[codigo] !== h) pending++;
     }
     __updateSyncUI(pending);
@@ -8646,6 +8647,36 @@ async function __createUserFromAdmin(){
 }
 
 // ---- SYNC ----
+
+// === SYNC: hash/payload limpio (no incluye campos locales) ===
+function __syncCleanPayload(obj){
+  const x = JSON.parse(JSON.stringify(obj || {}));
+  // Campos SOLO locales (no deben entrar al hash ni viajar al servidor)
+  delete x.estado_sync;
+  delete x.sync_denied_at;
+  delete x.sync_denied_reason;
+  delete x.__serverUpdatedAt;
+  delete x.__serverCreatedAt;
+  return x;
+}
+async function __syncHash(obj){
+  return await __sha256(JSON.stringify(__syncCleanPayload(obj)));
+}
+
+function __syncCleanPayload(obj){
+  // Limpia campos SOLO locales que no deben influir en el hash ni viajar al servidor
+  const x = JSON.parse(JSON.stringify(obj || {}));
+  try{ delete x.estado_sync; }catch(e){}
+  try{ delete x.sync_denied_at; }catch(e){}
+  try{ delete x.sync_denied_reason; }catch(e){}
+  try{ delete x.__serverUpdatedAt; }catch(e){}
+  try{ delete x.__serverCreatedAt; }catch(e){}
+  return x;
+}
+async function __syncHash(obj){
+  return await __sha256(JSON.stringify(__syncCleanPayload(obj)));
+}
+
 async function __syncPush(){
   if(!__isApiConfigured()) throw new Error('server_not_configured');
   if(!navigator.onLine) throw new Error('offline');
@@ -8664,16 +8695,20 @@ async function __syncPush(){
   for(const e of arr){
     const codigo = String(e && e.codigo ? e.codigo : '').trim();
     if(!codigo) continue;
-    const h = await __sha256(JSON.stringify(e));
+    if(typeof __isDeleted === 'function' && __isDeleted(e)) continue;
+    if(String(e && e.estado_sync ? e.estado_sync : '') === 'Rechazado') continue;
+
+    const clean = __syncCleanPayload(e);
+    const h = await __sha256(JSON.stringify(clean));
+
     if(map[codigo] !== h){
       try{ e.estado_sync = 'Pendiente'; }catch(_e){}
       const now = __nowIso();
       toSend.push({
         codigo: codigo,
-        payload: e,
+        payload: clean,
         hash: h,
-        if_match: map[codigo] || "",
-
+        if_match: map[codigo] || '',
         created_at: e.createdAt || e.fechaRegistro || now,
         updated_at: now,
         device_id: deviceId
@@ -8683,7 +8718,8 @@ async function __syncPush(){
 
   if(toSend.length === 0) return { ok:true, acked:[], empty:true };
 
-  const batchSize = 150;
+  // Lotes pequeños para evitar timeouts/500
+  const batchSize = 30;
   const allAcked = [];
   const allConf = [];
   const allDen = [];
@@ -8691,11 +8727,18 @@ async function __syncPush(){
   for(let i=0;i<toSend.length;i+=batchSize){
     const batch = toSend.slice(i, i+batchSize);
     const out = await __api('/sync/push', { method:'POST', token: token, body:{ records: batch } });
-    if(out.res && out.res.status === 401){
-    throw new Error('unauthorized');
-  }
 
-  if(!out.res || !out.res.ok){
+    if(out.res && out.res.status === 401){
+      // guardar avance antes de cortar
+      try{ __saveEmergencias(); }catch(e){}
+      try{ __setHashMap(map); }catch(e){}
+      throw new Error('unauthorized');
+    }
+
+    if(!out.res || !out.res.ok){
+      // guardar avance antes de cortar
+      try{ __saveEmergencias(); }catch(e){}
+      try{ __setHashMap(map); }catch(e){}
       const err = out.data && out.data.error ? out.data.error : 'push_failed';
       throw new Error(err);
     }
@@ -8704,55 +8747,70 @@ async function __syncPush(){
     const conf  = out.data && Array.isArray(out.data.conflicts) ? out.data.conflicts : [];
     const den   = out.data && Array.isArray(out.data.denied) ? out.data.denied : [];
 
+    // ACK: actualizar map y marcar sincronizado
     for(const c of acked){
       allAcked.push(c);
-      // actualizar mapa local con hash del batch
       for(const r of batch){
-        if(r.codigo === c){
-          map[c] = r.hash;
-          break;
-        }
+        if(r.codigo === c){ map[c] = r.hash; break; }
       }
-      // marcar como sincronizado en la data local
       for(const e of arr){
         if(e && String(e.codigo||'').trim() === c){
           try{ e.estado_sync = 'Sincronizado'; }catch(_e){}
+          try{ delete e.sync_denied_at; }catch(_e){}
+          try{ delete e.sync_denied_reason; }catch(_e){}
           break;
         }
       }
     }
 
-    for(const x of conf) allConf.push(x);
-    for(const x of den) allDen.push(x);
+    // Conflictos: si falta if_match, hidratar base hash para no repetir el intento
+    for(const x of conf){
+      allConf.push(x);
+      try{
+        if(x && x.reason === 'missing_if_match' && x.codigo && x.server_hash){
+          map[String(x.codigo).trim()] = String(x.server_hash);
+          for(const e of arr){
+            if(e && String(e.codigo||'').trim() === String(x.codigo).trim()){
+              try{ e.estado_sync = 'Sincronizado'; }catch(_e){}
+              break;
+            }
+          }
+        }
+      }catch(e){}
+    }
+
+    // Denied: marcar en local
+    try{
+      const now = __nowIso();
+      for(const it of den){
+        allDen.push(it);
+        let codigo = '';
+        let reason = 'denied';
+        if(typeof it === 'string') codigo = it;
+        else if(it){
+          codigo = String(it.codigo || it.code || it.id || '').trim();
+          reason = String(it.reason || it.error || it.msg || it.message || 'denied');
+        }
+        codigo = String(codigo||'').trim();
+        if(!codigo) continue;
+        for(const e of arr){
+          if(e && String(e.codigo||'').trim() === codigo){
+            e.estado_sync = 'Rechazado';
+            e.sync_denied_at = now;
+            e.sync_denied_reason = reason;
+            break;
+          }
+        }
+      }
+    }catch(e){}
+
+    // Persistir avance por lote
+    try{ __saveEmergencias(); }catch(e){}
+    try{ __setHashMap(map); }catch(e){}
+
+    // micro pausa
+    try{ await new Promise(r=>setTimeout(r, 60)); }catch(e){}
   }
-
-  // Marcar rechazados en local (evita que queden "pegados" como Pendientes)
-  try{
-    const now = __nowIso();
-    for(const it of allDen){
-      let codigo = "";
-      let reason = "denied";
-      if(typeof it === "string"){
-        codigo = it;
-      }else if(it){
-        codigo = String(it.codigo || it.code || it.id || "").trim();
-        reason = String(it.reason || it.error || it.msg || it.message || "denied");
-      }
-      codigo = String(codigo || "").trim();
-      if(!codigo) continue;
-      for(const e of arr){
-        if(e && String(e.codigo || "").trim() === codigo){
-          e.estado_sync = "Rechazado";
-          e.sync_denied_at = now;
-          e.sync_denied_reason = reason;
-          break;
-        }
-      }
-    }
-    __saveEmergencias();
-  }catch(e){}
-
-  __setHashMap(map);
 
   if(allConf.length || allDen.length){
     let old = [];
@@ -8763,6 +8821,7 @@ async function __syncPush(){
 
   return { ok:true, acked: allAcked, conflicts: allConf, denied: allDen };
 }
+
 
 async function __syncPull(since){
   if(!__isApiConfigured()) throw new Error('server_not_configured');
@@ -8808,7 +8867,7 @@ async function __syncPull(since){
 
     const i = idx[codigo];
     if(i !== undefined){
-      const localHash = await __sha256(JSON.stringify(local[i]));
+      const localHash = await __syncHash(local[i]);
       const lastSynced = map[codigo];
       const localDirty = (lastSynced && localHash !== lastSynced);
 
@@ -8863,22 +8922,17 @@ async function __syncAll(){
     const isCons = currentUser && currentUser.role === __ROLES.CONS;
 
     // 1) PULL primero (evita empujar "data vieja" encima del servidor)
-//    IMPORTANTE: si se borró el hashMap (o es un equipo nuevo), hacemos un pull completo
-//    para rehidratar hashes y evitar que el servidor rechace updates por falta de if_match.
-    let pull1 = null;
+    let pull1 = await __syncPull(__getLastPull());
+    // Si hay muchos registros en servidor, completar varias páginas antes del push (hidrata hashMap)
     try{
-      const map0 = __getHashMap();
-      const arr0 = Array.isArray(emergencias) ? emergencias : __loadEmergencias();
-      const mapN = map0 ? Object.keys(map0).length : 0;
-      if(mapN === 0 && arr0 && arr0.length > 0){
-        pull1 = await __syncPull("1970-01-01T00:00:00.000Z");
-      }else{
+      const LIMIT = 5000;
+      let guard = 0;
+      while(pull1 && pull1.records && pull1.records.length >= LIMIT && guard < 20){
+        guard++;
+        await new Promise(r=>setTimeout(r, 80));
         pull1 = await __syncPull(__getLastPull());
       }
-    }catch(e){
-      // si el pull falla, que caiga al catch general
-      throw e;
-    }
+    }catch(e){}
 
     // recalcular pendientes
     await __calcPending();
