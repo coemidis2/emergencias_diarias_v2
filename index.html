@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-<!-- BUILD: 2026-02-20 autopull-cooldown-v160 -->
+<!-- BUILD: 2026-02-20 autopull-cooldown-v161 -->
 <script>window.__BUILD_ID='2026-02-20 autopull-cooldown-v3';console.log('BUILD',window.__BUILD_ID);</script>
 
 <!-- build: VER_PRINT_RC_ALWAYS_VISIBLE v4 2026-01-11 -->
@@ -7954,8 +7954,8 @@ const __API_CFG = (function(){
 
   const baseUrl = __normalizeBaseUrl(rawBase);
 
-  const timeoutMsRaw = (g.timeoutMs !== undefined && g.timeoutMs !== null) ? Number(g.timeoutMs) : 120000;
-  const timeoutMs = (isFinite(timeoutMsRaw) && timeoutMsRaw > 0) ? timeoutMsRaw : 120000;
+  const timeoutMsRaw = (g.timeoutMs !== undefined && g.timeoutMs !== null) ? Number(g.timeoutMs) : 15000;
+  const timeoutMs = (isFinite(timeoutMsRaw) && timeoutMsRaw > 0) ? timeoutMsRaw : 15000;
 
   // Mantener sincronizada la config global (por si otros bloques la leen)
   try{
@@ -8646,27 +8646,6 @@ async function __createUserFromAdmin(){
 }
 
 // ---- SYNC ----
-
-// === SYNC: hidratación automática de hashMap (para SYNC_REQUIRE_IF_MATCH=1) ===
-function __syncMapSize(m){
-  try{ return Object.keys(m||{}).length; }catch(e){ return 0; }
-}
-function __syncShouldHydrateHashMap(){
-  try{
-    const map = __getHashMap();
-    const ms = __syncMapSize(map);
-    const arr = Array.isArray(emergencias) ? emergencias : __loadEmergencias();
-    const n = Array.isArray(arr) ? arr.length : 0;
-    if(n <= 0) return false;
-    if(ms === 0) return true;
-    // si borraron hashMap pero mantuvieron emergencias, forzamos pull completo
-    if(ms < Math.min(50, Math.floor(n * 0.3))) return true;
-    return false;
-  }catch(e){
-    return false;
-  }
-}
-
 async function __syncPush(){
   if(!__isApiConfigured()) throw new Error('server_not_configured');
   if(!navigator.onLine) throw new Error('offline');
@@ -8773,6 +8752,30 @@ async function __syncPush(){
     __saveEmergencias();
   }catch(e){}
 
+  // --- Auto-rehidratar hashmap cuando Worker exige if_match ---
+  try{
+    for(const it of allConf){
+      if(!it) continue;
+      const codigo = String(it.codigo || "").trim();
+      const reason = String(it.reason || "");
+      const sh = String(it.server_hash || "");
+      if(codigo && reason === "missing_if_match" && sh){
+        map[codigo] = sh;
+
+        // si lo local YA es igual al servidor, marcar sincronizado
+        for(const e of arr){
+          if(e && String(e.codigo||"").trim() === codigo){
+            const lh = await __sha256(JSON.stringify(e));
+            if(lh === sh){
+              e.estado_sync = "Sincronizado";
+            }
+            break;
+          }
+        }
+      }
+    }
+  }catch(e){}
+
   __setHashMap(map);
 
   if(allConf.length || allDen.length){
@@ -8790,21 +8793,48 @@ async function __syncPull(since){
   if(!navigator.onLine) throw new Error('offline');
 
   const token = __tokenGet(); // opcional
+  const limit = 5000;
+  let s = since || __getLastPull();
+  let pulledAll = [];
+  let guard = 0;
 
-  const s = since || __getLastPull();
-  const out = await __api('/sync/pull?since=' + encodeURIComponent(s) + '&limit=5000', { method:'GET', token: token });
-  if(out.res && out.res.status === 401){
-    throw new Error('unauthorized');
+  while(guard < 25){
+    const out = await __api('/sync/pull?since=' + encodeURIComponent(s) + '&limit=' + limit, { method:'GET', token: token });
+    if(out.res && out.res.status === 401) throw new Error('unauthorized');
+    if(!out.res || !out.res.ok){
+      const err = out.data && out.data.error ? out.data.error : 'pull_failed';
+      throw new Error(err);
+    }
+
+    const pulledBatch = out.data && Array.isArray(out.data.records) ? out.data.records : [];
+    if(pulledBatch.length === 0) break;
+
+    pulledAll = pulledAll.concat(pulledBatch);
+
+    // calcular maxUpdated de este lote
+    let maxUpdatedBatch = s;
+    for(const r of pulledBatch){
+      const upd = String(r && r.updated_at ? r.updated_at : "");
+      if(upd && upd > maxUpdatedBatch) maxUpdatedBatch = upd;
+    }
+
+    // si vino menos del límite, ya terminamos
+    if(pulledBatch.length < limit) { s = maxUpdatedBatch; break; }
+
+    // si no avanzó since, cortar para evitar bucle
+    if(maxUpdatedBatch === s) break;
+
+    s = maxUpdatedBatch;
+    guard++;
   }
 
-  if(!out.res || !out.res.ok){
-    const err = out.data && out.data.error ? out.data.error : 'pull_failed';
-    throw new Error(err);
-  }
-
-  const pulled = out.data && Array.isArray(out.data.records) ? out.data.records : [];
+  // a partir de aquí usa pulledAll como antes:
+  const pulled = pulledAll;
   if(pulled.length === 0){
-    return { ok:true, records: [], newSince: s };
+    return { ok:true, records: [], newSince: (since || __getLastPull()) };
+  }
+  if(pulled.length === 0){
+    return { ok:true, records: [], newSince: (since || __getLastPull()) };
   }
 
   const map = __getHashMap();
@@ -8852,7 +8882,7 @@ async function __syncPull(since){
   emergencias = local;
   __saveEmergencias();
   __setHashMap(map);
-  __setLastPull(maxUpdated);
+  __setLastPull(s);
 
   if(conflicts.length){
     let old = [];
@@ -8864,7 +8894,7 @@ async function __syncPull(since){
   try{ __recalcularCorrelativos(); }catch(e){}
   try{ cargarTablaEmergencias(); }catch(e){}
 
-  return { ok:true, records: pulled, newSince: maxUpdated, conflicts: conflicts };
+  return { ok:true, records: pulled, newSince: s, conflicts: conflicts };
 }
 
 async function __syncAll(){
@@ -8883,32 +8913,13 @@ async function __syncAll(){
 
     const isCons = currentUser && currentUser.role === __ROLES.CONS;
 
-    // 0) Si el hashMap está vacío/parcial pero tienes emergencias en local, primero hidratar con PULL completo.
-    let since = __getLastPull();
-    try{
-      if(__syncShouldHydrateHashMap && __syncShouldHydrateHashMap()){
-        since = '1970-01-01T00:00:00.000Z';
-      }
-    }catch(e){}
-
     // 1) PULL primero (evita empujar "data vieja" encima del servidor)
-    let pull1 = await __syncPull(since);
-
-    // Si hay muchos registros, completar varias páginas antes del push
-    try{
-      const LIMIT = 5000;
-      let guard = 0;
-      while(pull1 && pull1.records && pull1.records.length >= LIMIT && guard < 20){
-        guard++;
-        await new Promise(r=>setTimeout(r, 80));
-        pull1 = await __syncPull(__getLastPull());
-      }
-    }catch(e){}
+    const pull1 = await __syncPull(__getLastPull());
 
     // recalcular pendientes
     await __calcPending();
 
-    // Si hay conflictos local vs servidor, NO hacemos push
+    // Si hay conflictos local vs servidor, NO hacemos push (evita "revivir" estados cerrados)
     if(pull1.conflicts && pull1.conflicts.length){
       alert('Pull: se detectaron conflictos (local vs servidor). Se canceló el Push para no sobrescribir el servidor. Revisa el log de conflictos y actualiza tu registro antes de volver a sincronizar.');
       return;
@@ -8917,19 +8928,6 @@ async function __syncAll(){
     // 2) PUSH (si corresponde)
     if(!isCons){
       const push = await __syncPush();
-
-      // Si el servidor exige if_match y faltó hash local, forzar hidratación completa y NO repetir push en esta ronda.
-      try{
-        const miss = (push && push.conflicts) ? push.conflicts.filter(x=>x && x.reason === 'missing_if_match') : [];
-        if(miss && miss.length){
-          // reconstruir base de hashes y refrescar
-          await __syncPull('1970-01-01T00:00:00.000Z');
-          await __calcPending();
-          alert('Sync: tu PC tenía el hashMap incompleto (por limpieza parcial de storage). Se reconstruyó con un Pull completo. Vuelve a presionar Sincronizar.');
-          return;
-        }
-      }catch(e){}
-
       if(push.conflicts && push.conflicts.length){
         alert('Sync: hubo conflictos de edición. Se registró en el log de conflictos.');
       }
@@ -8943,9 +8941,7 @@ async function __syncAll(){
         }catch(e){}
         const clean = codes.map(c=>String(c||"").trim()).filter(Boolean);
         const shown = clean.slice(0, 20).join(", ");
-        alert("Sync: algunos registros fueron rechazados (no propietario / registro cerrado / inválido)." + (shown ? ("
-Códigos: " + shown + (clean.length>20 ? " ..." : "")) : "") + "
-Sugerencia: primero actualiza (Pull). Si el registro ya estaba cerrado por el Administrador, tu versión local estaba desfasada. Si además es tema de propietario, el Administrador debe corregirlo.");
+        alert("Sync: algunos registros fueron rechazados (no propietario / registro cerrado / inválido)." + (shown ? ("\nCódigos: " + shown + (clean.length>20 ? " ..." : "")) : "") + "\nSugerencia: primero actualiza (Pull). Si el registro ya estaba cerrado por el Administrador, tu versión local estaba desfasada. Si además es tema de propietario, el Administrador debe corregirlo.");
       }
     }
 
@@ -8981,16 +8977,7 @@ async function __syncPullAuto(){
     window.__PULL_AUTO_INFLIGHT = true;
     window.__PULL_AUTO_LAST = now;
 
-    // Si hashMap está incompleto por limpieza parcial, hacer 1 sola vez un PULL completo
-    let since = __getLastPull();
-    try{
-      if(!window.__PULL_AUTO_FULL_DONE && __syncShouldHydrateHashMap && __syncShouldHydrateHashMap()){
-        since = '1970-01-01T00:00:00.000Z';
-        window.__PULL_AUTO_FULL_DONE = true;
-      }
-    }catch(e){}
-
-    await __syncPull(since);
+    await __syncPull(__getLastPull());
     await __calcPending();
 
   }catch(e){
@@ -9001,7 +8988,7 @@ async function __syncPullAuto(){
 }
 
 
-// ===================== SEGUIMIENTO REPORTES (ADMIN) ===================== (ADMIN) =====================
+// ===================== SEGUIMIENTO REPORTES (ADMIN) =====================
 let __SEG_CACHE = { records: [], loadedAt: null };
 
 function __segGetToken(){
