@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-<!-- BUILD: 2026-02-20 autopull-cooldown-v173 -->
+<!-- BUILD: 2026-02-20 autopull-cooldown-v174 -->
 <script>window.__BUILD_ID='2026-02-20 autopull-cooldown-v3';console.log('BUILD',window.__BUILD_ID);</script>
 
 <!-- build: VER_PRINT_RC_ALWAYS_VISIBLE v4 2026-01-11 -->
@@ -4606,26 +4606,46 @@ function __buildRCLecturaHtml(em, opts){
     }
     if(!Array.isArray(list) || list.length===0) return "";
 
+    const seenRc = new Set();
     let out = "";
-    list.forEach((rc, idx)=>{
+    let shown = 0;
+
+    list.forEach((rc)=>{
       const num = (rc && (rc.numeroGlobal || rc.numeroReporteRC || rc.numGlobal || rc.nroGlobal)) ? (rc.numeroGlobal || rc.numeroReporteRC || rc.numGlobal || rc.nroGlobal) : "";
       const fecha = (rc && (rc.fechaHoraRC || rc.fechaHora || rc.fechaElaboracion || rc.fechaRegistro)) ? (rc.fechaHoraRC || rc.fechaHora || rc.fechaElaboracion || rc.fechaRegistro) : "";
       const est = (rc && (rc.aprobEstado || rc.estado || rc.status)) ? (rc.aprobEstado || rc.estado || rc.status) : "";
       const acciones = (__buildAccionesCompUnique([rc]).byRc[0] || []).map(x=>x.item);
 
-      let accionesHtml = "<span class=\"text-muted\">Sin acciones registradas.</span>";
+      const accionesKey = (Array.isArray(acciones) ? acciones : []).map(a=>{
+        const f = String((a && (a.fecha || a.fechaHora || a.fecha_accion)) ? (a.fecha || a.fechaHora || a.fecha_accion) : "").trim().toLowerCase();
+        const d = String((a && (a.descripcion || a.detalle || a.accion)) ? (a.descripcion || a.detalle || a.accion) : "").trim().toLowerCase().replace(/\s+/g, ' ');
+        return f + '|' + d;
+      }).join('||');
+
+      const rcKey = [
+        String(num || '').trim().toLowerCase(),
+        String(fecha || '').trim().toLowerCase(),
+        String(est || '').trim().toLowerCase(),
+        accionesKey
+      ].join('###');
+
+      if(seenRc.has(rcKey)) return;
+      seenRc.add(rcKey);
+      shown += 1;
+
+      let accionesHtml = '<span class="text-muted">Sin acciones registradas.</span>';
       if(Array.isArray(acciones) && acciones.length){
-        accionesHtml = "<ul class=\"mb-0 small\">" + acciones.map(a=>{
+        accionesHtml = '<ul class="mb-0 small">' + acciones.map(a=>{
           const f = (a && (a.fecha || a.fechaHora || a.fecha_accion)) ? (a.fecha || a.fechaHora || a.fecha_accion) : "";
           const d = (a && (a.descripcion || a.detalle || a.accion)) ? (a.descripcion || a.detalle || a.accion) : "";
           return `<li>[${__escapeHtml(f)}] ${__escapeHtml(d)}</li>`;
-        }).join("") + "</ul>";
+        }).join("") + '</ul>';
       }
 
       out += `
-        <div class=\"border rounded p-2 mb-2\">
-          <div><b>RC ${idx+1}</b>${num ? ` – <b>N° Global:</b> ${__escapeHtml(num)}` : ""}${fecha ? ` – <b>Fecha de registro:</b> ${__escapeHtml(fecha)}` : ""}${est ? ` – <b>Estado:</b> ${__escapeHtml(est)}` : ""}</div>
-          <div class=\"mt-1\">${accionesHtml}</div>
+        <div class="border rounded p-2 mb-2">
+          <div><b>RC ${shown}</b>${num ? ` – <b>N° Global:</b> ${__escapeHtml(num)}` : ""}${fecha ? ` – <b>Fecha de registro:</b> ${__escapeHtml(fecha)}` : ""}${est ? ` – <b>Estado:</b> ${__escapeHtml(est)}` : ""}</div>
+          <div class="mt-1">${accionesHtml}</div>
         </div>`;
     });
 
@@ -5949,41 +5969,8 @@ function __getRCPreviewNextGlobal(){
 function __renderRCResumenPostDanios(em, currentMeta){
   const box = document.getElementById("rcResumenPostDanios");
   if(!box) return;
-
-  const rcList = (typeof __getRCList === "function") ? __getRCList(em) : (Array.isArray(em?.rcReportes) ? em.rcReportes : []);
-  const histHtml = (Array.isArray(rcList) && rcList.length)
-    ? rcList.map((rc, idx)=>{
-        const num = rc?.numeroGlobal || rc?.numeroReporteRC || "";
-        const fecha = rc?.fechaHoraRC || rc?.fechaHora || rc?.fechaElaboracion || rc?.fechaRegistro || rc?.updatedAt || "";
-        return `
-          <div class="border rounded p-2 mb-2 bg-light">
-            <div class="fw-semibold text-primary">RC ${idx + 1}</div>
-            <div><b>N° Global:</b> ${__escapeHtml(num)}</div>
-            <div><b>Fecha de elaboración:</b> ${__escapeHtml(fecha)}</div>
-          </div>`;
-      }).join("")
-    : '<div class="text-muted">Sin RC registrados.</div>';
-
-  const label = __escapeHtml(currentMeta?.label || (Array.isArray(rcList) && rcList.length ? "Próximo RC" : "Primer RC"));
-  const numActual = __escapeHtml(currentMeta?.numeroGlobal ?? __getRCPreviewNextGlobal());
-  const fechaActual = __escapeHtml(currentMeta?.fechaHora || __listNowLocalDT() || "");
-
-  box.innerHTML = `
-    <div class="row g-3">
-      <div class="col-md-6">
-        <div class="border rounded p-3 h-100">
-          <div class="fw-bold text-primary mb-2">RC registrados</div>
-          ${histHtml}
-        </div>
-      </div>
-      <div class="col-md-6">
-        <div class="border rounded p-3 h-100">
-          <div class="fw-bold text-primary mb-2">${label}</div>
-          <div><b>N° Global:</b> ${numActual}</div>
-          <div><b>Fecha de elaboración:</b> ${fechaActual}</div>
-        </div>
-      </div>
-    </div>`;
+  box.innerHTML = "";
+  box.style.display = "none";
 }
 
 function abrirRP(obj){
@@ -6230,7 +6217,7 @@ try{
         const f = (a && a.fecha) ? a.fecha : "";
         const d = (a && a.descripcion) ? a.descripcion : "";
         return `<li>[${f}] ${d}</li>`;
-      }).join("") + "</ul>";
+      }).join("") + '</ul>';
     }
   }catch(e){}
 
@@ -6380,7 +6367,7 @@ function __guardarRCCore(opts={}){
           const f = (a && a.fecha) ? a.fecha : "";
           const d = (a && a.descripcion) ? a.descripcion : "";
           return `<li>[${f}] ${d}</li>`;
-        }).join("") + "</ul>";
+        }).join("") + '</ul>';
       }
     }catch(e){}
 
@@ -6467,7 +6454,7 @@ ${rcLecturaHtml ? `
         const f = (a && a.fecha) ? a.fecha : "";
         const d = (a && a.descripcion) ? a.descripcion : "";
         return `<li>[${f}] ${d}</li>`;
-      }).join("") + "</ul>";
+      }).join("") + '</ul>';
     }
   }catch(e){}
 
@@ -9771,7 +9758,7 @@ function __segShowBitacora(em){
             <div class="small">${x.who || ""}</div>
             ${det}
           </li>`;
-        }).join("") + "</ul>";
+        }).join("") + '</ul>';
       }
     }
 
