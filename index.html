@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-<!-- BUILD: 2026-02-20 autopull-cooldown-v175 -->
+<!-- BUILD: 2026-02-20 autopull-cooldown-v176 -->
 <script>window.__BUILD_ID='2026-02-20 autopull-cooldown-v3';console.log('BUILD',window.__BUILD_ID);</script>
 
 <!-- build: VER_PRINT_RC_ALWAYS_VISIBLE v4 2026-01-11 -->
@@ -165,6 +165,104 @@ body { background: #f5f5f5; }
 .role-admin #listaTab #tablaEmergencias td:nth-child(14){ width: 90px; }
 .role-admin #listaTab #tablaEmergencias th:nth-child(15),
 .role-admin #listaTab #tablaEmergencias td:nth-child(15){ width: 70px; }
+
+
+
+/* ======= MOBILE / RESPONSIVE ======= */
+@media (max-width: 768px){
+  body{ font-size:14px; }
+  .container{ padding-left:.75rem; padding-right:.75rem; }
+  .app-topbar .container > .d-flex{
+    flex-direction: column;
+    align-items: flex-start !important;
+  }
+  .app-topbar .h5{ font-size:1rem; }
+  .app-topbar .small{ font-size:.78rem; }
+
+  #mainTabs,
+  #admTabs{
+    flex-wrap: nowrap !important;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    white-space: nowrap;
+    scrollbar-width: thin;
+  }
+  #mainTabs .nav-item,
+  #admTabs .nav-item{ flex:0 0 auto; }
+  #mainTabs .nav-link,
+  #admTabs .nav-link{
+    padding:.55rem .75rem;
+    font-size:.92rem;
+  }
+
+  .card-body{ padding:.85rem; }
+  h4.text-primary{ font-size:1.05rem; }
+
+  .btn,
+  .form-control,
+  .form-select,
+  textarea{
+    font-size:16px;
+  }
+
+  .btn-group{ flex-wrap: wrap; }
+
+  .table,
+  .table-sm{ font-size:.82rem; }
+
+  .admin-list-table-wrap,
+  .table-responsive{
+    overflow-x:auto;
+    -webkit-overflow-scrolling:touch;
+  }
+
+  #tablaEmergencias{ min-width:980px; }
+
+  #dashMapFilters{ flex-wrap:wrap; }
+  #dashMap{
+    width:100% !important;
+    height:55vh !important;
+    min-height:320px;
+    max-height:520px;
+  }
+
+  .modal-dialog{ margin:.5rem auto; }
+  .modal-lg,
+  .modal-xl{ --bs-modal-width: calc(100vw - 1rem); }
+  .modal-content{ border-radius: 12px; }
+
+  .ver-report-wrap{ font-size:10pt; }
+  .ver-report-title{ font-size:13pt; }
+}
+
+@media (max-width: 576px){
+  .app-topbar{ position: static; }
+  .app-topbar .container > .d-flex:last-child,
+  .app-topbar .container > .d-flex{
+    width:100%;
+    justify-content:flex-start !important;
+    flex-wrap:wrap;
+  }
+
+  .d-flex.justify-content-end.align-items-center.gap-2.mb-2{
+    justify-content:flex-start !important;
+    flex-wrap:wrap;
+  }
+
+  .d-flex.flex-wrap.justify-content-between.align-items-center.mt-2.gap-2{
+    align-items:flex-start !important;
+  }
+
+  #dashMap{
+    height:50vh !important;
+    min-height:280px;
+  }
+
+  .modal-sm,
+  .modal-lg,
+  .modal-xl{ --bs-modal-width: calc(100vw - .75rem); }
+}
 
 </style>
 
@@ -1947,10 +2045,10 @@ const btnGERP = document.getElementById("btnGuardarEnviarRP");
 const btnGARP = document.getElementById("btnGuardarAprobarRPAdmin");
 const isReg   = currentUser?.role === __ROLES.REG;
 
-  // Lista de Emergencias: Exportar Excel (Administrador / Registrador / Consulta)
+  // Lista de Emergencias: Exportar Excel (Admin/Registrador)
   try{
     const bX = document.getElementById("btnExportExcelLista");
-    const can = (isAdmin || isReg || currentUser?.role === __ROLES.CONS);
+    const can = (isAdmin || isReg);
     if(bX) bX.classList.toggle("d-none", !can);
   }catch(e){}
 
@@ -9966,23 +10064,8 @@ function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO){
       return;
     }
 
-    // ordenar por Departamento ascendente
-    items.sort((a,b)=>{
-      const depA  = String(a?.row?.[3] || "").trim();
-      const depB  = String(b?.row?.[3] || "").trim();
-      const provA = String(a?.row?.[4] || "").trim();
-      const provB = String(b?.row?.[4] || "").trim();
-      const distA = String(a?.row?.[5] || "").trim();
-      const distB = String(b?.row?.[5] || "").trim();
-
-      let cmp = depA.localeCompare(depB, 'es', { sensitivity:'base', numeric:true });
-      if(cmp !== 0) return cmp;
-      cmp = provA.localeCompare(provB, 'es', { sensitivity:'base', numeric:true });
-      if(cmp !== 0) return cmp;
-      cmp = distA.localeCompare(distB, 'es', { sensitivity:'base', numeric:true });
-      if(cmp !== 0) return cmp;
-      return (a.dt - b.dt);
-    });
+    // ordenar por fecha de elaboración ascendente
+    items.sort((a,b)=> (a.dt - b.dt));
 
     const titleStyle = { font:{name:"Calibri", sz:8, bold:true}, alignment:{horizontal:"center", vertical:"center", wrapText:true} };
     const subStyle   = { font:{name:"Calibri", sz:8, bold:true}, alignment:{horizontal:"center", vertical:"center", wrapText:true} };
