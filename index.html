@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-<!-- BUILD: 2026-02-20 autopull-cooldown-v182 -->
+<!-- BUILD: 2026-02-20 autopull-cooldown-v183 -->
 <script>window.__BUILD_ID='2026-02-20 autopull-cooldown-v3';console.log('BUILD',window.__BUILD_ID);</script>
 
 <!-- build: VER_PRINT_RC_ALWAYS_VISIBLE v4 2026-01-11 -->
@@ -3129,8 +3129,7 @@ async function __solicitarCierre(){
   const __syncAfterCierre = async (successMsg)=>{
     if(!(__isApiConfigured && __isApiConfigured()) || !navigator.onLine){
       try{ em.estado_sync = 'Pendiente'; __saveEmergencias(); }catch(_e){}
-      alert((successMsg || 'Cambio guardado en local.') + "
-Pendiente de sincronizar con el servidor.");
+      alert((successMsg || 'Cambio guardado en local.') + "\nPendiente de sincronizar con el servidor.");
       return { ok:true, pending:true };
     }
     try{
