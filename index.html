@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-<!-- BUILD: 2026-02-20 autopull-cooldown-v184 -->
+<!-- BUILD: 2026-02-20 autopull-cooldown-v185 -->
 <script>window.__BUILD_ID='2026-02-20 autopull-cooldown-v3';console.log('BUILD',window.__BUILD_ID);</script>
 
 <!-- build: VER_PRINT_RC_ALWAYS_VISIBLE v4 2026-01-11 -->
@@ -1610,7 +1610,8 @@ const __AUTH_KEYS = {
   users: "midis_users_v1",
   session: "midis_session_v1",
   audit: "midis_audit_v1",
-  emerg: "midis_emergencias_v1"
+  emerg: "midis_emergencias_v1",
+  rpBlocks: "midis_rp_blocks_v1"
 };
 
 const __ROLES = {
@@ -4130,6 +4131,99 @@ document.addEventListener("DOMContentLoaded", function () {
 });
 
 // ===================== FUNCIÓN CÓDIGO RP =====================
+function __loadRPBlocks(){
+  try{
+    const raw = __lsGet(__AUTH_KEYS.rpBlocks);
+    if(!raw) return {};
+    const obj = JSON.parse(raw);
+    return (obj && typeof obj === "object") ? obj : {};
+  }catch(e){
+    return {};
+  }
+}
+
+function __saveRPBlocks(obj){
+  try{
+    __lsSet(__AUTH_KEYS.rpBlocks, JSON.stringify(obj && typeof obj === "object" ? obj : {}));
+  }catch(e){}
+}
+
+function __getRPYearExistingMax(year){
+  const arr = Array.isArray(emergencias) ? emergencias : (__loadEmergencias ? __loadEmergencias() : []);
+  let maxSeq = 0;
+  for (const e of arr) {
+    const c = String(e?.codigo || "").trim();
+    const m = /^RP-(\d+)-(\d{4})$/i.exec(c);
+    if (!m) continue;
+    const n = parseInt(m[1], 10);
+    const y = parseInt(m[2], 10);
+    if (y === year && Number.isFinite(n) && n > maxSeq) maxSeq = n;
+  }
+  try{
+    const k = "rp_seq_" + String(year);
+    const v = Number(__lsGet ? (__lsGet(k) || "0") : "0") || 0;
+    if(v > maxSeq) maxSeq = v;
+  }catch(e){}
+  return maxSeq;
+}
+
+function __getRPYearReservedMax(year){
+  try{
+    const blocks = __loadRPBlocks();
+    const byYear = blocks[String(year)] || {};
+    let maxEnd = 0;
+    Object.values(byYear).forEach(info => {
+      const end = Number(info && info.end) || 0;
+      if(end > maxEnd) maxEnd = end;
+    });
+    return maxEnd;
+  }catch(e){
+    return 0;
+  }
+}
+
+function __getOrAssignRegistradorRPBlock(year, email){
+  const yr = String(year);
+  const userKey = String(email || "").trim().toLowerCase();
+  if(!userKey) return null;
+
+  const blocks = __loadRPBlocks();
+  if(!blocks[yr] || typeof blocks[yr] !== "object") blocks[yr] = {};
+
+  let info = blocks[yr][userKey] || null;
+  const exhausted = !info || (Number(info.current) || 0) > (Number(info.end) || 0);
+
+  if(exhausted){
+    const maxExisting = __getRPYearExistingMax(year);
+    const maxReserved = __getRPYearReservedMax(year);
+    const start = Math.max(maxExisting, maxReserved) + 1;
+    info = {
+      start: start,
+      end: start + 19,
+      current: start
+    };
+    blocks[yr][userKey] = info;
+    __saveRPBlocks(blocks);
+  }
+
+  return {
+    yearKey: yr,
+    userKey: userKey,
+    info: blocks[yr][userKey],
+    blocks: blocks
+  };
+}
+
+function __commitRegistradorRPBlock(blockCtx, nextCurrent){
+  try{
+    if(!blockCtx || !blockCtx.blocks || !blockCtx.yearKey || !blockCtx.userKey) return;
+    if(!blockCtx.blocks[blockCtx.yearKey]) blockCtx.blocks[blockCtx.yearKey] = {};
+    if(!blockCtx.blocks[blockCtx.yearKey][blockCtx.userKey]) return;
+    blockCtx.blocks[blockCtx.yearKey][blockCtx.userKey].current = Number(nextCurrent) || blockCtx.blocks[blockCtx.yearKey][blockCtx.userKey].current;
+    __saveRPBlocks(blockCtx.blocks);
+  }catch(e){}
+}
+
 function generarCodigoRP() {
   // Año según la fecha del peligro (si existe), si no: año actual
   let fechaPeligro = document.getElementById("fechaPeligroRP")?.value || "";
@@ -4142,26 +4236,45 @@ function generarCodigoRP() {
     year = new Date().getFullYear();
   }
 
-  // Calcular correlativo a partir de emergencias existentes (local + lo jalado del servidor)
-  const arr = Array.isArray(emergencias) ? emergencias : (__loadEmergencias ? __loadEmergencias() : []);
-  let maxSeq = 0;
-  for (const e of arr) {
-    const c = String(e?.codigo || "").trim();
-    const m = /^RP-(\d+)-(\d{4})$/i.exec(c);
-    if (!m) continue;
-    const n = parseInt(m[1], 10);
-    const y = parseInt(m[2], 10);
-    if (y === year && Number.isFinite(n) && n > maxSeq) maxSeq = n;
+  // Registrador: asignación por bloques de 20 códigos por usuario y por año
+  const isReg = currentUser && currentUser.role === __ROLES.REG;
+  if(isReg){
+    const blockCtx = __getOrAssignRegistradorRPBlock(year, currentUser?.email || "");
+    if(blockCtx && blockCtx.info){
+      let next = Number(blockCtx.info.current) || Number(blockCtx.info.start) || 1;
+      const end = Number(blockCtx.info.end) || (next + 19);
+
+      while(next <= end){
+        const width = Math.max(2, String(next).length);
+        const correl = String(next).padStart(width, "0");
+        const code = `RP-${correl}-${year}`;
+        try{
+          if (typeof __findEmergIdxByCodigo === "function" && __findEmergIdxByCodigo(code) !== -1) {
+            next++;
+            continue;
+          }
+        }catch(e){}
+
+        __commitRegistradorRPBlock(blockCtx, next + 1);
+        try{
+          const k = "rp_seq_" + String(year);
+          const prev = Number(__lsGet ? (__lsGet(k) || "0") : "0") || 0;
+          if(next > prev && __lsSet) __lsSet(k, String(next));
+        }catch(e){}
+        return code;
+      }
+
+      // Si agotó su bloque, reservar el siguiente bloque de 20 y reintentar
+      __commitRegistradorRPBlock(blockCtx, end + 1);
+      return generarCodigoRP();
+    }
   }
 
-  // Respaldo local (evita que Admin/Registrador repitan código en el mismo equipo si están sin sincronizar)
-  try{
-    const k = "rp_seq_" + String(year);
-    const v = Number(__lsGet ? (__lsGet(k) || "0") : "0") || 0;
-    if(v > maxSeq) maxSeq = v;
-  }catch(e){}
+  // Admin / otros roles: correlativo siguiente evitando pisar bloques reservados
+  let maxSeq = __getRPYearExistingMax(year);
+  const reservedMax = __getRPYearReservedMax(year);
+  if(reservedMax > maxSeq) maxSeq = reservedMax;
 
-  // Siguiente correlativo y aseguramos que no exista ya (por si hay duplicados locales)
   let next = maxSeq + 1;
   while (true) {
     const width = Math.max(2, String(next).length);
