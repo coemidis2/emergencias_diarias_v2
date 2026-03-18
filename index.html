@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-<!-- BUILD: 2026-02-20 autopull-cooldown-v183 -->
+<!-- BUILD: 2026-02-20 autopull-cooldown-v184 -->
 <script>window.__BUILD_ID='2026-02-20 autopull-cooldown-v3';console.log('BUILD',window.__BUILD_ID);</script>
 
 <!-- build: VER_PRINT_RC_ALWAYS_VISIBLE v4 2026-01-11 -->
@@ -2082,10 +2082,10 @@ const btnGERP = document.getElementById("btnGuardarEnviarRP");
 const btnGARP = document.getElementById("btnGuardarAprobarRPAdmin");
 const isReg   = currentUser?.role === __ROLES.REG;
 
-  // Lista de Emergencias: Exportar Excel (Admin/Registrador)
+  // Lista de Emergencias: Exportar Excel (Admin/Registrador/Consulta)
   try{
     const bX = document.getElementById("btnExportExcelLista");
-    const can = (isAdmin || isReg);
+    const can = (isAdmin || isReg || isConsulta);
     if(bX) bX.classList.toggle("d-none", !can);
   }catch(e){}
 
@@ -10582,6 +10582,8 @@ function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO){
       return;
     }
 
+    const __ACCION_PRELIMINAR_BASE = "El COE MIDIS solicita al equipo territorial realizar el monitoreo de la emergencia a fin de determinar si existe afectación a usuarios o servicios de los programas nacionales. El COE MIDIS mantiene el seguimiento continuo del evento a través de los Espacios de Monitoreo y Seguimiento Sectorial (EMSS), a fin de consolidar información estratégica para la toma de decisiones y acciones sectoriales de respuesta.";
+
     const __fmtAcciones = (a)=>{
       let arr = a;
       if(typeof arr === "string"){
@@ -10593,6 +10595,28 @@ function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO){
       return arr.map(x=>{
         const f = (x && (x.fecha || x.f)) ? String(x.fecha || x.f) : "";
         const d = (x && (x.descripcion || x.desc || x.detalle || x.texto)) ? String(x.descripcion || x.desc || x.detalle || x.texto) : "";
+        const line = (f ? (f + ": ") : "") + d;
+        return line.trim();
+      }).filter(Boolean).join("\n");
+    };
+
+    const __fmtAccionesPreliminar = (a)=>{
+      let arr = a;
+      if(typeof arr === "string"){
+        try{ arr = JSON.parse(arr); }catch(_e){}
+      }
+      const baseNorm = String(__ACCION_PRELIMINAR_BASE || "").replace(/\s+/g, " ").trim().toLowerCase();
+      if(!Array.isArray(arr)){
+        const txt = String(arr || "").trim();
+        if(!txt) return "";
+        const txtNorm = txt.replace(/^\s*\d{4}-\d{2}-\d{2}\s*:\s*/, "").replace(/\s+/g, " ").trim().toLowerCase();
+        return (txtNorm === baseNorm) ? "" : txt;
+      }
+      return arr.map(x=>{
+        const f = (x && (x.fecha || x.f)) ? String(x.fecha || x.f) : "";
+        const d = (x && (x.descripcion || x.desc || x.detalle || x.texto)) ? String(x.descripcion || x.desc || x.detalle || x.texto) : "";
+        const dNorm = d.replace(/\s+/g, " ").trim().toLowerCase();
+        if(!dNorm || dNorm === baseNorm) return "";
         const line = (f ? (f + ": ") : "") + d;
         return line.trim();
       }).filter(Boolean).join("\n");
@@ -10618,6 +10642,7 @@ function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO){
         const ups = Number(d?.usuariosPorServicios || 0);
         const uf  = Number(d?.usuariosFallecidos || 0);
         const ma  = Number(d?.moduloAfectado || 0);
+        if((ua + sa + ups + uf + ma) <= 0) return;
         lines.push(`${name}: UA=${ua}, SA=${sa}, UPS=${ups}, UF=${uf}, MA=${ma}`);
       });
       return lines.join("\n");
@@ -10650,7 +10675,7 @@ function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO){
 
         const danosOtros = String(em.daniosOtros || "");
         const danosMIDIS = __fmtDaniosMIDIS(em.daniosMIDIS);
-        const accPre     = __fmtAcciones(em.accionesPreliminar);
+        const accPre     = __fmtAccionesPreliminar(em.accionesPreliminar);
         const accComp    = __fmtAccionesComplementario(em);
 
         items.push({
@@ -10677,8 +10702,25 @@ function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO){
       return;
     }
 
-    // ordenar por fecha de elaboración ascendente
-    items.sort((a,b)=> (a.dt - b.dt));
+    // ordenar por Departamento ascendente, luego Provincia, Distrito y fecha de elaboración
+    items.sort((a,b)=>{
+      const aDep = String(a?.row?.[3] || "").trim().toUpperCase();
+      const bDep = String(b?.row?.[3] || "").trim().toUpperCase();
+      if(aDep < bDep) return -1;
+      if(aDep > bDep) return 1;
+
+      const aProv = String(a?.row?.[4] || "").trim().toUpperCase();
+      const bProv = String(b?.row?.[4] || "").trim().toUpperCase();
+      if(aProv < bProv) return -1;
+      if(aProv > bProv) return 1;
+
+      const aDist = String(a?.row?.[5] || "").trim().toUpperCase();
+      const bDist = String(b?.row?.[5] || "").trim().toUpperCase();
+      if(aDist < bDist) return -1;
+      if(aDist > bDist) return 1;
+
+      return (a.dt - b.dt);
+    });
 
     const titleStyle = { font:{name:"Calibri", sz:8, bold:true}, alignment:{horizontal:"center", vertical:"center", wrapText:true} };
     const subStyle   = { font:{name:"Calibri", sz:8, bold:true}, alignment:{horizontal:"center", vertical:"center", wrapText:true} };
