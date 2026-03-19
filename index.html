@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-<!-- BUILD: 2026-02-20 autopull-cooldown-v185 -->
-<script>window.__BUILD_ID='2026-02-20 autopull-cooldown-v3';console.log('BUILD',window.__BUILD_ID);</script>
+<!-- BUILD: 2026-02-20 autopull-cooldown-v186 -->
+<script>window.__BUILD_ID='2026-02-20 autopull-cooldown-v185';console.log('BUILD',window.__BUILD_ID);</script>
 
 <!-- build: VER_PRINT_RC_ALWAYS_VISIBLE v4 2026-01-11 -->
 <meta charset="UTF-8" />
@@ -8660,6 +8660,7 @@ const __SYNC_KEYS = {
   deviceId: "midis_sync_deviceid_v1",
   maxSeen: "midis_sync_maxseen_v1",
   fullPullAdmin: "midis_sync_fullpull_admin_v1",
+  fullPullMobile: "midis_sync_fullpull_mobile_v1",
   conflictsResolved: "midis_sync_conflicts_resolved_v1"
 };
 
@@ -8709,6 +8710,41 @@ function __getHashMap(){
 }
 function __setHashMap(m){
   try{ __lsSet(__SYNC_KEYS.hashMap, JSON.stringify(m || {})); }catch(e){}
+}
+
+function __isMobileClient(){
+  try{
+    const ua = String((navigator && navigator.userAgent) || "").toLowerCase();
+    return /iphone|ipad|ipod|android|mobile|iemobile|opera mini/.test(ua);
+  }catch(e){
+    return false;
+  }
+}
+
+function __getLocalEmergenciasCount(){
+  try{
+    const arr = Array.isArray(emergencias) ? emergencias : __loadEmergencias();
+    return Array.isArray(arr) ? arr.length : 0;
+  }catch(e){
+    return 0;
+  }
+}
+
+function __shouldForceFullPullMobile(){
+  try{
+    if(!__isMobileClient()) return false;
+    const count = __getLocalEmergenciasCount();
+    const stamp = __lsGet(__SYNC_KEYS.fullPullMobile) || "";
+    let ageMs = Infinity;
+    if(stamp){
+      const d = new Date(stamp);
+      if(!isNaN(d.getTime())) ageMs = Date.now() - d.getTime();
+    }
+    if(count === 0) return true;
+    if(count < 500) return true;
+    if(!stamp || !isFinite(ageMs) || ageMs > 6 * 60 * 60 * 1000) return true;
+  }catch(e){}
+  return false;
 }
 
 // ---- Session/token helpers ----
@@ -9771,7 +9807,23 @@ async function __syncPullAuto(){
     window.__PULL_AUTO_INFLIGHT = true;
     window.__PULL_AUTO_LAST = now;
 
-    await __syncPull(__getLastPull());
+    let forcedFull = false;
+    if(__shouldForceFullPullMobile()){
+      await __syncPull('1970-01-01T00:00:00.000Z');
+      try{ __lsSet(__SYNC_KEYS.fullPullMobile, __nowIso()); }catch(_e){}
+      forcedFull = true;
+    }
+
+    if(!forcedFull){
+      await __syncPull(__getLastPull());
+    }
+
+    try{
+      const count = __getLocalEmergenciasCount();
+      const prevMax = Number(__lsGet(__SYNC_KEYS.maxSeen) || 0) || 0;
+      if(count > prevMax) __lsSet(__SYNC_KEYS.maxSeen, String(count));
+    }catch(_e){}
+
     await __calcPending();
 
   }catch(e){
@@ -10900,8 +10952,14 @@ document.addEventListener('DOMContentLoaded', async function(){
   __ensureSyncControls();
   __setNetBadge();
 
-  window.addEventListener('online', function(){ __setNetBadge(); __calcPending(); });
+  window.addEventListener('online', function(){ __setNetBadge(); __calcPending(); try{ setTimeout(function(){ __syncPullAuto(); }, 300); }catch(_e){} });
   window.addEventListener('offline', function(){ __setNetBadge(); __updateSyncUI(0); });
+  window.addEventListener('pageshow', function(){ try{ setTimeout(function(){ __syncPullAuto(); }, 300); }catch(_e){} });
+  document.addEventListener('visibilitychange', function(){
+    try{
+      if(!document.hidden) setTimeout(function(){ __syncPullAuto(); }, 300);
+    }catch(_e){}
+  });
 
   const btn = document.getElementById('btnSync');
   if(btn) btn.addEventListener('click', __syncAll);
