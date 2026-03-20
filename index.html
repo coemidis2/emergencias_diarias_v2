@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-<!-- BUILD: 2026-02-20 autopull-cooldown-v188 -->
+<!-- BUILD: 2026-02-20 autopull-cooldown-v186 -->
 <script>window.__BUILD_ID='2026-02-20 autopull-cooldown-v185';console.log('BUILD',window.__BUILD_ID);</script>
 
 <!-- build: VER_PRINT_RC_ALWAYS_VISIBLE v4 2026-01-11 -->
@@ -2082,7 +2082,6 @@ const btnERP  = document.getElementById("btnEnviarAprobRP");
 const btnGERP = document.getElementById("btnGuardarEnviarRP");
 const btnGARP = document.getElementById("btnGuardarAprobarRPAdmin");
 const isReg   = currentUser?.role === __ROLES.REG;
-const isConsulta = currentUser?.role === __ROLES.CONS;
 
   // Lista de Emergencias: Exportar Excel (Admin/Registrador/Consulta)
   try{
@@ -2140,6 +2139,7 @@ if(isAdmin){
   const linkDash = document.querySelector('a[href="#dashTab"]')?.closest("li");
 
   const linkSeg = document.querySelector('a[href=\"#segTab\"]')?.closest("li");
+  const isConsulta = currentUser?.role === __ROLES.CONS;
 
   // Ocultar botones "Word" en RP y RC para Administrador y Registrador
   try{
