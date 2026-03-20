@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-<!-- BUILD: 2026-02-20 autopull-cooldown-v195 -->
-<script>window.__BUILD_ID='2026-02-20 autopull-cooldown-v185';console.log('BUILD',window.__BUILD_ID);</script>
+<!-- BUILD: 2026-02-20 autopull-cooldown-v196 -->
+<script>window.__BUILD_ID='2026-02-20 autopull-cooldown-v195';console.log('BUILD',window.__BUILD_ID);</script>
 
 <!-- build: VER_PRINT_RC_ALWAYS_VISIBLE v4 2026-01-11 -->
 <meta charset="UTF-8" />
@@ -560,6 +560,7 @@ body { background: #f5f5f5; }
   <div class="card">
     <div class="card-body">
       <h4 class="text-primary">Reporte Preliminar</h4>
+      <div id="rpEditNotice" class="alert alert-warning py-2 px-3 mt-2 mb-3 d-none" style="font-size:13px;"></div>
 
       <div id="rpContentWrap">
 
@@ -729,6 +730,7 @@ body { background: #f5f5f5; }
   <div class="card mt-3">
     <div class="card-body">
       <h4 class="text-primary">Reporte Complementario (RC)</h4>
+      <div id="rcEditNotice" class="alert alert-warning py-2 px-3 mt-2 mb-3 d-none" style="font-size:13px;"></div>
 
       <div id="datosBasicosRC" class="mb-3"></div>
 
@@ -11062,6 +11064,124 @@ try{
   __updateSyncUI(0);
 });
 
+
+// ===================== AVISO VISUAL DE EDICIÓN / BLOQUEO SUAVE =====================
+const __EDIT_LOCKS_KEY = "midis_edit_locks_v1";
+let __rpEditTrack = { codigo:"", kind:"rp" };
+let __rcEditTrack = { codigo:"", kind:"rc" };
+
+function __editLocksRead(){
+  try{ return JSON.parse(localStorage.getItem(__EDIT_LOCKS_KEY) || "{}"); }catch(e){ return {}; }
+}
+function __editLocksWrite(v){
+  try{ localStorage.setItem(__EDIT_LOCKS_KEY, JSON.stringify(v || {})); }catch(e){}
+}
+function __editLockTTLms(){ return 30 * 60 * 1000; }
+function __editLockKey(kind, codigo){ return `${kind || "rp"}::${codigo || ""}`; }
+function __getCurrentUserEmailSafe(){
+  try{ return (currentUser && (currentUser.email || currentUser.correo || currentUser.user || "")) || ""; }catch(e){ return ""; }
+}
+function __editLockOwnerLabel(lock){
+  const n = (lock && (lock.userName || lock.user || "")) || "";
+  const m = (lock && (lock.email || "")) || "";
+  return (n && m) ? `${n} (${m})` : (n || m || "otro usuario");
+}
+function __cleanExpiredEditLocks(){
+  const all = __editLocksRead();
+  const now = Date.now();
+  let dirty = false;
+  Object.keys(all || {}).forEach(k=>{
+    const lock = all[k];
+    const at = lock && lock.at ? Date.parse(lock.at) : NaN;
+    if(!lock || !Number.isFinite(at) || (now - at) > __editLockTTLms()){ delete all[k]; dirty = true; }
+  });
+  if(dirty) __editLocksWrite(all);
+  return all;
+}
+function __getEditLock(kind, codigo){
+  const all = __cleanExpiredEditLocks();
+  return all[__editLockKey(kind, codigo)] || null;
+}
+function __setEditLock(kind, codigo){
+  if(!codigo) return null;
+  const all = __cleanExpiredEditLocks();
+  const key = __editLockKey(kind, codigo);
+  const lock = {
+    kind: kind,
+    codigo: codigo,
+    userName: (typeof __getCurrentUserName === 'function' ? __getCurrentUserName() : '') || '',
+    email: __getCurrentUserEmailSafe(),
+    at: new Date().toISOString()
+  };
+  all[key] = lock;
+  __editLocksWrite(all);
+  return lock;
+}
+function __releaseEditLock(kind, codigo){
+  if(!codigo) return;
+  const all = __editLocksRead();
+  const key = __editLockKey(kind, codigo);
+  if(all[key]){ delete all[key]; __editLocksWrite(all); }
+}
+function __sameUserLock(lock){
+  if(!lock) return false;
+  const email = __getCurrentUserEmailSafe();
+  const name = (typeof __getCurrentUserName === 'function' ? __getCurrentUserName() : '') || '';
+  return (!!email && lock.email === email) || (!!name && lock.userName === name);
+}
+function __renderEditNotice(targetId, kind, codigo){
+  const box = document.getElementById(targetId);
+  if(!box) return;
+  if(!codigo){ box.classList.add('d-none'); box.innerHTML = ''; return; }
+  const lock = __getEditLock(kind, codigo);
+  if(lock && !__sameUserLock(lock)){
+    box.className = 'alert alert-warning py-2 px-3 mt-2 mb-3';
+    box.innerHTML = `<b>Registro en edición</b>: ${codigo} está siendo editado por <b>${__editLockOwnerLabel(lock)}</b> desde ${__fmtDateTime(lock.at)}.`;
+    return;
+  }
+  if(lock && __sameUserLock(lock)){
+    box.className = 'alert alert-info py-2 px-3 mt-2 mb-3';
+    box.innerHTML = `<b>Edición activa</b>: estás trabajando ${kind === 'rc' ? 'el RC' : 'el RP'} del registro <b>${codigo}</b> desde ${__fmtDateTime(lock.at)}.`;
+    return;
+  }
+  box.classList.add('d-none');
+  box.innerHTML = '';
+}
+function __trackEditNotice(){
+  try{
+    const rpCodigo = (document.getElementById('codigoRP')?.value || '').trim();
+    if(rpCodigo !== __rpEditTrack.codigo){
+      if(__rpEditTrack.codigo) __releaseEditLock('rp', __rpEditTrack.codigo);
+      __rpEditTrack.codigo = rpCodigo;
+      if(rpCodigo) __setEditLock('rp', rpCodigo);
+    }
+    __renderEditNotice('rpEditNotice', 'rp', rpCodigo);
+  }catch(e){}
+  try{
+    const rcCodigo = (emergenciaSeleccionada && emergenciaSeleccionada.codigo) ? String(emergenciaSeleccionada.codigo).trim() : '';
+    if(rcCodigo !== __rcEditTrack.codigo){
+      if(__rcEditTrack.codigo) __releaseEditLock('rc', __rcEditTrack.codigo);
+      __rcEditTrack.codigo = rcCodigo;
+      if(rcCodigo) __setEditLock('rc', rcCodigo);
+    }
+    __renderEditNotice('rcEditNotice', 'rc', rcCodigo);
+  }catch(e){}
+}
+function __releaseTrackedEditLocks(){
+  try{ if(__rpEditTrack.codigo) __releaseEditLock('rp', __rpEditTrack.codigo); }catch(e){}
+  try{ if(__rcEditTrack.codigo) __releaseEditLock('rc', __rcEditTrack.codigo); }catch(e){}
+  __rpEditTrack.codigo = '';
+  __rcEditTrack.codigo = '';
+  try{ __renderEditNotice('rpEditNotice','rp',''); }catch(e){}
+  try{ __renderEditNotice('rcEditNotice','rc',''); }catch(e){}
+}
+setInterval(__trackEditNotice, 1200);
+document.getElementById('btnRetornarRP')?.addEventListener('click', ()=>{ try{ if(__rpEditTrack.codigo) __releaseEditLock('rp', __rpEditTrack.codigo); __rpEditTrack.codigo=''; __renderEditNotice('rpEditNotice','rp',''); }catch(e){} });
+document.getElementById('btnRetornarRC')?.addEventListener('click', ()=>{ try{ if(__rcEditTrack.codigo) __releaseEditLock('rc', __rcEditTrack.codigo); __rcEditTrack.codigo=''; __renderEditNotice('rcEditNotice','rc',''); }catch(e){} });
+document.getElementById('btnNuevoRP')?.addEventListener('click', ()=>{ try{ if(__rpEditTrack.codigo) __releaseEditLock('rp', __rpEditTrack.codigo); __rpEditTrack.codigo=''; __renderEditNotice('rpEditNotice','rp',''); }catch(e){} });
+window.addEventListener('beforeunload', __releaseTrackedEditLocks);
+window.addEventListener('pagehide', __releaseTrackedEditLocks);
+window.addEventListener('storage', (ev)=>{ if(ev && ev.key === __EDIT_LOCKS_KEY) __trackEditNotice(); });
 </script>
 
 
