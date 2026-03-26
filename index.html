@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-<!-- BUILD: 2026-02-20 autopull-cooldown-v196 -->
+<!-- BUILD: 2026-02-20 autopull-cooldown-v197 -->
 <script>window.__BUILD_ID='2026-02-20 autopull-cooldown-v195';console.log('BUILD',window.__BUILD_ID);</script>
 
 <!-- build: VER_PRINT_RC_ALWAYS_VISIBLE v4 2026-01-11 -->
@@ -10109,6 +10109,7 @@ async function __segPullSnapshotFromD1(){
       const payload = r?.payload || {};
       payload.__serverUpdatedAt = r?.updated_at || null;
       payload.__serverCreatedAt = r?.created_at || null;
+      if(typeof __isDeleted === "function" && __isDeleted(payload)) continue;
 
       const prev = byCodigo[codigo];
       if(!prev || String(payload.__serverUpdatedAt||"") >= String(prev.__serverUpdatedAt||"")){
@@ -10835,7 +10836,7 @@ function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO){
     const items = [];
     (Array.isArray(emergencias) ? emergencias : []).forEach(em=>{
       try{
-        if(typeof __isDeletedLocal==="function" && __isDeletedLocal(em)) return;
+        if(typeof __isDeleted==="function" && __isDeleted(em)) return;
         const dt = __excelParseElab(em);
         if(!dt) return;
         if(dt.getTime() < d0.getTime() || dt.getTime() > d1.getTime()) return;
