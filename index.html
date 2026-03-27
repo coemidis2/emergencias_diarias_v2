@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-<!-- BUILD: 2026-02-20 autopull-cooldown-v202 -->
+<!-- BUILD: 2026-02-20 autopull-cooldown-v203 -->
 <script>window.__BUILD_ID='2026-02-20 autopull-cooldown-v195';console.log('BUILD',window.__BUILD_ID);</script>
 
 <!-- build: VER_PRINT_RC_ALWAYS_VISIBLE v4 2026-01-11 -->
@@ -10101,29 +10101,24 @@ async function __segPullSnapshotFromD1(){
 
     let maxUpdated = since;
     for(const r of recs){
-      const codigo = String((r && r.codigo) || "").trim();
+      const codigo = String(r?.codigo || "").trim();
       if(!codigo) continue;
-      const upd = String((r && r.updated_at) || "");
+      const upd = String(r?.updated_at || "");
       if(upd && upd > maxUpdated) maxUpdated = upd;
 
-      const payload = (r && r.payload && typeof r.payload === "object") ? JSON.parse(JSON.stringify(r.payload)) : {};
-      payload.__serverUpdatedAt = (r && r.updated_at) || null;
-      payload.__serverCreatedAt = (r && r.created_at) || null;
+      const payload = (r && r.payload && typeof r.payload === "object") ? { ...r.payload } : {};
+      payload.__serverUpdatedAt = r?.updated_at || null;
+      payload.__serverCreatedAt = r?.created_at || null;
+
+      if(typeof __isDeleted === "function" && __isDeleted(payload)){
+        delete byCodigo[codigo];
+        continue;
+      }
 
       const prev = byCodigo[codigo];
-      const isNewerOrEqual = (!prev || String(payload.__serverUpdatedAt || "") >= String(prev.__serverUpdatedAt || ""));
-      if(!isNewerOrEqual) continue;
-
-      // Si la última versión del servidor está eliminada, se quita del snapshot
-      // para que no contabilice en ningún numeral de Seguimiento Reportes.
-      try{
-        if(typeof __isDeleted === "function" && __isDeleted(payload)){
-          delete byCodigo[codigo];
-          continue;
-        }
-      }catch(e){}
-
-      byCodigo[codigo] = payload;
+      if(!prev || String(payload.__serverUpdatedAt||"") >= String(prev.__serverUpdatedAt||"")){
+        byCodigo[codigo] = payload;
+      }
     }
 
     if(recs.length < limit) break;
@@ -10132,10 +10127,7 @@ async function __segPullSnapshotFromD1(){
     guard++;
   }
 
-  return Object.values(byCodigo).filter(em => {
-    try{ return !(typeof __isDeleted === "function" && __isDeleted(em)); }
-    catch(e){ return true; }
-  });
+  return Object.values(byCodigo).filter(em => !(typeof __isDeleted === "function" && __isDeleted(em)));
 }
 
 function __segFillSelect(selId, values){
@@ -10746,18 +10738,13 @@ function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO){
       return;
     }
 
-    const d0 = (typeof __rpParseDateTimePeru==="function")
-      ? __rpParseDateTimePeru(String(desdeISO||"") + "T00:00")
-      : new Date(String(desdeISO||"") + "T00:00:00");
-    const d1 = (typeof __rpParseDateTimePeru==="function")
-      ? __rpParseDateTimePeru(String(hastaISO||"") + "T23:59")
-      : new Date(String(hastaISO||"") + "T23:59:59");
-
-    if(!d0 || !d1 || isNaN(d0.getTime()) || isNaN(d1.getTime())){
+    const desde = String(desdeISO || "").trim();
+    const hasta = String(hastaISO || "").trim();
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(desde) || !/^\d{4}-\d{2}-\d{2}$/.test(hasta)){
       alert("Seleccione un rango de fechas válido.");
       return;
     }
-    if(d1.getTime() < d0.getTime()){
+    if(hasta < desde){
       alert("La fecha final no puede ser menor que la fecha inicial.");
       return;
     }
@@ -10769,9 +10756,7 @@ function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO){
       if(typeof arr === "string"){
         try{ arr = JSON.parse(arr); }catch(_e){}
       }
-      if(!Array.isArray(arr)){
-        return String(arr || "");
-      }
+      if(!Array.isArray(arr)) return String(arr || "");
       return arr.map(x=>{
         const f = (x && (x.fecha || x.f)) ? String(x.fecha || x.f) : "";
         const d = (x && (x.descripcion || x.desc || x.detalle || x.texto)) ? String(x.descripcion || x.desc || x.detalle || x.texto) : "";
@@ -10807,10 +10792,10 @@ function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO){
       if(typeof o === "string"){
         try{ o = JSON.parse(o); }catch(_e){}
       }
-      if(!o || typeof o !== "object") return "";
+      if(!o || typeof o !== "object") return { text:"", totals:{ua:0,sa:0,ups:0,uf:0,ma:0} };
       const progs = (Array.isArray(programas) && programas.length) ? programas : Object.keys(o);
-      if(!progs || !progs.length) return "";
       const lines = [];
+      const totals = {ua:0,sa:0,ups:0,uf:0,ma:0};
       progs.forEach(p=>{
         const name = String(p||"").trim();
         if(!name) return;
@@ -10822,10 +10807,11 @@ function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO){
         const ups = Number(d?.usuariosPorServicios || 0);
         const uf  = Number(d?.usuariosFallecidos || 0);
         const ma  = Number(d?.moduloAfectado || 0);
+        totals.ua += ua; totals.sa += sa; totals.ups += ups; totals.uf += uf; totals.ma += ma;
         if((ua + sa + ups + uf + ma) <= 0) return;
         lines.push(`${name}: UA=${ua}, SA=${sa}, UPS=${ups}, UF=${uf}, MA=${ma}`);
       });
-      return lines.join("\n");
+      return { text: lines.join("\n"), totals };
     };
 
     const __fmtAccionesComplementario = (em)=>{
@@ -10845,61 +10831,103 @@ function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO){
       return all.join("\n");
     };
 
+    const __getElabDateOnly = (em)=>{
+      try{
+        const raw = String((em && (em.fechaHora || em.fechaElaboracion || em.fechaRegistro || em.createdAt || em.__serverCreatedAt)) || "").trim();
+        if(!raw) return "";
+        const m = raw.match(/^(\d{4}-\d{2}-\d{2})/);
+        if(m) return m[1];
+        const dt = __excelParseElab(em);
+        if(dt && !isNaN(dt.getTime())) return __excelLocalISODate(dt);
+        return "";
+      }catch(e){ return ""; }
+    };
+
+    const __isSeguimientoRecord = (em)=>{
+      try{
+        const vals = [em?.tipo, em?.modulo, em?.origen, em?.source, em?.vista, em?.seccion].map(v=>String(v||"").toLowerCase());
+        return vals.some(v=>v.includes("seguimiento"));
+      }catch(e){ return false; }
+    };
+
     const items = [];
+    const resumenMap = new Map();
+    const globalTotals = { emergencias:0, departamentos:new Set(), ua:0, sa:0, ups:0, uf:0, ma:0 };
+
     (Array.isArray(emergencias) ? emergencias : []).forEach(em=>{
       try{
-        if(typeof __isDeletedLocal==="function" && __isDeletedLocal(em)) return;
-        const dt = __excelParseElab(em);
-        if(!dt) return;
-        if(dt.getTime() < d0.getTime() || dt.getTime() > d1.getTime()) return;
+        if(typeof __isDeleted === "function" && __isDeleted(em)) return;
+        if(__isSeguimientoRecord(em)) return;
+
+        const elabDate = __getElabDateOnly(em);
+        if(!elabDate) return;
+        if(elabDate < desde || elabDate > hasta) return;
 
         const danosOtros = String(em.daniosOtros || "");
-        const danosMIDIS = __fmtDaniosMIDIS(em.daniosMIDIS);
+        const danosInfo  = __fmtDaniosMIDIS(em.daniosMIDIS);
+        const danosMIDIS = danosInfo.text;
         const accPre     = __fmtAccionesPreliminar(em.accionesPreliminar);
         const accComp    = __fmtAccionesComplementario(em);
 
+        const row = [
+          String(em.codigo||""),
+          String(em.peligro||""),
+          String(em.fechaPeligro||""),
+          String(em.departamento||""),
+          String(em.provincia||""),
+          String(em.distrito||""),
+          String(em.hechos||""),
+          danosOtros,
+          danosMIDIS,
+          accPre,
+          accComp
+        ];
+
         items.push({
-          dt: dt.getTime(),
-          row: [
-            String(em.codigo||""),
-            String(em.peligro||""),
-            String(em.fechaPeligro||""),
-            String(em.departamento||""),
-            String(em.provincia||""),
-            String(em.distrito||""),
-            String(em.hechos||""),
-            danosOtros,
-            danosMIDIS,
-            accPre,
-            accComp
-          ]
+          dep: String(em.departamento||"").trim().toUpperCase(),
+          prov: String(em.provincia||"").trim().toUpperCase(),
+          dist: String(em.distrito||"").trim().toUpperCase(),
+          elabDate,
+          row
         });
+
+        const depKey = String(em.departamento || "SIN DEPARTAMENTO").trim() || "SIN DEPARTAMENTO";
+        if(!resumenMap.has(depKey)){
+          resumenMap.set(depKey, { dep:depKey, emergencias:0, ua:0, sa:0, ups:0, uf:0, ma:0 });
+        }
+        const agg = resumenMap.get(depKey);
+        agg.emergencias += 1;
+        agg.ua  += Number(danosInfo.totals.ua || 0);
+        agg.sa  += Number(danosInfo.totals.sa || 0);
+        agg.ups += Number(danosInfo.totals.ups || 0);
+        agg.uf  += Number(danosInfo.totals.uf || 0);
+        agg.ma  += Number(danosInfo.totals.ma || 0);
+
+        globalTotals.emergencias += 1;
+        globalTotals.departamentos.add(depKey);
+        globalTotals.ua  += Number(danosInfo.totals.ua || 0);
+        globalTotals.sa  += Number(danosInfo.totals.sa || 0);
+        globalTotals.ups += Number(danosInfo.totals.ups || 0);
+        globalTotals.uf  += Number(danosInfo.totals.uf || 0);
+        globalTotals.ma  += Number(danosInfo.totals.ma || 0);
       }catch(_e){}
     });
 
     if(items.length === 0){
-      alert("No se encontraron emergencias en ese rango (según la fecha de elaboración).");
+      alert("No se encontraron emergencias en ese rango (según la fecha de elaboración).\n\nVerifique que la fecha inicial y final correspondan a la fecha de elaboración del RP.");
       return;
     }
 
-    // ordenar por Departamento ascendente, luego Provincia, Distrito y fecha de elaboración
     items.sort((a,b)=>{
-      const aDep = String(a?.row?.[3] || "").trim().toUpperCase();
-      const bDep = String(b?.row?.[3] || "").trim().toUpperCase();
-      if(aDep < bDep) return -1;
-      if(aDep > bDep) return 1;
-
-      const aProv = String(a?.row?.[4] || "").trim().toUpperCase();
-      const bProv = String(b?.row?.[4] || "").trim().toUpperCase();
-      if(aProv < bProv) return -1;
-      if(aProv > bProv) return 1;
-
-      const aDist = String(a?.row?.[5] || "").trim().toUpperCase();
-      const bDist = String(b?.row?.[5] || "").trim().toUpperCase();
-      if(aDist < bDist) return -1;
-      if(aDist > bDist) return 1;
-
-      return (a.dt - b.dt);
+      if(a.dep < b.dep) return -1;
+      if(a.dep > b.dep) return 1;
+      if(a.prov < b.prov) return -1;
+      if(a.prov > b.prov) return 1;
+      if(a.dist < b.dist) return -1;
+      if(a.dist > b.dist) return 1;
+      if(a.elabDate < b.elabDate) return -1;
+      if(a.elabDate > b.elabDate) return 1;
+      return 0;
     });
 
     const titleStyle = { font:{name:"Calibri", sz:8, bold:true}, alignment:{horizontal:"center", vertical:"center", wrapText:true} };
@@ -10907,12 +10935,13 @@ function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO){
     const hdrStyle   = { font:{name:"Calibri", sz:8, bold:true}, alignment:{horizontal:"center", vertical:"center", wrapText:true}, fill:{ fgColor:{ rgb:"D9E1F2" } } };
     const bodyStyle  = { font:{name:"Calibri", sz:8}, alignment:{vertical:"top", wrapText:true} };
 
+    const wb = XLSX.utils.book_new();
+
     const aoa = [];
     aoa.push([{v:"COE MIDIS – Lista de Emergencias", t:"s", s:titleStyle}]);
-    aoa.push([{v:`Rango (Fecha de elaboración): ${String(desdeISO)} a ${String(hastaISO)}`, t:"s", s:subStyle}]);
+    aoa.push([{v:`Rango (Fecha de elaboración): ${desde} a ${hasta}`, t:"s", s:subStyle}]);
     aoa.push([{v:`Total registros: ${items.length}`, t:"s", s:subStyle}]);
-    aoa.push([]); // línea en blanco
-
+    aoa.push([]);
     const headers = [
       "Código","Peligro","Fecha de peligro","Departamento","Provincia","Distrito","Hechos",
       "Daños en otros sectores","Daños en el Sector Desarrollo e Inclusión Social",
@@ -10920,46 +10949,56 @@ function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO){
       "Acciones del sector Desarrollo e Inclusión Social (Complementario)"
     ];
     aoa.push(headers.map(h=>({v:h, t:"s", s:hdrStyle})));
-
-    for(const it of items){
-      aoa.push(it.row.map(v=>({v:v, t:"s", s:bodyStyle})));
-    }
-
+    for(const it of items){ aoa.push(it.row.map(v=>({v:v, t:"s", s:bodyStyle}))); }
     const ws = XLSX.utils.aoa_to_sheet(aoa);
-
-    // merges: título / rango / total (sobre 11 columnas)
     ws["!merges"] = [
       {s:{r:0,c:0}, e:{r:0,c:10}},
       {s:{r:1,c:0}, e:{r:1,c:10}},
       {s:{r:2,c:0}, e:{r:2,c:10}}
     ];
-
-    // Anchos de columna
     ws["!cols"] = [
-      {wch:16}, // Código
-      {wch:18}, // Peligro
-      {wch:14}, // Fecha peligro
-      {wch:18}, // Departamento
-      {wch:18}, // Provincia
-      {wch:18}, // Distrito
-      {wch:70}, // Hechos
-      {wch:55}, // Daños otros sectores
-      {wch:70}, // Daños MIDIS
-      {wch:70}, // Acciones preliminar
-      {wch:70}  // Acciones complementario
+      {wch:16},{wch:18},{wch:14},{wch:18},{wch:18},{wch:18},{wch:70},{wch:55},{wch:70},{wch:70},{wch:70}
     ];
-
-    const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Emergencias");
 
-    const fname = `Lista_Emergencias_${String(desdeISO).replace(/-/g,"")}_${String(hastaISO).replace(/-/g,"")}.xlsx`;
+    const resumenRows = [["Departamento","N.° Emergencias","Usuarios afectados","Servicios afectados","Usuarios por servicios","Fallecidos","Módulos afectados"]];
+    Array.from(resumenMap.values()).sort((a,b)=> String(a.dep).localeCompare(String(b.dep), 'es')).forEach(r=>{
+      resumenRows.push([r.dep, r.emergencias, r.ua, r.sa, r.ups, r.uf, r.ma]);
+    });
+    resumenRows.push(["TOTAL GENERAL", globalTotals.emergencias, globalTotals.ua, globalTotals.sa, globalTotals.ups, globalTotals.uf, globalTotals.ma]);
+    const wsResumen = XLSX.utils.aoa_to_sheet(resumenRows);
+    wsResumen["!cols"] = [{wch:24},{wch:16},{wch:18},{wch:18},{wch:22},{wch:12},{wch:18}];
+    XLSX.utils.book_append_sheet(wb, wsResumen, "Resumen_Dep");
+
+    const topDeps = Array.from(resumenMap.values()).sort((a,b)=> (b.emergencias - a.emergencias) || String(a.dep).localeCompare(String(b.dep), 'es')).slice(0,10);
+    const dashRows = [
+      ["COE MIDIS – Dashboard Ejecutivo"],
+      [`Rango (Fecha de elaboración): ${desde} a ${hasta}`],
+      [],
+      ["Indicador","Valor"],
+      ["Total de emergencias", globalTotals.emergencias],
+      ["Departamentos con emergencias", globalTotals.departamentos.size],
+      ["Usuarios afectados", globalTotals.ua],
+      ["Servicios afectados", globalTotals.sa],
+      ["Usuarios por servicios", globalTotals.ups],
+      ["Fallecidos", globalTotals.uf],
+      ["Módulos afectados", globalTotals.ma],
+      [],
+      ["Top departamentos","N.° emergencias"]
+    ];
+    topDeps.forEach(r=> dashRows.push([r.dep, r.emergencias]));
+    const wsDash = XLSX.utils.aoa_to_sheet(dashRows);
+    wsDash["!merges"] = [{s:{r:0,c:0}, e:{r:0,c:1}}, {s:{r:1,c:0}, e:{r:1,c:1}}];
+    wsDash["!cols"] = [{wch:28},{wch:18}];
+    XLSX.utils.book_append_sheet(wb, wsDash, "Dashboard");
+
+    const fname = `Lista_Emergencias_${desde.replace(/-/g,"")}_${hasta.replace(/-/g,"")}.xlsx`;
     XLSX.writeFile(wb, fname);
   }catch(e){
     console.error(e);
     alert("Ocurrió un error al exportar a Excel.");
   }
 }
-
 
 
 // ---- Hook DOMContentLoaded (extra) ----
