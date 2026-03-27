@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-<!-- BUILD: 2026-02-20 autopull-cooldown-v201 -->
+<!-- BUILD: 2026-02-20 autopull-cooldown-v202 -->
 <script>window.__BUILD_ID='2026-02-20 autopull-cooldown-v195';console.log('BUILD',window.__BUILD_ID);</script>
 
 <!-- build: VER_PRINT_RC_ALWAYS_VISIBLE v4 2026-01-11 -->
@@ -10101,26 +10101,29 @@ async function __segPullSnapshotFromD1(){
 
     let maxUpdated = since;
     for(const r of recs){
-      const codigo = String(r?.codigo || "").trim();
+      const codigo = String((r && r.codigo) || "").trim();
       if(!codigo) continue;
-      const upd = String(r?.updated_at || "");
+      const upd = String((r && r.updated_at) || "");
       if(upd && upd > maxUpdated) maxUpdated = upd;
 
-      const payload = r?.payload || {};
-      payload.__serverUpdatedAt = r?.updated_at || null;
-      payload.__serverCreatedAt = r?.created_at || null;
-
-      // Seguimiento Reportes: excluir eliminados (payload eliminado o tombstone local)
-      // Si el servidor trae una versión eliminada más reciente, removerla del snapshot.
-      if(typeof __isDeleted === "function" && __isDeleted(payload)){
-        delete byCodigo[codigo];
-        continue;
-      }
+      const payload = (r && r.payload && typeof r.payload === "object") ? JSON.parse(JSON.stringify(r.payload)) : {};
+      payload.__serverUpdatedAt = (r && r.updated_at) || null;
+      payload.__serverCreatedAt = (r && r.created_at) || null;
 
       const prev = byCodigo[codigo];
-      if(!prev || String(payload.__serverUpdatedAt||"") >= String(prev.__serverUpdatedAt||"")){
-        byCodigo[codigo] = payload;
-      }
+      const isNewerOrEqual = (!prev || String(payload.__serverUpdatedAt || "") >= String(prev.__serverUpdatedAt || ""));
+      if(!isNewerOrEqual) continue;
+
+      // Si la última versión del servidor está eliminada, se quita del snapshot
+      // para que no contabilice en ningún numeral de Seguimiento Reportes.
+      try{
+        if(typeof __isDeleted === "function" && __isDeleted(payload)){
+          delete byCodigo[codigo];
+          continue;
+        }
+      }catch(e){}
+
+      byCodigo[codigo] = payload;
     }
 
     if(recs.length < limit) break;
@@ -10129,7 +10132,10 @@ async function __segPullSnapshotFromD1(){
     guard++;
   }
 
-  return Object.values(byCodigo);
+  return Object.values(byCodigo).filter(em => {
+    try{ return !(typeof __isDeleted === "function" && __isDeleted(em)); }
+    catch(e){ return true; }
+  });
 }
 
 function __segFillSelect(selId, values){
@@ -10945,116 +10951,6 @@ function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO){
 
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Emergencias");
-
-    // ===================== HOJA 2: RESUMEN POR DEPARTAMENTO =====================
-    const resumenMap = new Map();
-    const __parseDaniosMIDIS = (src)=>{
-      let o = src;
-      if(typeof o === "string"){
-        try{ o = JSON.parse(o); }catch(_e){}
-      }
-      const out = { ua:0, sa:0, ups:0, uf:0, ma:0 };
-      if(!o || typeof o !== "object") return out;
-      const keys = (Array.isArray(programas) && programas.length) ? programas : Object.keys(o);
-      keys.forEach(k=>{
-        const d = o[k] || o[String(k||'').toUpperCase()] || o[String(k||'').toLowerCase()] || {};
-        out.ua  += Number(d?.usuariosAfectados || 0) || 0;
-        out.sa  += Number(d?.serviciosAfectados || 0) || 0;
-        out.ups += Number(d?.usuariosPorServicios || 0) || 0;
-        out.uf  += Number(d?.usuariosFallecidos || 0) || 0;
-        out.ma  += Number(d?.moduloAfectado || 0) || 0;
-      });
-      return out;
-    };
-
-    (Array.isArray(emergencias) ? emergencias : []).forEach(em=>{
-      try{
-        if(typeof __isDeleted === "function" && __isDeleted(em)) return;
-        const dt = __excelParseElab(em);
-        if(!dt) return;
-        if(dt.getTime() < d0.getTime() || dt.getTime() > d1.getTime()) return;
-        const dep = String(em.departamento || "SIN DATO").trim() || "SIN DATO";
-        const base = resumenMap.get(dep) || { dep, emergencias:0, ua:0, sa:0, ups:0, uf:0, ma:0 };
-        const t = __parseDaniosMIDIS(em.daniosMIDIS);
-        base.emergencias += 1;
-        base.ua  += t.ua;
-        base.sa  += t.sa;
-        base.ups += t.ups;
-        base.uf  += t.uf;
-        base.ma  += t.ma;
-        resumenMap.set(dep, base);
-      }catch(_e){}
-    });
-
-    const resumenRows = Array.from(resumenMap.values()).sort((a,b)=> String(a.dep).localeCompare(String(b.dep), 'es'));
-    const resumenAoa = [];
-    resumenAoa.push([{v:"COE MIDIS – Resumen por Departamento", t:"s", s:titleStyle}]);
-    resumenAoa.push([{v:`Rango (Fecha de elaboración): ${String(desdeISO)} a ${String(hastaISO)}`, t:"s", s:subStyle}]);
-    resumenAoa.push([]);
-    const hdr2 = ["Departamento","N° Emergencias","Usuarios afectados","Servicios afectados","Usuarios por servicios","Fallecidos","Módulos afectados"];
-    resumenAoa.push(hdr2.map(h=>({v:h, t:"s", s:hdrStyle})));
-    let totEmer=0, totUa=0, totSa=0, totUps=0, totUf=0, totMa=0;
-    resumenRows.forEach(r=>{
-      totEmer += r.emergencias; totUa += r.ua; totSa += r.sa; totUps += r.ups; totUf += r.uf; totMa += r.ma;
-      resumenAoa.push([
-        {v:r.dep, t:"s", s:bodyStyle},
-        {v:r.emergencias, t:"n", s:bodyStyle},
-        {v:r.ua, t:"n", s:bodyStyle},
-        {v:r.sa, t:"n", s:bodyStyle},
-        {v:r.ups, t:"n", s:bodyStyle},
-        {v:r.uf, t:"n", s:bodyStyle},
-        {v:r.ma, t:"n", s:bodyStyle}
-      ]);
-    });
-    resumenAoa.push([
-      {v:"TOTAL GENERAL", t:"s", s:hdrStyle},
-      {v:totEmer, t:"n", s:hdrStyle},
-      {v:totUa, t:"n", s:hdrStyle},
-      {v:totSa, t:"n", s:hdrStyle},
-      {v:totUps, t:"n", s:hdrStyle},
-      {v:totUf, t:"n", s:hdrStyle},
-      {v:totMa, t:"n", s:hdrStyle}
-    ]);
-    const wsResumen = XLSX.utils.aoa_to_sheet(resumenAoa);
-    wsResumen["!merges"] = [
-      {s:{r:0,c:0}, e:{r:0,c:6}},
-      {s:{r:1,c:0}, e:{r:1,c:6}}
-    ];
-    wsResumen["!cols"] = [{wch:22},{wch:14},{wch:16},{wch:16},{wch:18},{wch:12},{wch:16}];
-    XLSX.utils.book_append_sheet(wb, wsResumen, "Resumen_Dep");
-
-    // ===================== HOJA 3: DASHBOARD =====================
-    const top5 = resumenRows.slice().sort((a,b)=> (b.emergencias - a.emergencias) || String(a.dep).localeCompare(String(b.dep), 'es')).slice(0,5);
-    const dashAoa = [];
-    dashAoa.push([{v:"COE MIDIS – Dashboard Ejecutivo", t:"s", s:titleStyle}]);
-    dashAoa.push([{v:`Rango (Fecha de elaboración): ${String(desdeISO)} a ${String(hastaISO)}`, t:"s", s:subStyle}]);
-    dashAoa.push([]);
-    dashAoa.push([{v:"Indicador", t:"s", s:hdrStyle}, {v:"Valor", t:"s", s:hdrStyle}]);
-    dashAoa.push([{v:"Total de emergencias", t:"s", s:bodyStyle}, {v:items.length, t:"n", s:bodyStyle}]);
-    dashAoa.push([{v:"Departamentos con emergencias", t:"s", s:bodyStyle}, {v:resumenRows.length, t:"n", s:bodyStyle}]);
-    dashAoa.push([{v:"Total usuarios afectados", t:"s", s:bodyStyle}, {v:totUa, t:"n", s:bodyStyle}]);
-    dashAoa.push([{v:"Total servicios afectados", t:"s", s:bodyStyle}, {v:totSa, t:"n", s:bodyStyle}]);
-    dashAoa.push([{v:"Total usuarios por servicios", t:"s", s:bodyStyle}, {v:totUps, t:"n", s:bodyStyle}]);
-    dashAoa.push([{v:"Total fallecidos", t:"s", s:bodyStyle}, {v:totUf, t:"n", s:bodyStyle}]);
-    dashAoa.push([{v:"Total módulos afectados", t:"s", s:bodyStyle}, {v:totMa, t:"n", s:bodyStyle}]);
-    dashAoa.push([]);
-    dashAoa.push([{v:"Top departamentos por número de emergencias", t:"s", s:hdrStyle}]);
-    dashAoa.push([{v:"Departamento", t:"s", s:hdrStyle},{v:"Emergencias", t:"s", s:hdrStyle},{v:"Usuarios afectados", t:"s", s:hdrStyle}]);
-    top5.forEach(r=>{
-      dashAoa.push([
-        {v:r.dep, t:"s", s:bodyStyle},
-        {v:r.emergencias, t:"n", s:bodyStyle},
-        {v:r.ua, t:"n", s:bodyStyle}
-      ]);
-    });
-    const wsDash = XLSX.utils.aoa_to_sheet(dashAoa);
-    wsDash["!merges"] = [
-      {s:{r:0,c:0}, e:{r:0,c:2}},
-      {s:{r:1,c:0}, e:{r:1,c:2}},
-      {s:{r:12,c:0}, e:{r:12,c:2}}
-    ];
-    wsDash["!cols"] = [{wch:32},{wch:18},{wch:18}];
-    XLSX.utils.book_append_sheet(wb, wsDash, "Dashboard");
 
     const fname = `Lista_Emergencias_${String(desdeISO).replace(/-/g,"")}_${String(hastaISO).replace(/-/g,"")}.xlsx`;
     XLSX.writeFile(wb, fname);
