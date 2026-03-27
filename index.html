@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-<!-- BUILD: 2026-02-20 autopull-cooldown-v204 -->
+<!-- BUILD: 2026-02-20 autopull-cooldown-v205 -->
 <script>window.__BUILD_ID='2026-02-20 autopull-cooldown-v195';console.log('BUILD',window.__BUILD_ID);</script>
 
 <!-- build: VER_PRINT_RC_ALWAYS_VISIBLE v4 2026-01-11 -->
@@ -2392,41 +2392,71 @@ function __truncateText(s, n){
   return t.slice(0, n-1) + "…";
 }
 
-// ---- AUDITORÍA (server) ----
+// ---- AUDITORÍA (server/local fallback) ----
 let __admAuditCache = [];
+
+function __adminReadLocalAudit(params){
+  try{
+    const raw = __lsGet(__AUTH_KEYS.audit) || "[]";
+    let logs = JSON.parse(raw);
+    logs = Array.isArray(logs) ? logs : [];
+
+    const since = String((params && params.since) || "").trim();
+    const until = String((params && params.until) || "").trim();
+    const actor = String((params && params.actor_email) || "").trim().toLowerCase();
+    const action = String((params && params.action) || "").trim().toUpperCase();
+
+    logs = logs.filter(l => {
+      const at = String(l && l.at ? l.at : "").trim();
+      if(since && at && at < since) return false;
+      if(until && at && at > until) return false;
+      const actorEmail = String((l && ((l.user && l.user.email) || l.actor_email)) || "").trim().toLowerCase();
+      if(actor && actorEmail !== actor) return false;
+      const act = String((l && l.action) || "").trim().toUpperCase();
+      if(action && act !== action) return false;
+      return true;
+    }).map(l => ({
+      at: l && l.at ? l.at : "",
+      actor_email: (l && ((l.user && l.user.email) || l.actor_email)) || "",
+      actor_role: (l && ((l.user && l.user.role) || l.actor_role)) || "",
+      action: (l && l.action) || "",
+      entity: (l && l.entity) || "",
+      entity_id: (l && (l.entityId || l.entity_id)) || "",
+      detail: (l && l.detail !== undefined) ? l.detail : null
+    }));
+
+    logs.sort((a,b)=> String(b.at||"").localeCompare(String(a.at||"")));
+    return logs.slice(0, 1000);
+  }catch(e){
+    return [];
+  }
+}
 
 async function __adminFetchAudit(params){
   const token = __tokenGet();
-  if(!token) return null;
-  if(!navigator.onLine) return null;
-  if(!__isApiConfigured || !__isApiConfigured()) return null;
-
+  const online = !!navigator.onLine;
+  const apiReady = !!(__isApiConfigured && __isApiConfigured());
   const qs = new URLSearchParams(params || {});
   if(!qs.has("limit")) qs.set("limit", "1000");
 
-  const out = await __api("/admin/audit?" + qs.toString(), { method:"GET", token: token });
-  if(!out.res || !out.res.ok || !out.data) return null;
-  return Array.isArray(out.data.logs) ? out.data.logs : [];
-}
+  if(token && online && apiReady){
+    try{
+      const out = await __api("/admin/audit?" + qs.toString(), { method:"GET", token: token });
+      if(out.res && out.res.ok && out.data){
+        return { source:"server", logs: Array.isArray(out.data.logs) ? out.data.logs : [] };
+      }
+      const fallback = __adminReadLocalAudit(params);
+      return { source:"local_fallback", logs: fallback, error: (out && out.data && out.data.error) ? out.data.error : "server_error" };
+    }catch(e){
+      return { source:"local_fallback", logs: __adminReadLocalAudit(params), error: (e && e.message) ? e.message : "fetch_failed" };
+    }
+  }
 
-function __auditRoleBadge(role){
-  const r = String(role || "").trim().toLowerCase();
-  if(r === "administrador" || r === "admin") return '<span class="badge text-bg-dark">Administrador</span>';
-  if(r === "registrador" || r === "reg") return '<span class="badge text-bg-primary">Registrador</span>';
-  if(r === "consulta" || r === "cons") return '<span class="badge text-bg-secondary">Consulta</span>';
-  return `<span class="badge text-bg-light border text-dark">${__escapeHtml(String(role || "—"))}</span>`;
-}
-
-function __auditActionBadge(action){
-  const a = String(action || "").trim().toUpperCase();
-  let cls = 'text-bg-secondary';
-  if(/APROBAR|CIERRE_DIRECTO_ADMIN|APROBAR_CIERRE/.test(a)) cls = 'text-bg-success';
-  else if(/OBSERVAR/.test(a)) cls = 'text-bg-warning';
-  else if(/ELIMINAR|DELETE/.test(a)) cls = 'text-bg-danger';
-  else if(/ACTUALIZAR|MODIFICAR|UPDATE|RESET|CHANGE_PASSWORD/.test(a)) cls = 'text-bg-primary';
-  else if(/LOGIN|LOGOUT/.test(a)) cls = 'text-bg-info';
-  else if(/CREAR|ENVIAR|SOLICITAR_CIERRE/.test(a)) cls = 'text-bg-secondary';
-  return `<span class="badge ${cls}">${__escapeHtml(a || "—")}</span>`;
+  return {
+    source: token ? "local" : "local_no_token",
+    logs: __adminReadLocalAudit(params),
+    error: online ? (apiReady ? "no_token" : "server_not_configured") : "offline"
+  };
 }
 
 function __renderAuditTable(logs){
@@ -2459,12 +2489,12 @@ function __renderAuditTable(logs){
     tbody.innerHTML += `
       <tr>
         <td class="small">${at}</td>
-        <td class="small">${__escapeHtml(actor)}</td>
-        <td class="small">${__auditRoleBadge(role)}</td>
-        <td class="small fw-semibold">${__auditActionBadge(action)}</td>
-        <td class="small">${__escapeHtml(ent)}</td>
-        <td class="small">${__escapeHtml(entId)}</td>
-        <td class="small"><code>${__escapeHtml(short)}</code></td>
+        <td class="small">${actor}</td>
+        <td class="small">${role}</td>
+        <td class="small fw-semibold">${action}</td>
+        <td class="small">${ent}</td>
+        <td class="small">${entId}</td>
+        <td class="small"><code>${short.replace(/</g,"&lt;")}</code></td>
         <td><button class="btn btn-sm btn-outline-secondary" data-copy="${enc}">Copiar</button></td>
       </tr>
     `;
@@ -2505,13 +2535,6 @@ async function __admLoadAudit(){
   const hint = document.getElementById("admAuditHint");
   const tbody = document.getElementById("admAuditTbody");
 
-  const canServer = __isApiConfigured && __isApiConfigured() && navigator.onLine && __tokenGet();
-  if(hint) hint.textContent = canServer ? "Servidor: conectado" : "Servidor: sin conexión";
-  if(!canServer){
-    if(tbody) tbody.innerHTML = '<tr><td colspan="8" class="text-muted">Conéctate a internet para ver auditoría.</td></tr>';
-    return;
-  }
-
   if(tbody) tbody.innerHTML = '<tr><td colspan="8" class="text-muted">Cargando...</td></tr>';
 
   const desde = document.getElementById("admAuditDesde")?.value || "";
@@ -2525,10 +2548,17 @@ async function __admLoadAudit(){
   if(actor) params.actor_email = actor;
   if(action) params.action = action;
 
-  const logs = await __adminFetchAudit(params);
-  if(logs === null){
-    if(tbody) tbody.innerHTML = '<tr><td colspan="8" class="text-danger">No se pudo cargar auditoría.</td></tr>';
-    return;
+  const result = await __adminFetchAudit(params);
+  const logs = Array.isArray(result && result.logs) ? result.logs : [];
+  const source = String((result && result.source) || "");
+  const error = String((result && result.error) || "");
+
+  if(hint){
+    if(source === "server") hint.textContent = "Servidor: conectado";
+    else if(source === "local_fallback") hint.textContent = "Servidor: conectado, usando respaldo local" + (error ? " (" + error + ")" : "");
+    else if(source === "local") hint.textContent = "Sin internet, usando respaldo local";
+    else if(source === "local_no_token") hint.textContent = "Sesión sin token, usando respaldo local";
+    else hint.textContent = "Bitácora local";
   }
 
   __admAuditCache = logs;
