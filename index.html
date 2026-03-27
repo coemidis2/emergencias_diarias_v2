@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-<!-- BUILD: 2026-02-20 autopull-cooldown-v203 -->
+<!-- BUILD: 2026-02-20 autopull-cooldown-v204 -->
 <script>window.__BUILD_ID='2026-02-20 autopull-cooldown-v195';console.log('BUILD',window.__BUILD_ID);</script>
 
 <!-- build: VER_PRINT_RC_ALWAYS_VISIBLE v4 2026-01-11 -->
@@ -2409,6 +2409,26 @@ async function __adminFetchAudit(params){
   return Array.isArray(out.data.logs) ? out.data.logs : [];
 }
 
+function __auditRoleBadge(role){
+  const r = String(role || "").trim().toLowerCase();
+  if(r === "administrador" || r === "admin") return '<span class="badge text-bg-dark">Administrador</span>';
+  if(r === "registrador" || r === "reg") return '<span class="badge text-bg-primary">Registrador</span>';
+  if(r === "consulta" || r === "cons") return '<span class="badge text-bg-secondary">Consulta</span>';
+  return `<span class="badge text-bg-light border text-dark">${__escapeHtml(String(role || "—"))}</span>`;
+}
+
+function __auditActionBadge(action){
+  const a = String(action || "").trim().toUpperCase();
+  let cls = 'text-bg-secondary';
+  if(/APROBAR|CIERRE_DIRECTO_ADMIN|APROBAR_CIERRE/.test(a)) cls = 'text-bg-success';
+  else if(/OBSERVAR/.test(a)) cls = 'text-bg-warning';
+  else if(/ELIMINAR|DELETE/.test(a)) cls = 'text-bg-danger';
+  else if(/ACTUALIZAR|MODIFICAR|UPDATE|RESET|CHANGE_PASSWORD/.test(a)) cls = 'text-bg-primary';
+  else if(/LOGIN|LOGOUT/.test(a)) cls = 'text-bg-info';
+  else if(/CREAR|ENVIAR|SOLICITAR_CIERRE/.test(a)) cls = 'text-bg-secondary';
+  return `<span class="badge ${cls}">${__escapeHtml(a || "—")}</span>`;
+}
+
 function __renderAuditTable(logs){
   const tbody = document.getElementById("admAuditTbody");
   if(!tbody) return;
@@ -2439,12 +2459,12 @@ function __renderAuditTable(logs){
     tbody.innerHTML += `
       <tr>
         <td class="small">${at}</td>
-        <td class="small">${actor}</td>
-        <td class="small">${role}</td>
-        <td class="small fw-semibold">${action}</td>
-        <td class="small">${ent}</td>
-        <td class="small">${entId}</td>
-        <td class="small"><code>${short.replace(/</g,"&lt;")}</code></td>
+        <td class="small">${__escapeHtml(actor)}</td>
+        <td class="small">${__auditRoleBadge(role)}</td>
+        <td class="small fw-semibold">${__auditActionBadge(action)}</td>
+        <td class="small">${__escapeHtml(ent)}</td>
+        <td class="small">${__escapeHtml(entId)}</td>
+        <td class="small"><code>${__escapeHtml(short)}</code></td>
         <td><button class="btn btn-sm btn-outline-secondary" data-copy="${enc}">Copiar</button></td>
       </tr>
     `;
@@ -10106,14 +10126,9 @@ async function __segPullSnapshotFromD1(){
       const upd = String(r?.updated_at || "");
       if(upd && upd > maxUpdated) maxUpdated = upd;
 
-      const payload = (r && r.payload && typeof r.payload === "object") ? { ...r.payload } : {};
+      const payload = r?.payload || {};
       payload.__serverUpdatedAt = r?.updated_at || null;
       payload.__serverCreatedAt = r?.created_at || null;
-
-      if(typeof __isDeleted === "function" && __isDeleted(payload)){
-        delete byCodigo[codigo];
-        continue;
-      }
 
       const prev = byCodigo[codigo];
       if(!prev || String(payload.__serverUpdatedAt||"") >= String(prev.__serverUpdatedAt||"")){
@@ -10127,7 +10142,7 @@ async function __segPullSnapshotFromD1(){
     guard++;
   }
 
-  return Object.values(byCodigo).filter(em => !(typeof __isDeleted === "function" && __isDeleted(em)));
+  return Object.values(byCodigo);
 }
 
 function __segFillSelect(selId, values){
