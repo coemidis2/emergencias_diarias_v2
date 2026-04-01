@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-<!-- BUILD: 2026-02-20 autopull-cooldown-v205 -->
+<!-- BUILD: 2026-02-20 autopull-cooldown-v206 -->
 <script>window.__BUILD_ID='2026-02-20 autopull-cooldown-v195';console.log('BUILD',window.__BUILD_ID);</script>
 
 <!-- build: VER_PRINT_RC_ALWAYS_VISIBLE v4 2026-01-11 -->
@@ -447,6 +447,8 @@ body { background: #f5f5f5; }
               <option value="Vientos fuertes">Vientos fuertes</option>
               <option value="Erosión">Erosión</option>
               <option value="Colapso de estructura">Colapso de estructura</option>
+              <option value="Conflictos sociales">Conflictos sociales</option>
+              <option value="Accidentes de tránsito">Accidentes de tránsito</option>
               <option value="Otros">Otros</option>
             </select>
           </div>
@@ -642,6 +644,8 @@ body { background: #f5f5f5; }
 	    <option>Vientos fuertes</option>
 	    <option>Erosión</option>
 	    <option>Colapso de estructura</option>
+	    <option>Conflictos sociales</option>
+	    <option>Accidentes de tránsito</option>
 	    <option>Otros</option>
           </select>
         </div>
@@ -7781,20 +7785,57 @@ function __dashGetEmergencias(){
   catch(e){ return []; }
 }
 
+function __dashPeruYMDFromDate(d){
+  try{
+    if(!(d instanceof Date) || isNaN(d.getTime())) return null;
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "America/Lima",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit"
+    }).formatToParts(d);
+    const y = Number((parts.find(p=>p.type==="year") || {}).value || 0);
+    const m = Number((parts.find(p=>p.type==="month") || {}).value || 0);
+    const day = Number((parts.find(p=>p.type==="day") || {}).value || 0);
+    if(!y || !m || !day) return null;
+    return `${y}-${String(m).padStart(2,"0")}-${String(day).padStart(2,"0")}`;
+  }catch(e){
+    return null;
+  }
+}
+
+function __dashTodayPeruYMD(){
+  return __dashPeruYMDFromDate(new Date());
+}
+
 function __dashParseDateOnly(v){
   if(!v) return null;
   v = String(v).trim();
 
-  // ISO / datetime-local (YYYY-MM-DD o YYYY-MM-DDTHH:mm)
-  const iso = new Date(v);
-  if(!isNaN(iso.getTime())) return new Date(iso.getFullYear(), iso.getMonth(), iso.getDate());
+  // YYYY-MM-DD o YYYY-MM-DDTHH:mm[:ss] -> tomar la fecha literal, sin mover por zona horaria
+  let m = v.match(/^(\d{4})-(\d{2})-(\d{2})(?:[T\s].*)?$/);
+  if(m){
+    const yy = parseInt(m[1],10), mm = parseInt(m[2],10)-1, dd = parseInt(m[3],10);
+    const d = new Date(yy, mm, dd);
+    if(!isNaN(d.getTime())) return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  }
 
   // dd/mm/yyyy o dd-mm-yyyy (con o sin hora)
-  const m = v.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+  m = v.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
   if(m){
     const dd = parseInt(m[1],10), mm = parseInt(m[2],10)-1, yy = parseInt(m[3],10);
     const d = new Date(yy, mm, dd);
     if(!isNaN(d.getTime())) return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  }
+
+  // Fechas ISO con zona (ej. Z) -> normalizar a fecha de Perú
+  const iso = new Date(v);
+  if(!isNaN(iso.getTime())){
+    const peruYmd = __dashPeruYMDFromDate(iso);
+    if(peruYmd){
+      const p = peruYmd.split('-');
+      return new Date(Number(p[0]), Number(p[1])-1, Number(p[2]));
+    }
   }
   return null;
 }
@@ -8617,7 +8658,7 @@ document.addEventListener("DOMContentLoaded", ()=>{
 
 
   if(btnHoy) btnHoy.addEventListener("click", ()=>{
-    const hoy = new Date().toISOString().slice(0,10);
+    const hoy = __dashTodayPeruYMD() || new Date().toISOString().slice(0,10);
     document.getElementById("dashDesde").value = hoy;
     document.getElementById("dashHasta").value = hoy;
     dashboardRefresh();
