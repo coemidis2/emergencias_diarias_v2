@@ -1,8 +1,10 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-<!-- BUILD: 2026-02-20 autopull-cooldown-v206 -->
-<script>window.__BUILD_ID='2026-02-20 autopull-cooldown-v195';console.log('BUILD',window.__BUILD_ID);</script>
+/* ======= VERSION 207======= */
+
+<!-- BUILD: 2026-02-20 autopull-cooldown-v206-fix-sync-v2 -->
+<script>window.__BUILD_ID='2026-02-20 autopull-cooldown-v206-fix-sync-v2';console.log('BUILD',window.__BUILD_ID);</script>
 
 <!-- build: VER_PRINT_RC_ALWAYS_VISIBLE v4 2026-01-11 -->
 <meta charset="UTF-8" />
@@ -2856,6 +2858,7 @@ function __collectPendientes(){
   const out = [];
   try{
     (Array.isArray(emergencias)?emergencias:[]).forEach(em=>{
+      if(typeof __isDeleted === 'function' && __isDeleted(em)) return;
       if(em?.rpAprobEstado === "Pendiente"){
         out.push({
           type:"RP",
@@ -2930,18 +2933,23 @@ function __renderAprobaciones(){
   tbody.querySelectorAll("[data-apr]").forEach(b=>{
     b.addEventListener("click", async ()=>{
       const ref = JSON.parse(b.getAttribute("data-apr"));
+      const code = String(ref && ref.codigo ? ref.codigo : '').trim();
+      if(!code) return;
+      const target = (Array.isArray(emergencias)?emergencias:[]).find(x=>String(x && x.codigo ? x.codigo : '').trim()===code) || null;
+      const snapshot = target ? JSON.parse(JSON.stringify(target)) : null;
       try{ if(__isApiConfigured && __isApiConfigured() && navigator.onLine){ await __syncPullAuto(); } }catch(_e){}
       __aprobar(ref);
       __saveEmergencias();
       __renderAprobaciones();
       cargarTablaEmergencias?.();
       dashboardRefresh?.();
-      try{
-        if(__isApiConfigured && __isApiConfigured() && navigator.onLine){
-          await __syncPush();
-          await __syncPullAuto();
-        }
-      }catch(_e){}
+      const res = await __syncCommitCodigo(code, snapshot, {
+        successMessage: 'Aprobación confirmada en servidor.',
+        pendingMessage: 'Aprobación guardada en local. Pendiente de sincronizar.',
+        failurePrefix: 'No se pudo confirmar la aprobación en servidor'
+      });
+      __renderAprobaciones();
+      if(res && res.message) alert(res.message);
     });
   });
   tbody.querySelectorAll("[data-obs]").forEach(b=>{
@@ -2949,18 +2957,23 @@ function __renderAprobaciones(){
       const ref = JSON.parse(b.getAttribute("data-obs"));
       const obs = prompt("Ingrese observación (obligatorio):");
       if(!obs) return;
+      const code = String(ref && ref.codigo ? ref.codigo : '').trim();
+      if(!code) return;
+      const target = (Array.isArray(emergencias)?emergencias:[]).find(x=>String(x && x.codigo ? x.codigo : '').trim()===code) || null;
+      const snapshot = target ? JSON.parse(JSON.stringify(target)) : null;
       try{ if(__isApiConfigured && __isApiConfigured() && navigator.onLine){ await __syncPullAuto(); } }catch(_e){}
       __observar(ref, obs);
       __saveEmergencias();
       __renderAprobaciones();
       cargarTablaEmergencias?.();
       dashboardRefresh?.();
-      try{
-        if(__isApiConfigured && __isApiConfigured() && navigator.onLine){
-          await __syncPush();
-          await __syncPullAuto();
-        }
-      }catch(_e){}
+      const res = await __syncCommitCodigo(code, snapshot, {
+        successMessage: 'Observación confirmada en servidor.',
+        pendingMessage: 'Observación guardada en local. Pendiente de sincronizar.',
+        failurePrefix: 'No se pudo confirmar la observación en servidor'
+      });
+      __renderAprobaciones();
+      if(res && res.message) alert(res.message);
     });
   });
 }
@@ -3557,7 +3570,6 @@ async function __syncPushCodigo(codigo){
   const arr = Array.isArray(emergencias) ? emergencias : __loadEmergencias();
   const e = arr.find(x => String(x && x.codigo ? x.codigo : '').trim() === code);
   if(!e) throw new Error('local_not_found');
-  if(typeof __isDeleted === 'function' && __isDeleted(e)) throw new Error('deleted_record');
 
   const payload = __syncCleanPayload(e);
   const h = await __sha256(JSON.stringify(payload));
@@ -3598,13 +3610,12 @@ async function __syncPushCodigo(codigo){
       const deniedCode = String((typeof it === 'string') ? it : (it && (it.codigo || it.code || it.id) || '')).trim();
       if(deniedCode !== code) continue;
       const reason = String((typeof it === 'string') ? 'denied' : (it.reason || it.error || it.msg || it.message || 'denied'));
-      const rlow = reason.toLowerCase();
-      const soft = (rlow.includes('not_owner') || rlow.includes('no_owner') || rlow.includes('not_edit') || rlow.includes('closed') || rlow.includes('forbidden') || rlow.includes('invalid_role'));
-      if(soft){
+      const hardReject = __syncShouldHardRejectDenied(reason);
+      if(!hardReject){
         e.estado_sync = 'Sincronizado';
         e.sync_denied_at = nowDenied;
         e.sync_denied_reason = reason;
-        try{ map[code] = await __syncHash(e); }catch(_e){}
+        try{ map[code] = h; }catch(_e){}
       }else{
         e.estado_sync = 'Rechazado';
         e.sync_denied_at = nowDenied;
@@ -3859,7 +3870,7 @@ document.addEventListener("DOMContentLoaded", ()=>{
   document.getElementById("btnEnviarAprobRP")?.addEventListener("click", __enviarRP);
   document.getElementById("btnEnviarAprobRC")?.addEventListener("click", __enviarRC);
   // Aprobación directa (solo Administrador)
-  document.getElementById("btnAprobarRPAdmin")?.addEventListener("click", ()=>{
+  document.getElementById("btnAprobarRPAdmin")?.addEventListener("click", async ()=>{
     if(!__isAdmin()) return;
     const codigo = (document.getElementById("codigoRP")?.value || "").trim();
     if(!codigo){ alert("No hay RP cargado."); return; }
@@ -3869,31 +3880,27 @@ document.addEventListener("DOMContentLoaded", ()=>{
       alert("El RP no está en estado 'Por aprobar'. Primero debe enviarse a aprobación.");
       return;
     }
+    const snapshot = JSON.parse(JSON.stringify(em));
     __aprobar({kind:"rp", codigo});
     __saveEmergencias();
     cargarTablaEmergencias();
-
-    // Sync inmediato para que el Registrador vea el aprobado
+    const res = await __syncCommitCodigo(codigo, snapshot, {
+      successMessage: 'RP aprobado en servidor.',
+      pendingMessage: 'RP aprobado en local. Pendiente de sincronizar.',
+      failurePrefix: 'No se pudo confirmar la aprobación del RP en servidor'
+    });
     try{
-      if(__isApiConfigured && __isApiConfigured() && navigator.onLine){
-        (async ()=>{ try{ await __syncPush(); await __syncPullAuto(); }catch(_e){} })();
-      }
-    }catch(_e){}
-
-
-    // Al aprobar, dejar el RP en solo lectura (solo Retornar activo)
-    try{
+      const fresh = emergencias.find(e=>e.codigo===codigo);
       const apr = document.getElementById("aprobadoRP");
-      if(apr) apr.value = em.rpAprobadoPor || __getApproverName();
+      if(apr && fresh) apr.value = fresh.rpAprobadoPor || __getApproverName();
       const btnApr = document.getElementById("btnAprobarRPAdmin");
-      if(btnApr) btnApr.disabled = true;
-      __lockRPFormAdminApproved?.();
+      if(btnApr) btnApr.disabled = !!(res.ok && !res.pending);
+      if(res.ok && !res.pending) __lockRPFormAdminApproved?.();
     }catch(e){}
-
-    alert("RP aprobado.");
+    alert(res.message || 'Operación finalizada.');
   });
 
-  document.getElementById("btnAprobarRCAdmin")?.addEventListener("click", ()=>{
+  document.getElementById("btnAprobarRCAdmin")?.addEventListener("click", async ()=>{
     if(!__isAdmin()) return;
     if(!emergenciaSeleccionada){ alert("Seleccione una emergencia para RC."); return; }
     const em = emergenciaSeleccionada;
@@ -3907,10 +3914,16 @@ document.addEventListener("DOMContentLoaded", ()=>{
       alert("El RC no está en estado 'Por aprobar'.");
       return;
     }
+    const snapshot = JSON.parse(JSON.stringify(em));
     __aprobar({kind:"rc", codigo: em.codigo, idx});
     __saveEmergencias();
     cargarTablaEmergencias();
-    alert("RC aprobado.");
+    const res = await __syncCommitCodigo(em.codigo, snapshot, {
+      successMessage: 'RC aprobado en servidor.',
+      pendingMessage: 'RC aprobado en local. Pendiente de sincronizar.',
+      failurePrefix: 'No se pudo confirmar la aprobación del RC en servidor'
+    });
+    alert(res.message || 'Operación finalizada.');
   });
 
 });
@@ -4945,22 +4958,24 @@ document.getElementById("btnGuardarAprobarRPAdmin")?.addEventListener("click", a
   if(!(__isAdmin && __isAdmin())) return;
 
   try{
-    // Antes de grabar/aprobar, jalar lo último del servidor (si está configurado y hay internet)
     if(__isApiConfigured && __isApiConfigured() && navigator.onLine){
       await __syncPullAuto();
     }
   }catch(e){}
 
+  const codigo = (document.getElementById("codigoRP")?.value || "").trim();
+  const prev = codigo ? ((Array.isArray(emergencias)?emergencias:[]).find(e=>String(e && e.codigo ? e.codigo : '').trim()===codigo) || null) : null;
+  const snapshot = prev ? JSON.parse(JSON.stringify(prev)) : null;
+
   const saved = __saveRP({submit:false});
   if(!saved) return;
 
-  const codigo = (document.getElementById("codigoRP")?.value || "").trim();
-  if(!codigo){ alert("No hay RP cargado."); return; }
+  const code = (document.getElementById("codigoRP")?.value || "").trim();
+  if(!code){ alert("No hay RP cargado."); return; }
 
-  const em = emergencias.find(e=>e.codigo===codigo);
+  const em = emergencias.find(e=>String(e && e.codigo ? e.codigo : '').trim()===code);
   if(!em){ alert("No se encontró la emergencia."); return; }
 
-  // Enviar a aprobación (si aún no está Pendiente/Aprobado)
   if(em.rpAprobEstado !== "Pendiente" && em.rpAprobEstado !== "Aprobado"){
     em.rpAprobEstado = "Pendiente";
     em.rpEnviadoPor  = __getCurrentUserName();
@@ -4968,29 +4983,27 @@ document.getElementById("btnGuardarAprobarRPAdmin")?.addEventListener("click", a
     __audit("ENVIAR_RP_APROBACION", "emergencia", em.codigo, null);
   }
 
-  // Aprobar (si está Pendiente)
   if(em.rpAprobEstado === "Pendiente"){
-    __aprobar({kind:"rp", codigo});
+    __aprobar({kind:"rp", codigo: code});
   }
 
   __saveEmergencias();
   cargarTablaEmergencias();
 
-  try{
-    // Empuja al servidor para que el Registrador lo vea en su Listado
-    if(__isApiConfigured && __isApiConfigured() && navigator.onLine){
-      await __syncPush();
-    }
-  }catch(e){}
+  const res = await __syncCommitCodigo(code, snapshot, {
+    successMessage: 'Reporte Preliminar guardado y aprobado en servidor.',
+    pendingMessage: 'Reporte Preliminar aprobado en local. Pendiente de sincronizar.',
+    failurePrefix: 'No se pudo confirmar la aprobación del RP en servidor'
+  });
 
-  // Al aprobar, dejar el RP en solo lectura (solo Retornar activo)
   try{
+    const fresh = emergencias.find(e=>String(e && e.codigo ? e.codigo : '').trim()===code);
     const apr = document.getElementById("aprobadoRP");
-    if(apr) apr.value = em.rpAprobadoPor || __getApproverName();
-    __lockRPFormAdminApproved?.();
+    if(apr && fresh) apr.value = fresh.rpAprobadoPor || __getApproverName();
+    if(res.ok && !res.pending) __lockRPFormAdminApproved?.();
   }catch(e){}
 
-  alert("Reporte Preliminar guardado y aprobado.");
+  alert(res.message || 'Operación finalizada.');
 });
 ;
 
@@ -6578,11 +6591,12 @@ async function __adminDeleteEmergencia(codigo){
     const em = (Array.isArray(emergencias)?emergencias:[]).find(x=>String(x.codigo||"").trim()===cod);
     if(!em){ alert("No se encontró el registro: " + cod); return; }
 
-    if(!confirm("¿Eliminar el registro " + cod + "?\n\nSe ocultará del listado y quedará pendiente de sincronización (se intentará sincronizar si hay conexión).")) return;
+    if(!confirm("¿Eliminar el registro " + cod + "?\n\nSe ocultará del listado y quedará marcado como eliminado también en D1 al sincronizar.")) return;
     const conf = prompt("Para confirmar, escriba el código: " + cod, "");
     if(String(conf||"").trim() !== cod){ alert("Confirmación no coincide. Cancelado."); return; }
 
-    // Delete (marca + tombstone) - compatible con sync por upsert
+    const snapshot = JSON.parse(JSON.stringify(em));
+
     em._deleted = true;
     em.deleted = true;
     __addTombstone(cod);
@@ -6590,7 +6604,6 @@ async function __adminDeleteEmergencia(codigo){
     em.deletedAt = __nowIso();
     em.deletedBy = (__getCurrentUserName ? __getCurrentUserName() : (currentUser && currentUser.fullName ? currentUser.fullName : "")) || "";
     em.deletedByEmail = currentUser ? currentUser.email : null;
-
     em.updatedAt = __nowIso();
     em.updatedByEmail = currentUser ? currentUser.email : null;
 
@@ -6602,19 +6615,17 @@ async function __adminDeleteEmergencia(codigo){
     try{ dashboardRefresh(); }catch(e){}
     try{ __calcPending(); }catch(e){}
 
-    // Intento de sincronización inmediata (si procede)
-    try{
-      if(__isApiConfigured && __isApiConfigured() && navigator.onLine){
-        const tok = (__tokenGet ? __tokenGet() : null);
-        if(tok && __isJwtUsableOffline && __isJwtUsableOffline(tok)){
-          await __syncPush();
-          try{ await __syncPullAuto(); }catch(_e){}
-          try{ cargarTablaEmergencias(); }catch(e){}
-          try{ dashboardRefresh(); }catch(e){}
-          try{ __calcPending(); }catch(e){}
-        }
-      }
-    }catch(_e){}
+    const syncRes = await __syncCommitCodigo(cod, snapshot, {
+      successMessage: 'Registro eliminado y marcado en D1.',
+      pendingMessage: 'Registro eliminado en local. Pendiente de sincronizar con D1.',
+      failurePrefix: 'No se pudo confirmar la eliminación en D1'
+    });
+
+    if(!syncRes.ok){
+      alert(syncRes.message || 'No se pudo confirmar la eliminación.');
+      return;
+    }
+    alert(syncRes.message || 'Registro eliminado.');
   }catch(e){
     alert("No se pudo eliminar el registro.");
   }
@@ -7366,9 +7377,10 @@ document.getElementById("btnGuardarRC").onclick = () => {
 
 
 // ===================== GUARDAR + APROBAR RC (ADMIN) =====================
-document.getElementById("btnGuardarAprobarRCAdmin")?.addEventListener("click", ()=>{
+document.getElementById("btnGuardarAprobarRCAdmin")?.addEventListener("click", async ()=>{
   if(!(typeof __isAdmin === "function" && __isAdmin())) return;
 
+  const emPrev = emergenciaSeleccionada ? JSON.parse(JSON.stringify(emergenciaSeleccionada)) : null;
   const ok = __guardarRCCore({suppressAlert:true});
   if(!ok){
     alert("No se pudo guardar el RC.");
@@ -7388,7 +7400,7 @@ document.getElementById("btnGuardarAprobarRCAdmin")?.addEventListener("click", (
       alert("No se encontró el RC para aprobar.");
       return;
     }
-    // Intentar enviar solo si aún no está pendiente; si falla, igual se continúa con la aprobación
+
     try{
       const rc = em.rcReportes[idx];
       const estado = rc ? rc.aprobEstado : null;
@@ -7402,18 +7414,18 @@ document.getElementById("btnGuardarAprobarRCAdmin")?.addEventListener("click", (
     __saveEmergencias();
     cargarTablaEmergencias();
 
-    // Sync inmediato para que el Registrador vea el aprobado
-    try{
-      if(__isApiConfigured && __isApiConfigured() && navigator.onLine){
-        (async ()=>{ try{ await __syncPush(); await __syncPullAuto(); }catch(_e){} })();
-      }
-    }catch(_e){}
+    const res = await __syncCommitCodigo(em.codigo, emPrev, {
+      successMessage: 'RC guardado y aprobado en servidor.',
+      pendingMessage: 'RC aprobado en local. Pendiente de sincronizar.',
+      failurePrefix: 'No se pudo confirmar la aprobación del RC en servidor'
+    });
 
-    // Bloquear edición tras aprobación
-    try{ setRCEnabled(false); }catch(e){}
-    try{ __applyRCLockUI && __applyRCLockUI(); }catch(e){}
+    if(res.ok && !res.pending){
+      try{ setRCEnabled(false); }catch(e){}
+      try{ __applyRCLockUI && __applyRCLockUI(); }catch(e){}
+    }
 
-    alert("RC guardado y aprobado.");
+    alert(res.message || 'Operación finalizada.');
   }catch(e){
     alert("Ocurrió un error al aprobar el RC.");
   }
@@ -8773,6 +8785,94 @@ async function __syncHash(obj){
   return await __sha256(JSON.stringify(__syncCleanPayload(obj)));
 }
 
+function __syncListHasCodigo(list, codigo){
+  try{
+    const code = String(codigo || '').trim();
+    return (Array.isArray(list) ? list : []).some(it => {
+      const itemCode = String((typeof it === 'string') ? it : (it && (it.codigo || it.code || it.id) || '')).trim();
+      return itemCode === code;
+    });
+  }catch(e){ return false; }
+}
+function __syncShouldHardRejectDenied(reason){
+  try{
+    const r = String(reason || '').toLowerCase();
+    if(!r) return true;
+    if(r.includes('not_owner') || r.includes('no_owner') || r.includes('not_edit') || r.includes('closed') || r.includes('forbidden') || r.includes('invalid_role')) return false;
+    if(r.includes('deleted') || r.includes('not_found') || r.includes('gone') || r.includes('tombstone')) return false;
+    return true;
+  }catch(e){ return true; }
+}
+
+
+function __restoreCodigoSnapshot(codigo, snapshot){
+  try{
+    const code = String(codigo || '').trim();
+    const arr = Array.isArray(emergencias) ? emergencias : __loadEmergencias();
+    const idx = arr.findIndex(e => String(e && e.codigo ? e.codigo : '').trim() === code);
+
+    if(snapshot){
+      const snap = JSON.parse(JSON.stringify(snapshot));
+      if(idx >= 0) arr[idx] = snap;
+      else arr.push(snap);
+      if(emergenciaSeleccionada && String(emergenciaSeleccionada.codigo || '').trim() === code){
+        emergenciaSeleccionada = snap;
+      }
+    }else if(idx >= 0){
+      arr.splice(idx, 1);
+      if(emergenciaSeleccionada && String(emergenciaSeleccionada.codigo || '').trim() === code){
+        emergenciaSeleccionada = null;
+      }
+    }
+
+    emergencias = arr;
+    __saveEmergencias();
+    try{ cargarTablaEmergencias(); }catch(_e){}
+    try{ dashboardRefresh(); }catch(_e){}
+    try{ __calcPending(); }catch(_e){}
+  }catch(e){}
+}
+
+async function __syncCommitCodigo(codigo, snapshot, opts){
+  const code = String(codigo || '').trim();
+  const cfg = Object.assign({
+    successMessage: 'Cambio confirmado en servidor.',
+    pendingMessage: 'Cambio guardado en local. Pendiente de sincronizar con el servidor.',
+    failurePrefix: 'No se pudo confirmar el cambio en el servidor'
+  }, opts || {});
+
+  if(!code) return { ok:false, error:'codigo_invalido' };
+
+  if(!(__isApiConfigured && __isApiConfigured()) || !navigator.onLine){
+    try{
+      const rec = (Array.isArray(emergencias) ? emergencias : []).find(e => String(e && e.codigo ? e.codigo : '').trim() === code);
+      if(rec) rec.estado_sync = 'Pendiente';
+      __saveEmergencias();
+    }catch(_e){}
+    return { ok:true, pending:true, message: cfg.pendingMessage };
+  }
+
+  try{
+    const push = await __syncPushCodigo(code);
+    const hasConflict = __syncListHasCodigo(push && push.conflicts, code);
+    const hasDenied = __syncListHasCodigo(push && push.denied, code);
+
+    if(hasConflict || hasDenied){
+      __restoreCodigoSnapshot(code, snapshot);
+      try{ await __syncPull(__getLastPull()); }catch(_e){}
+      return { ok:false, conflict:hasConflict, denied:hasDenied, message: cfg.failurePrefix + (hasConflict ? ' (conflicto).' : ' (rechazo).') };
+    }
+
+    try{ await __syncPullAuto(); }catch(_e){}
+    return { ok:true, message: cfg.successMessage, acked: push && push.acked ? push.acked : [] };
+  }catch(e){
+    __restoreCodigoSnapshot(code, snapshot);
+    try{ await __syncPull(__getLastPull()); }catch(_e){}
+    const msg = (e && e.message) ? e.message : String(e);
+    return { ok:false, error:msg, message: cfg.failurePrefix + ' (' + msg + ').' };
+  }
+}
+
 
 function __isApiConfigured(){
   const u = (__API_CFG && __API_CFG.baseUrl) ? String(__API_CFG.baseUrl).trim() : "";
@@ -9032,8 +9132,7 @@ async function __calcPending(){
     for(const e of arr){
       const codigo = String(e && e.codigo ? e.codigo : "").trim();
       if(!codigo) continue;
-      if(typeof __isDeleted === "function" && __isDeleted(e)) continue;
-      if(String(e && e.estado_sync ? e.estado_sync : "") === "Rechazado") continue;
+        if(String(e && e.estado_sync ? e.estado_sync : "") === "Rechazado") continue;
 
     // Registrador: solo empujar sus propios registros y solo si están en Borrador/Observado
     try{
@@ -9511,7 +9610,6 @@ async function __syncPush(){
   for(const e of arr){
     const codigo = String(e && e.codigo ? e.codigo : '').trim();
     if(!codigo) continue;
-    if(typeof __isDeleted === "function" && __isDeleted(e)) continue;
     if(String(e && e.estado_sync ? e.estado_sync : "") === "Rechazado") continue;
 
     const payload = __syncCleanPayload(e);
@@ -9619,9 +9717,8 @@ async function __syncPush(){
       if(!codigo) continue;
       for(const e of arr){
         if(e && String(e.codigo || "").trim() === codigo){
-          const rlow = String(reason||"").toLowerCase();
-          const soft = (rlow.includes('not_owner') || rlow.includes('no_owner') || rlow.includes('not_edit') || rlow.includes('closed') || rlow.includes('forbidden') || rlow.includes('invalid_role'));
-          if(soft){
+          const hardReject = __syncShouldHardRejectDenied(reason);
+          if(!hardReject){
             e.estado_sync = "Sincronizado";
             e.sync_denied_at = now;
             e.sync_denied_reason = reason;
@@ -9718,6 +9815,10 @@ async function __syncPull(since){
     if(!codigo) continue;
 
     const serverPayload = r.payload;
+    const serverDeleted = !!(serverPayload && (serverPayload._deleted === true || serverPayload.deleted === true));
+    if(serverDeleted){
+      try{ __addTombstone(codigo); }catch(_e){}
+    }
     const serverHash = String(r.hash || '');
     const serverUpdated = String(r.updated_at || s);
     if(serverUpdated > maxUpdated) maxUpdated = serverUpdated;
@@ -9728,13 +9829,15 @@ async function __syncPull(since){
       const localHash = await __syncHash(local[i]);
       const localDirty = (lastSynced && localHash !== lastSynced);
       // Si local tiene cambios y el servidor también cambió: conflicto, pero auto-resolvemos si el usuario NO puede editar ese estado
+      // o si el servidor ya consolidó una eliminación/tombstone.
       if(localDirty && lastSynced && serverHash && serverHash !== lastSynced){
         try{
           const role = currentUser ? currentUser.role : "";
           const isAdmin = (role === __ROLES.ADMIN);
           const st = __segStage(serverPayload);
           const editableReg = (role === __ROLES.REG) && (st === "Borrador" || st === "Observado");
-          if(!isAdmin && !editableReg){
+          const preferServer = !!(serverPayload && (serverPayload._deleted === true || serverPayload.deleted === true));
+          if(preferServer || (!isAdmin && !editableReg)){
             try{ serverPayload.estado_sync = 'Sincronizado'; }catch(_e){}
             try{ serverPayload.__serverHash = serverHash; serverPayload.__serverUpdatedAt = serverUpdated; }catch(_e){}
             local[i] = serverPayload;
@@ -9813,25 +9916,27 @@ async function __syncAll(){
       if(arrSizeX > prevMax) __lsSet(__SYNC_KEYS.maxSeen, String(arrSizeX));
     }catch(e){}
 
-    // Admin: si el dataset local está 'chico', forzar un pull completo (una vez por sesión/local)
+    // Admin: pull completo solo en arranque limpio real (evita revivir registros por full pull agresivo)
     try{
       const role = currentUser ? currentUser.role : "";
       const arrX = Array.isArray(emergencias) ? emergencias : __loadEmergencias();
       const arrSizeX = Array.isArray(arrX) ? arrX.length : 0;
       const did = __lsGet(__SYNC_KEYS.fullPullAdmin) || "";
-      if(role === __ROLES.ADMIN && (arrSizeX < 200 || !did)){
+      const lastPull = __getLastPull();
+      const firstBoot = (!did && arrSizeX === 0 && (!lastPull || lastPull === '1970-01-01T00:00:00.000Z'));
+      if(role === __ROLES.ADMIN && firstBoot){
         await __syncPull('1970-01-01T00:00:00.000Z');
         try{ __lsSet(__SYNC_KEYS.fullPullAdmin, __nowIso()); }catch(_e){}
       }
     }catch(e){}
 
-    // Si el hashmap está vacío/incompleto, primero rehidratamos desde 1970 para evitar missing_if_match
+    // Rehidratación conservadora: solo si no hay data local ni hashes (evita traer histórico innecesario)
     try{
       const map0 = __getHashMap();
       const arr0 = Array.isArray(emergencias) ? emergencias : __loadEmergencias();
       const mapSize = Object.keys(map0||{}).length;
       const arrSize = Array.isArray(arr0) ? arr0.length : 0;
-      if(mapSize === 0 || (arrSize > 0 && mapSize < Math.floor(arrSize * 0.6))){
+      if(mapSize === 0 && arrSize === 0){
         await __syncPull('1970-01-01T00:00:00.000Z');
       }
     }catch(e){}
@@ -10171,6 +10276,15 @@ function __segTimeline(em){
   return out;
 }
 
+function __segRecordIsDeleted(em){
+  try{
+    if(!em) return true;
+    if(em._deleted === true || em.deleted === true) return true;
+    if(typeof __isDeleted === "function" && __isDeleted(em)) return true;
+  }catch(e){}
+  return false;
+}
+
 async function __segPullSnapshotFromD1(){
   const token = __segGetToken();
   if(!token) throw new Error("unauthorized");
@@ -10213,7 +10327,7 @@ async function __segPullSnapshotFromD1(){
     guard++;
   }
 
-  return Object.values(byCodigo);
+  return Object.values(byCodigo).filter(em => !__segRecordIsDeleted(em));
 }
 
 function __segFillSelect(selId, values){
@@ -10236,7 +10350,8 @@ function __segFillSelect(selId, values){
 
 function __segRender(){
   try{
-    const all = Array.isArray(__SEG_CACHE.records) ? __SEG_CACHE.records : [];
+    const allRaw = Array.isArray(__SEG_CACHE.records) ? __SEG_CACHE.records : [];
+    const all = allRaw.filter(em => !__segRecordIsDeleted(em));
     const now = new Date();
 
     const fReg = (document.getElementById("segFiltroReg")?.value || "").trim();
@@ -10749,14 +10864,15 @@ async function __segRefresh(){
 
   try{
     const records = await __segPullSnapshotFromD1();
-    __SEG_CACHE.records = records;
+    const safeRecords = (Array.isArray(records) ? records : []).filter(em => !__segRecordIsDeleted(em));
+    __SEG_CACHE.records = safeRecords;
     __SEG_CACHE.loadedAt = __nowIso();
 
     __segSetFuente("Fuente: D1 (Workers) | " + __formatLocalIso(__SEG_CACHE.loadedAt));
 
     // llenar filtros dinámicos
-    __segFillSelect("segFiltroReg", records.map(__segRegistrar));
-    __segFillSelect("segFiltroDep", records.map(__segDep));
+    __segFillSelect("segFiltroReg", safeRecords.map(__segRegistrar));
+    __segFillSelect("segFiltroDep", safeRecords.map(__segDep));
 
     __segRender();
 
