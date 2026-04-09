@@ -1,7 +1,6 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-/* ======= VERSION 208 1352 HRS======= */
 <!-- BUILD: 2026-02-20 autopull-cooldown-v206-fix-sync-v3 -->
 <script>window.__BUILD_ID='2026-02-20 autopull-cooldown-v206-fix-sync-v3';console.log('BUILD',window.__BUILD_ID);</script>
 
@@ -19,7 +18,7 @@ body { background: #f5f5f5; }
 .card { margin-top: 1rem; }
 .table td input { width: 100%; }
 .hidden { display: none; }
-
+/* ======= VERSION 209 09/04/2026 10:10 hrs======= */
 /* ======= VER (Listado de Emergencias): Formato de visualización/impresión ======= */
 .ver-report-wrap{ font-family: Calibri, Arial, sans-serif; font-size: 11pt; color:#111; }
 .ver-report-title{ font-family: Calibri, Arial, sans-serif; font-size:15pt; font-weight:700; color:#1F4E79; margin:0 0 6px 0; }
@@ -408,8 +407,12 @@ body { background: #f5f5f5; }
             <input type="text" id="filtroCodigo" class="form-control" placeholder="Buscar por código">
           </div>
           <div class="col-md-3">
-            <label class="form-label">Fecha de peligro</label>
-            <input type="date" id="filtroFechaPeligro" class="form-control">
+            <label class="form-label">Fecha de peligro - Fecha Inicial</label>
+            <input type="date" id="filtroFechaPeligroInicial" class="form-control">
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Fecha de peligro - Fecha Final</label>
+            <input type="date" id="filtroFechaPeligroFinal" class="form-control">
           </div>
           <div class="col-md-3">
             <label class="form-label">Estado</label>
@@ -417,6 +420,7 @@ body { background: #f5f5f5; }
               <option value="">(Todos)</option>
               <option value="Abierta">Abierta</option>
               <option value="Cerrada">Cerrada</option>
+              <option value="Por aprobar">Por aprobar</option>
             </select>
           </div>
         </div>
@@ -477,8 +481,12 @@ body { background: #f5f5f5; }
             </select>
           </div>
           <div class="col-md-3">
-            <label class="form-label">Fecha de elaboración</label>
-            <input type="date" id="filtroFechaElaboracion" class="form-control">
+            <label class="form-label">Fecha de elaboración - Fecha Inicial</label>
+            <input type="date" id="filtroFechaElaboracionInicial" class="form-control">
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Fecha de elaboración - Fecha Final</label>
+            <input type="date" id="filtroFechaElaboracionFinal" class="form-control">
           </div>
           <div class="col-md-3">
             <label class="form-label">Tipo de reporte</label>
@@ -4147,14 +4155,16 @@ document.addEventListener("DOMContentLoaded", function () {
   // Filtros: cada cambio vuelve a cargar la tabla con filtros aplicados
   const filtros = [
     "filtroCodigo",
-    "filtroFechaPeligro",
+    "filtroFechaPeligroInicial",
+    "filtroFechaPeligroFinal",
     "filtroEstado",
     "filtroPeligro",
     "filtroDepartamento",
     "filtroProvincia",
     "filtroDistrito",
     "filtroRegistrador",
-    "filtroFechaElaboracion",
+    "filtroFechaElaboracionInicial",
+    "filtroFechaElaboracionFinal",
     "filtroTipoReporte",
     "filtroWordRP",
     "filtroWordRC"
@@ -6281,7 +6291,8 @@ function cargarTablaEmergencias() {
 
   // Leer filtros
   const fCodigo = normalizarTexto(document.getElementById("filtroCodigo")?.value || "");
-  const fFechaPeligro = document.getElementById("filtroFechaPeligro")?.value || "";
+  const fFechaPeligroInicial = document.getElementById("filtroFechaPeligroInicial")?.value || "";
+  const fFechaPeligroFinal = document.getElementById("filtroFechaPeligroFinal")?.value || "";
   const fEstado = document.getElementById("filtroEstado")?.value || "";
   const fPeligro = document.getElementById("filtroPeligro")?.value || "";
   const fDep = normalizarTexto(document.getElementById("filtroDepartamento")?.value || "");
@@ -6289,7 +6300,8 @@ function cargarTablaEmergencias() {
   const fDist = normalizarTexto(document.getElementById("filtroDistrito")?.value || "");
 
   const fRegistrador = normalizarTexto(document.getElementById("filtroRegistrador")?.value || "");
-  const fFechaElab = document.getElementById("filtroFechaElaboracion")?.value || "";
+  const fFechaElabInicial = document.getElementById("filtroFechaElaboracionInicial")?.value || "";
+  const fFechaElabFinal = document.getElementById("filtroFechaElaboracionFinal")?.value || "";
   const fTipoRep = document.getElementById("filtroTipoReporte")?.value || "";
 
   const fWordRP = document.getElementById("filtroWordRP")?.value || "";
@@ -6300,10 +6312,14 @@ function cargarTablaEmergencias() {
   emergencias.forEach(e => {
     if(__isDeleted(e)) return;
     if (fCodigo && !normalizarTexto(e.codigo).includes(fCodigo)) return;
-    if (fFechaPeligro && (e.fechaPeligro || "") !== fFechaPeligro) return;
+
+    const fechaPeligroISO = __listDateOnly(e.fechaPeligro || "");
+    if (fFechaPeligroInicial && (!fechaPeligroISO || fechaPeligroISO < fFechaPeligroInicial)) return;
+    if (fFechaPeligroFinal && (!fechaPeligroISO || fechaPeligroISO > fFechaPeligroFinal)) return;
 
     if (fEstado === "Abierta" && e.cerrada) return;
     if (fEstado === "Cerrada" && !e.cerrada) return;
+    if (fEstado === "Por aprobar" && __rpEstadoEtiqueta(e) !== "Por aprobar") return;
 
     if (fPeligro && (e.peligro || "") !== fPeligro) return;
 
@@ -6329,8 +6345,8 @@ function cargarTablaEmergencias() {
       if (!normalizarTexto(nameToCheck).includes(fRegistrador)) return;
     }
 
-    // Filtro fecha de elaboración (día): aplica al tipo seleccionado (por defecto RP)
-    if (fFechaElab) {
+    // Filtro fecha de elaboración (rango): aplica al tipo seleccionado (por defecto RP)
+    if (fFechaElabInicial || fFechaElabFinal) {
       let dateToCheck = "";
       if (fTipoRep === "RC") {
         const last = hasRC ? rcList[rcList.length - 1] : null;
@@ -6338,7 +6354,8 @@ function cargarTablaEmergencias() {
       } else {
         dateToCheck = __listDateOnly((e && (e.fechaHora || e.createdAt || e.updatedAt)) ? (e.fechaHora || e.createdAt || e.updatedAt) : "");
       }
-      if (!dateToCheck || dateToCheck !== fFechaElab) return;
+      if (fFechaElabInicial && (!dateToCheck || dateToCheck < fFechaElabInicial)) return;
+      if (fFechaElabFinal && (!dateToCheck || dateToCheck > fFechaElabFinal)) return;
     }
 
 
