@@ -18,7 +18,7 @@ body { background: #f5f5f5; }
 .card { margin-top: 1rem; }
 .table td input { width: 100%; }
 .hidden { display: none; }
-/* ======= VERSION 211 09/04/2026 15:15 hrs======= */
+/* ======= VERSION 212 12/04/2026 07:55 hrs======= */
 /* ======= VER (Listado de Emergencias): Formato de visualización/impresión ======= */
 .ver-report-wrap{ font-family: Calibri, Arial, sans-serif; font-size: 11pt; color:#111; }
 .ver-report-title{ font-family: Calibri, Arial, sans-serif; font-size:15pt; font-weight:700; color:#1F4E79; margin:0 0 6px 0; }
@@ -55,6 +55,10 @@ body { background: #f5f5f5; }
 
 .badge-orange{ background:#fd7e14 !important; color:#fff !important; }
 .cons-hide{ display:none !important; }
+.bulk-close-toolbar{ display:none; }
+.bulk-close-toolbar.active{ display:flex; }
+#tablaEmergencias th.col-admin-bulk,
+#tablaEmergencias td.col-admin-bulk{ text-align:center; width:64px; }
 
 /* ======= DASH: Total mini en histogramas ======= */
 .dash-mini-total{
@@ -516,6 +520,14 @@ body { background: #f5f5f5; }
       <!-- Exportar Excel (solo Admin / Registrador) -->
       <div class="d-flex justify-content-end align-items-center gap-2 mb-2">
         <button class="btn btn-sm btn-outline-success d-none" id="btnExportExcelLista" title="Exportar a Excel">Exportar Excel</button>
+      </div>
+
+      <div class="d-flex justify-content-between align-items-center gap-2 mb-2 bulk-close-toolbar" id="bulkCloseToolbar">
+        <div class="form-check m-0">
+          <input class="form-check-input" type="checkbox" id="chkSelectAllAbiertas">
+          <label class="form-check-label small" for="chkSelectAllAbiertas">Seleccionar abiertas visibles</label>
+        </div>
+        <button class="btn btn-sm btn-outline-danger" id="btnCerrarSeleccionados" type="button" disabled>Cerrar seleccionados</button>
       </div>
 
       <!-- Selector de cantidad de registros a visualizar -->
@@ -2107,7 +2119,14 @@ const btnGARP = document.getElementById("btnGuardarAprobarRPAdmin");
     if(bX) bX.classList.toggle("d-none", !can);
   }catch(e){}
 
-
+  try{
+    const bulkBar = document.getElementById("bulkCloseToolbar");
+    if(bulkBar) bulkBar.classList.toggle("active", !!isAdmin);
+    const btnBulk = document.getElementById("btnCerrarSeleccionados");
+    if(btnBulk) btnBulk.classList.toggle("d-none", !isAdmin);
+    const chkAll = document.getElementById("chkSelectAllAbiertas");
+    if(chkAll) chkAll.disabled = !isAdmin;
+  }catch(e){}
 
 // RP: ocultar todo el contenido para REGISTRADOR (solo muestra el título)
 const rpContentWrap = document.getElementById("rpContentWrap");
@@ -2180,9 +2199,9 @@ if(isAdmin){
   }catch(e){}
 
   
-  // Lista de emergencias: columnas solo Admin (Modificar / Eliminar)
+  // Lista de emergencias: columnas solo Admin (Selección / Modificar / Eliminar)
   try{
-    document.querySelectorAll('#tablaEmergencias thead th.col-admin-edit, #tablaEmergencias thead th.col-admin-del').forEach(th=>{
+    document.querySelectorAll('#tablaEmergencias thead th.col-admin-bulk, #tablaEmergencias thead th.col-admin-edit, #tablaEmergencias thead th.col-admin-del').forEach(th=>{
       th.classList.toggle('cons-hide', !isAdmin);
     });
   }catch(e){}
@@ -3867,6 +3886,24 @@ document.addEventListener("DOMContentLoaded", ()=>{
     __renderSyncConflictsTable();
   });
 
+  document.getElementById("btnCerrarSeleccionados")?.addEventListener("click", __cerrarEmergenciasSeleccionadas);
+  document.getElementById("chkSelectAllAbiertas")?.addEventListener("change", (e)=>{
+    if(!(__isAdmin && __isAdmin())) return;
+    const checked = !!(e && e.target && e.target.checked);
+    document.querySelectorAll('#tablaEmergencias tbody .chk-bulk-close:not(:disabled)').forEach(chk=>{
+      chk.checked = checked;
+      const code = String(chk.getAttribute('data-codigo') || '').trim();
+      if(!code) return;
+      if(checked) __bulkCloseSelection.add(code);
+      else __bulkCloseSelection.delete(code);
+    });
+    try{
+      const master = document.getElementById('chkSelectAllAbiertas');
+      if(master) master.indeterminate = false;
+    }catch(_e){}
+    __bulkToggleCloseActionBtn();
+  });
+
   // Aprobaciones modal
   document.getElementById("btnAprob")?.addEventListener("click", ()=>{
     __renderAprobaciones();
@@ -3942,6 +3979,7 @@ let emergencias = [];
 let accionesRPTemp = [];
 let accionesRCTemp = [];
 let emergenciaSeleccionada = null;
+const __bulkCloseSelection = new Set();
 let numeroReporteGlobal = 0;
 let contadorRPporAnio = {};  // correlativo RP por año
 
@@ -6283,6 +6321,130 @@ function __isDeleted(em){
   }catch(e){ return false; }
 }
 
+function __bulkToggleCloseActionBtn(){
+  try{
+    const btn = document.getElementById("btnCerrarSeleccionados");
+    if(!btn) return;
+    const has = Array.from(__bulkCloseSelection || []).some(x => String(x || "").trim() !== "");
+    btn.disabled = !(__isAdmin && __isAdmin() && has);
+  }catch(e){}
+}
+
+function __bulkCloseActionDate(){
+  try{
+    const d = new Date();
+    const y = d.getFullYear();
+    const m = String(d.getMonth()+1).padStart(2,"0");
+    const da = String(d.getDate()).padStart(2,"0");
+    return `${y}-${m}-${da}`;
+  }catch(e){
+    return "";
+  }
+}
+
+function __bulkCloseAppendAutoAction(em, fechaAccion, texto){
+  try{
+    if(!em || !texto) return;
+    const accion = { fecha: String(fechaAccion || ""), descripcion: String(texto) };
+    const rcList = (typeof __getRCList === "function") ? __getRCList(em) : [];
+    if(Array.isArray(rcList) && rcList.length > 0){
+      const last = rcList[rcList.length - 1];
+      if(!Array.isArray(last.acciones)) last.acciones = [];
+      const exists = last.acciones.some(a => String(a && a.fecha || "") === accion.fecha && String(a && a.descripcion || "").trim() === accion.descripcion);
+      if(!exists) last.acciones.push(accion);
+      try{
+        em.accionesRC = last.acciones;
+        em.accionesRCGlobal = JSON.parse(JSON.stringify(last.acciones));
+      }catch(_e){}
+      return;
+    }
+    if(!Array.isArray(em.accionesRCGlobal)) em.accionesRCGlobal = [];
+    const existsGlobal = em.accionesRCGlobal.some(a => String(a && a.fecha || "") === accion.fecha && String(a && a.descripcion || "").trim() === accion.descripcion);
+    if(!existsGlobal) em.accionesRCGlobal.push(accion);
+    try{ em.accionesRC = JSON.parse(JSON.stringify(em.accionesRCGlobal)); }catch(_e){}
+  }catch(e){}
+}
+
+async function __cerrarEmergenciasSeleccionadas(){
+  if(!(__isAdmin && __isAdmin())){ alert("Solo el usuario Administrador puede cerrar registros por bloques."); return; }
+
+  const selected = Array.from(__bulkCloseSelection || []).map(x => String(x || "").trim()).filter(Boolean);
+  if(!selected.length){
+    alert("Seleccione al menos una emergencia abierta.");
+    return;
+  }
+
+  const abiertos = selected.map(code => (Array.isArray(emergencias) ? emergencias : []).find(e => String(e && e.codigo ? e.codigo : "").trim() === code))
+    .filter(em => em && !__isDeleted(em) && !em.cerrada);
+
+  if(!abiertos.length){
+    alert("No hay emergencias abiertas seleccionadas para cerrar.");
+    return;
+  }
+
+  if(!confirm(`Se cerrarán ${abiertos.length} emergencia(s) seleccionada(s). ¿Continuar?`)) return;
+
+  const fechaAccion = __bulkCloseActionDate();
+  const textoAuto = "Los Programas Nacionales no reportaron afectación, por lo que se procede al cierre de la emergencia.";
+
+  let ok = 0, fail = 0;
+  const errores = [];
+
+  for(const em of abiertos){
+    const code = String(em && em.codigo ? em.codigo : "").trim();
+    const snapshot = JSON.parse(JSON.stringify(em));
+    try{
+      const sinAfectacionMidis = !__dashAfectaMidis(em);
+      if(sinAfectacionMidis){
+        __bulkCloseAppendAutoAction(em, fechaAccion, textoAuto);
+        __histPush(em, "CIERRE_BULK_AUTO_ACCION_RC", { fecha: fechaAccion, descripcion: textoAuto, bulk: true });
+      }
+
+      em.cerrada = true;
+      em.cierreEstado = "Aprobado";
+      em.cierreAprobadoPor = __getApproverName();
+      em.cierreAprobadoEn = __nowIso();
+      __audit("CIERRE_DIRECTO_ADMIN_BULK", "emergencia", code, { bulk:true, autoAction: sinAfectacionMidis });
+      __histPush(em, "CIERRE_DIRECTO_ADMIN_BULK", { bulk:true });
+      __touch(em);
+      __saveEmergencias();
+      try{ dashboardRefresh(); }catch(_e){}
+      const res = await __syncCommitCodigo(code, snapshot, {
+        successMessage: "Emergencia cerrada en servidor.",
+        pendingMessage: "Emergencia cerrada en local. Pendiente de sincronizar.",
+        failurePrefix: "No se pudo confirmar el cierre de la emergencia en servidor"
+      });
+      if(res && res.ok){
+        ok++;
+        __bulkCloseSelection.delete(code);
+      }else{
+        fail++;
+        errores.push(`${code}: ${(res && res.message) ? res.message : "No se pudo cerrar."}`);
+      }
+    }catch(err){
+      fail++;
+      errores.push(`${code}: ${err && err.message ? err.message : err}`);
+      __restoreCodigoSnapshot(code, snapshot);
+    }
+  }
+
+  try{
+    const chk = document.getElementById("chkSelectAllAbiertas");
+    if(chk){
+      chk.checked = false;
+      chk.indeterminate = false;
+    }
+  }catch(e){}
+  try{ cargarTablaEmergencias(); }catch(e){}
+  try{ dashboardRefresh(); }catch(e){}
+  __bulkToggleCloseActionBtn();
+
+  let msg = `Cierre por bloques finalizado.\n\nConfirmados: ${ok}`;
+  if(fail) msg += `\nCon observaciones: ${fail}`;
+  if(errores.length) msg += `\n\nDetalle:\n- ${errores.join("\n- ")}`;
+  alert(msg);
+}
+
 function cargarTablaEmergencias() {
   let body = document.querySelector("#tablaEmergencias tbody");
   body.innerHTML = "";
@@ -6425,7 +6587,7 @@ function cargarTablaEmergencias() {
 <td>${__rpEstadoEtiqueta(e)}</td>
 <td class="col-rp"><button class="btn btn-sm btn-outline-primary btnRP" ${((__isRegistrador() && e.cerrada) || (__isAdmin && __isAdmin() && String(e.rpAprobEstado||"Borrador")==="Aprobado")) ? "disabled" : ""}>RP</button></td>
 <td class="col-rc"><button class="btn btn-sm btn-primary btnRC" ${ (e.cerrada || (__isRegistrador() && String(e.rpAprobEstado||"Borrador")!=="Aprobado")) ? "disabled" : ""}>RC</button></td>
-
+<td class="col-admin-bulk">${(__isAdmin && __isAdmin()) ? `<input type="checkbox" class="form-check-input chk-bulk-close" data-codigo="${e.codigo}" ${e.cerrada ? "disabled" : ""}>` : ``}</td>
 
 <td class="col-admin-edit">
   <div class="btn-group btn-group-sm" role="group">
@@ -6453,7 +6615,7 @@ function cargarTablaEmergencias() {
         if (bRC) { bRC.disabled = true; bRC.style.display = "none"; }
         if (bRP) { bRP.disabled = true; bRP.style.display = "none"; }
         try{ tr.querySelectorAll('td.col-rp, td.col-rc').forEach(td=>td.classList.add('cons-hide')); }catch(_e){}
-        try{ tr.querySelectorAll('td.col-admin-edit, td.col-admin-del').forEach(td=>td.classList.add('cons-hide')); }catch(_e){}
+        try{ tr.querySelectorAll('td.col-admin-bulk, td.col-admin-edit, td.col-admin-del').forEach(td=>td.classList.add('cons-hide')); }catch(_e){}
         if (bDel) { bDel.disabled = true; bDel.style.display = "none"; }
         if (bEditRP) { bEditRP.disabled = true; bEditRP.style.display = "none"; }
         if (bEditRC) { bEditRC.disabled = true; bEditRC.style.display = "none"; }
@@ -6461,7 +6623,7 @@ function cargarTablaEmergencias() {
       } else {
         // Columnas Admin en listado
         if(!isAdmin){
-          try{ tr.querySelectorAll('td.col-admin-edit, td.col-admin-del').forEach(td=>td.classList.add('cons-hide')); }catch(_e){}
+          try{ tr.querySelectorAll('td.col-admin-bulk, td.col-admin-edit, td.col-admin-del').forEach(td=>td.classList.add('cons-hide')); }catch(_e){}
           if (bDel) { bDel.disabled = true; bDel.style.display = "none"; }
           if (bEditRP) { bEditRP.disabled = true; bEditRP.style.display = "none"; }
           if (bEditRC) { bEditRC.disabled = true; bEditRC.style.display = "none"; }
@@ -6596,8 +6758,39 @@ function cargarTablaEmergencias() {
       btnDel.onclick = () => __adminDeleteEmergencia(e.codigo);
     }
 
+    const chkBulk = tr.querySelector('.chk-bulk-close');
+    if(chkBulk){
+      const code = String(e && e.codigo ? e.codigo : '').trim();
+      chkBulk.checked = __bulkCloseSelection.has(code);
+      chkBulk.addEventListener('change', (ev)=>{
+        if(ev.target.checked) __bulkCloseSelection.add(code);
+        else __bulkCloseSelection.delete(code);
+        try{
+          const enabled = document.querySelectorAll('#tablaEmergencias tbody .chk-bulk-close:not(:disabled)').length;
+          const checked = document.querySelectorAll('#tablaEmergencias tbody .chk-bulk-close:not(:disabled):checked').length;
+          const master = document.getElementById('chkSelectAllAbiertas');
+          if(master){
+            master.checked = enabled > 0 && checked === enabled;
+            master.indeterminate = checked > 0 && checked < enabled;
+          }
+        }catch(_e){}
+        __bulkToggleCloseActionBtn();
+      });
+    }
+
     body.appendChild(tr);
   });
+
+  try{
+    const enabled = document.querySelectorAll('#tablaEmergencias tbody .chk-bulk-close:not(:disabled)').length;
+    const checked = document.querySelectorAll('#tablaEmergencias tbody .chk-bulk-close:not(:disabled):checked').length;
+    const master = document.getElementById('chkSelectAllAbiertas');
+    if(master){
+      master.checked = enabled > 0 && checked === enabled;
+      master.indeterminate = checked > 0 && checked < enabled;
+    }
+  }catch(_e){}
+  __bulkToggleCloseActionBtn();
 }
 
 async function __adminDeleteEmergencia(codigo){
