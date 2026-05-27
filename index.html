@@ -18,7 +18,7 @@ body { background: #f5f5f5; }
 .card { margin-top: 1rem; }
 .table td input { width: 100%; }
 .hidden { display: none; }
-/* ======= VERSION 218 27/05/2026 15:15 hrs======= */
+/* ======= VERSION 219 27/05/2026 16:00 hrs - sync startup fix======= */
 /* ======= VER (Listado de Emergencias): Formato de visualización/impresión ======= */
 .ver-report-wrap{ font-family: Calibri, Arial, sans-serif; font-size: 11pt; color:#111; }
 .ver-report-title{ font-family: Calibri, Arial, sans-serif; font-size:15pt; font-weight:700; color:#1F4E79; margin:0 0 6px 0; }
@@ -270,7 +270,7 @@ body { background: #f5f5f5; }
 
 </style>
 
- <script src="./patch_cf_sync.js?v=20251225a"></script>
+ <script src="./patch_cf_sync.js?v=20260527_syncfix"></script>
 <script>
   window.__API_CFG = window.__API_CFG || {};
   // Fallback: si no existe patch_cf_sync.js o no define baseUrl, usa este valor
@@ -4022,14 +4022,19 @@ let numeroReporteGlobal = 0;
 let contadorRPporAnio = {};  // correlativo RP por año
 
 let __dataLoadedOnce = false;
-function __initAppData(){
-  if(__dataLoadedOnce) return;
-  try{
-    emergencias = __loadEmergencias();
-    __recalcularCorrelativos();
-    cargarTablaEmergencias();
-  }catch(e){}
-  __dataLoadedOnce = true;
+let __dataHydratePromise = null;
+async function __initAppData(){
+  if(__dataHydratePromise) return __dataHydratePromise;
+  __dataHydratePromise = (async ()=>{
+    try{
+      emergencias = __loadEmergencias();
+      __recalcularCorrelativos();
+      cargarTablaEmergencias();
+    }catch(e){}
+    __dataLoadedOnce = true;
+    await __syncInitialHydrate();
+  })();
+  return __dataHydratePromise;
 }
 
 // BANDERAS DE CONTROL
@@ -9222,6 +9227,65 @@ function __setHashMap(m){
   try{ __lsSet(__SYNC_KEYS.hashMap, JSON.stringify(m || {})); }catch(e){}
 }
 
+function __syncEpoch(){
+  return "1970-01-01T00:00:00.000Z";
+}
+
+function __syncLocalState(){
+  let arr = [];
+  let map = {};
+  try{ arr = Array.isArray(emergencias) ? emergencias : __loadEmergencias(); }catch(e){ arr = []; }
+  try{ map = __getHashMap(); }catch(e){ map = {}; }
+  return {
+    count: Array.isArray(arr) ? arr.length : 0,
+    mapSize: Object.keys(map || {}).length,
+    lastPull: (typeof __getLastPull === "function") ? __getLastPull() : __syncEpoch()
+  };
+}
+
+function __syncResetIncrementalCursorForFullPull(){
+  try{ __setHashMap({}); }catch(e){}
+  try{ __setLastPull(__syncEpoch()); }catch(e){}
+}
+
+function __syncRefreshViewsAfterHydrate(){
+  try{ __recalcularCorrelativos(); }catch(e){}
+  try{ cargarTablaEmergencias(); }catch(e){}
+  try{ dashboardRefresh && dashboardRefresh(); }catch(e){}
+  try{ __renderAprobaciones && __renderAprobaciones(); }catch(e){}
+  try{ __calcPending && __calcPending(); }catch(e){}
+}
+
+async function __syncInitialHydrate(){
+  try{
+    if(!currentUser) return { ok:false, skipped:"no_user" };
+    emergencias = __loadEmergencias();
+    __syncRefreshViewsAfterHydrate();
+
+    if(!__isApiConfigured() || !navigator.onLine){
+      try{ await __calcPending(); }catch(e){}
+      return { ok:false, skipped:"offline_or_api" };
+    }
+
+    const st = __syncLocalState();
+    const mustFullPull = (st.count === 0);
+
+    if(mustFullPull){
+      __syncResetIncrementalCursorForFullPull();
+      await __syncPull(__syncEpoch());
+      try{ __lsSet("midis_sync_initial_hydrated_v1", __nowIso()); }catch(_e){}
+    }else{
+      await __syncPullAuto({ force:true });
+    }
+
+    __syncRefreshViewsAfterHydrate();
+    return { ok:true, full:mustFullPull };
+  }catch(e){
+    try{ __syncRefreshViewsAfterHydrate(); }catch(_e){}
+    return { ok:false, error:(e && e.message) ? e.message : String(e) };
+  }
+}
+
 function __isMobileClient(){
   try{
     const ua = String((navigator && navigator.userAgent) || "").toLowerCase();
@@ -9668,10 +9732,7 @@ async function __bootstrapAuth(){
 
     __setScreens("app");
     __applyRoleAccess();
-    try{ __initAppData(); }catch(e){}
-
-    // Auto pull al iniciar
-    setTimeout(function(){ __syncPullAuto(); }, 250);
+    try{ await __initAppData(); }catch(e){}
 
     return;
   }
@@ -9702,10 +9763,7 @@ async function __handleLogin(){
   }else{
     __setScreens("app");
     __applyRoleAccess();
-    try{ __initAppData(); }catch(e){}
-
-    // Auto pull post-login
-    setTimeout(function(){ __syncPullAuto(); }, 250);
+    try{ await __initAppData(); }catch(e){}
   }
 }
 
@@ -10253,8 +10311,9 @@ async function __syncAll(){
       const arr0 = Array.isArray(emergencias) ? emergencias : __loadEmergencias();
       const mapSize = Object.keys(map0||{}).length;
       const arrSize = Array.isArray(arr0) ? arr0.length : 0;
-      if(mapSize === 0 && arrSize === 0){
-        await __syncPull('1970-01-01T00:00:00.000Z');
+      if(arrSize === 0 || (mapSize === 0 && arrSize === 0)){
+        __syncResetIncrementalCursorForFullPull();
+        await __syncPull(__syncEpoch());
       }
     }catch(e){}
 
@@ -10307,14 +10366,20 @@ async function __syncAll(){
   }
 }
 
-async function __syncPullAuto(){
+async function __syncPullAuto(opts){
   try{
-    // Auto-pull guard (anti-bucle / anti-ráfaga)
+    opts = opts || {};
+    const force = !!opts.force;
+
+    // No hacer pull automático si todavía no hay usuario/sesión. Evita marcar tiempos de pull antes del login.
+    if(!currentUser && !__tokenGet()){ __updateSyncUI(0); return; }
+
+    // Auto-pull guard (anti-bucle / anti-ráfaga). El arranque inicial puede saltarse esta barrera.
     window.__PULL_AUTO_MIN_GAP_MS = window.__PULL_AUTO_MIN_GAP_MS || 20000; // 20s
     const now = Date.now();
     const last = window.__PULL_AUTO_LAST || 0;
     if(window.__PULL_AUTO_INFLIGHT) return;
-    if(last && (now - last) < window.__PULL_AUTO_MIN_GAP_MS) return;
+    if(!force && last && (now - last) < window.__PULL_AUTO_MIN_GAP_MS) return;
 
     if(!__isApiConfigured()){ __updateSyncUI(0); return; }
     if(!navigator.onLine){ __updateSyncUI(0); return; }
@@ -10323,8 +10388,17 @@ async function __syncPullAuto(){
     window.__PULL_AUTO_LAST = now;
 
     let forcedFull = false;
-    if(__shouldForceFullPullMobile()){
-      await __syncPull('1970-01-01T00:00:00.000Z');
+    const st = __syncLocalState();
+
+    // Regla principal: si no hay data local, no se confía en lastPull ni en hashMap.
+    // Se hace pull completo para rehidratar el navegador/PC sin usar F12 ni borrar datos del sitio.
+    if(st.count === 0){
+      __syncResetIncrementalCursorForFullPull();
+      await __syncPull(__syncEpoch());
+      try{ __lsSet("midis_sync_initial_hydrated_v1", __nowIso()); }catch(_e){}
+      forcedFull = true;
+    }else if(__shouldForceFullPullMobile()){
+      await __syncPull(__syncEpoch());
       try{ __lsSet(__SYNC_KEYS.fullPullMobile, __nowIso()); }catch(_e){}
       forcedFull = true;
     }
@@ -10339,6 +10413,7 @@ async function __syncPullAuto(){
       if(count > prevMax) __lsSet(__SYNC_KEYS.maxSeen, String(count));
     }catch(_e){}
 
+    __syncRefreshViewsAfterHydrate();
     await __calcPending();
 
   }catch(e){
