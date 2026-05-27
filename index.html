@@ -18,7 +18,7 @@ body { background: #f5f5f5; }
 .card { margin-top: 1rem; }
 .table td input { width: 100%; }
 .hidden { display: none; }
-/* ======= VERSION 215 11/05/2026 09:00 hrs======= */
+/* ======= VERSION 216 27/05/2026 09:00 hrs======= */
 /* ======= VER (Listado de Emergencias): Formato de visualización/impresión ======= */
 .ver-report-wrap{ font-family: Calibri, Arial, sans-serif; font-size: 11pt; color:#111; }
 .ver-report-title{ font-family: Calibri, Arial, sans-serif; font-size:15pt; font-weight:700; color:#1F4E79; margin:0 0 6px 0; }
@@ -1614,6 +1614,42 @@ body { background: #f5f5f5; }
         <div class="mb-2">
           <label class="form-label small">Fecha final (elaboración)</label>
           <input type="date" class="form-control form-control-sm" id="excelHastaElab">
+        </div>
+        <div class="mb-2">
+          <label class="form-label small">Peligros</label>
+          <div class="form-check mb-1">
+            <input class="form-check-input" type="checkbox" id="excelTodosPeligros" checked>
+            <label class="form-check-label small" for="excelTodosPeligros">Todos los peligros</label>
+          </div>
+          <select class="form-select form-select-sm" id="excelPeligros" multiple size="8" disabled>
+            <option value="Accidentes de tránsito">Accidentes de tránsito</option>
+            <option value="Biológicos">Biológicos</option>
+            <option value="Colapso de estructura">Colapso de estructura</option>
+            <option value="Conflictos sociales">Conflictos sociales</option>
+            <option value="Deflagración">Deflagración</option>
+            <option value="Derrumbe">Derrumbe</option>
+            <option value="Deslizamiento">Deslizamiento</option>
+            <option value="Erosión">Erosión</option>
+            <option value="Friaje">Friaje</option>
+            <option value="Granizada">Granizada</option>
+            <option value="Heladas">Heladas</option>
+            <option value="Huaicos">Huaicos</option>
+            <option value="Incendios Forestales">Incendios Forestales</option>
+            <option value="Incendios Urbanos">Incendios Urbanos</option>
+            <option value="Inundaciones">Inundaciones</option>
+            <option value="Lluvias">Lluvias</option>
+            <option value="Nevada">Nevada</option>
+            <option value="Oleajes">Oleajes</option>
+            <option value="Reptación">Reptación</option>
+            <option value="Sequía">Sequía</option>
+            <option value="Sismos">Sismos</option>
+            <option value="Tormenta eléctrica">Tormenta eléctrica</option>
+            <option value="Tsunamis">Tsunamis</option>
+            <option value="Vientos fuertes">Vientos fuertes</option>
+            <option value="Vulcanismo">Vulcanismo</option>
+            <option value="Otros">Otros</option>
+          </select>
+          <div class="small text-muted mt-1">Desmarca “Todos los peligros” para seleccionar uno o varios peligros.</div>
         </div>
         <div class="small text-muted">Se filtra por la fecha y hora de elaboración del RP.</div>
       </div>
@@ -11189,7 +11225,7 @@ function __excelParseElab(em){
   }catch(e){ return null; }
 }
 
-function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO){
+function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO, peligrosSeleccionados){
   try{
     if(!window.XLSX){
       alert("No se pudo cargar la librería de Excel (XLSX). Verifique su conexión a internet.");
@@ -11206,6 +11242,13 @@ function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO){
       alert("La fecha final no puede ser menor que la fecha inicial.");
       return;
     }
+
+    const peligrosFiltro = (Array.isArray(peligrosSeleccionados) ? peligrosSeleccionados : [])
+      .map(x=>String(x||"").trim())
+      .filter(Boolean);
+    const filtrarPorPeligro = peligrosFiltro.length > 0;
+    const peligrosSet = new Set(peligrosFiltro.map(x=>x.toLowerCase()));
+    const etiquetaPeligros = filtrarPorPeligro ? peligrosFiltro.join(", ") : "Todos los peligros";
 
     const __ACCION_PRELIMINAR_BASE = "El COE MIDIS solicita al equipo territorial realizar el monitoreo de la emergencia a fin de determinar si existe afectación a usuarios o servicios de los programas nacionales. El COE MIDIS mantiene el seguimiento continuo del evento a través de los Espacios de Monitoreo y Seguimiento Sectorial (EMSS), a fin de consolidar información estratégica para la toma de decisiones y acciones sectoriales de respuesta.";
 
@@ -11308,6 +11351,40 @@ function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO){
       }catch(e){ return false; }
     };
 
+    const __getDanioPrograma = (src, programa)=>{
+      let o = src;
+      if(typeof o === "string"){
+        try{ o = JSON.parse(o); }catch(_e){}
+      }
+      if(!o || typeof o !== "object") return {};
+      const name = String(programa||"").trim();
+      const keyUp = name.toUpperCase();
+      const keyLo = name.toLowerCase();
+      return (o[name] || o[keyUp] || o[keyLo] || {});
+    };
+
+    const programaMap = new Map();
+    ((Array.isArray(programas) && programas.length) ? programas : []).forEach(p=>{
+      const name = String(p||"").trim();
+      if(name) programaMap.set(name, { programa:name, ua:0, sa:0, ups:0, uf:0, ma:0 });
+    });
+
+    const __addDaniosPorPrograma = (src)=>{
+      const base = (Array.isArray(programas) && programas.length) ? programas : [];
+      base.forEach(p=>{
+        const name = String(p||"").trim();
+        if(!name) return;
+        if(!programaMap.has(name)) programaMap.set(name, { programa:name, ua:0, sa:0, ups:0, uf:0, ma:0 });
+        const d = __getDanioPrograma(src, name);
+        const agg = programaMap.get(name);
+        agg.ua  += Number(d?.usuariosAfectados || 0);
+        agg.sa  += Number(d?.serviciosAfectados || 0);
+        agg.ups += Number(d?.usuariosPorServicios || 0);
+        agg.uf  += Number(d?.usuariosFallecidos || 0);
+        agg.ma  += Number(d?.moduloAfectado || 0);
+      });
+    };
+
     const items = [];
     const resumenMap = new Map();
     const globalTotals = { emergencias:0, departamentos:new Set(), ua:0, sa:0, ups:0, uf:0, ma:0 };
@@ -11320,10 +11397,12 @@ function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO){
         const elabDate = __getElabDateOnly(em);
         if(!elabDate) return;
         if(elabDate < desde || elabDate > hasta) return;
+        if(filtrarPorPeligro && !peligrosSet.has(String(em.peligro||"").trim().toLowerCase())) return;
 
         const danosOtros = String(em.daniosOtros || "");
         const danosInfo  = __fmtDaniosMIDIS(em.daniosMIDIS);
         const danosMIDIS = danosInfo.text;
+        __addDaniosPorPrograma(em.daniosMIDIS);
         const accPre     = __fmtAccionesPreliminar(em.accionesPreliminar);
         const accComp    = __fmtAccionesComplementario(em);
 
@@ -11372,7 +11451,7 @@ function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO){
     });
 
     if(items.length === 0){
-      alert("No se encontraron emergencias en ese rango (según la fecha de elaboración).\n\nVerifique que la fecha inicial y final correspondan a la fecha de elaboración del RP.");
+      alert("No se encontraron emergencias en ese rango y peligro seleccionado (según la fecha de elaboración).\n\nVerifique la fecha inicial, fecha final y el filtro de peligros.");
       return;
     }
 
@@ -11398,6 +11477,7 @@ function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO){
     const aoa = [];
     aoa.push([{v:"COE MIDIS – Lista de Emergencias", t:"s", s:titleStyle}]);
     aoa.push([{v:`Rango (Fecha de elaboración): ${desde} a ${hasta}`, t:"s", s:subStyle}]);
+    aoa.push([{v:`Peligros: ${etiquetaPeligros}`, t:"s", s:subStyle}]);
     aoa.push([{v:`Total registros: ${items.length}`, t:"s", s:subStyle}]);
     aoa.push([]);
     const headers = [
@@ -11412,7 +11492,8 @@ function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO){
     ws["!merges"] = [
       {s:{r:0,c:0}, e:{r:0,c:10}},
       {s:{r:1,c:0}, e:{r:1,c:10}},
-      {s:{r:2,c:0}, e:{r:2,c:10}}
+      {s:{r:2,c:0}, e:{r:2,c:10}},
+      {s:{r:3,c:0}, e:{r:3,c:10}}
     ];
     ws["!cols"] = [
       {wch:16},{wch:18},{wch:14},{wch:18},{wch:18},{wch:18},{wch:70},{wch:55},{wch:70},{wch:70},{wch:70}
@@ -11428,10 +11509,20 @@ function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO){
     wsResumen["!cols"] = [{wch:24},{wch:16},{wch:18},{wch:18},{wch:22},{wch:12},{wch:18}];
     XLSX.utils.book_append_sheet(wb, wsResumen, "Resumen_Dep");
 
+    const progRows = [["Programa Nacional","Usuarios afectados (UA)","Servicios afectados (SA)","Usuarios afectados por servicios (UPS)","Usuarios fallecidos (UF)","Módulos afectados (MA)"]];
+    Array.from(programaMap.values()).forEach(r=>{
+      progRows.push([r.programa, r.ua, r.sa, r.ups, r.uf, r.ma]);
+    });
+    progRows.push(["TOTAL GENERAL", globalTotals.ua, globalTotals.sa, globalTotals.ups, globalTotals.uf, globalTotals.ma]);
+    const wsProgramas = XLSX.utils.aoa_to_sheet(progRows);
+    wsProgramas["!cols"] = [{wch:26},{wch:22},{wch:22},{wch:34},{wch:22},{wch:22}];
+    XLSX.utils.book_append_sheet(wb, wsProgramas, "Programas_Nacionales");
+
     const topDeps = Array.from(resumenMap.values()).sort((a,b)=> (b.emergencias - a.emergencias) || String(a.dep).localeCompare(String(b.dep), 'es')).slice(0,10);
     const dashRows = [
       ["COE MIDIS – Dashboard Ejecutivo"],
       [`Rango (Fecha de elaboración): ${desde} a ${hasta}`],
+      [`Peligros: ${etiquetaPeligros}`],
       [],
       ["Indicador","Valor"],
       ["Total de emergencias", globalTotals.emergencias],
@@ -11446,7 +11537,7 @@ function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO){
     ];
     topDeps.forEach(r=> dashRows.push([r.dep, r.emergencias]));
     const wsDash = XLSX.utils.aoa_to_sheet(dashRows);
-    wsDash["!merges"] = [{s:{r:0,c:0}, e:{r:0,c:1}}, {s:{r:1,c:0}, e:{r:1,c:1}}];
+    wsDash["!merges"] = [{s:{r:0,c:0}, e:{r:0,c:1}}, {s:{r:1,c:0}, e:{r:1,c:1}}, {s:{r:2,c:0}, e:{r:2,c:1}}];
     wsDash["!cols"] = [{wch:28},{wch:18}];
     XLSX.utils.book_append_sheet(wb, wsDash, "Dashboard");
 
@@ -11540,6 +11631,8 @@ try{
     const modalEl = document.getElementById("modalExportExcelLista");
     const iDesde = document.getElementById("excelDesdeElab");
     const iHasta = document.getElementById("excelHastaElab");
+    const chkTodosPeligros = document.getElementById("excelTodosPeligros");
+    const selPeligros = document.getElementById("excelPeligros");
     const btnDo  = document.getElementById("btnDoExportExcelLista");
     let modal = null;
 
@@ -11551,8 +11644,22 @@ try{
         const today = __excelLocalISODate(new Date());
         if(iDesde && !iDesde.value) iDesde.value = today;
         if(iHasta && !iHasta.value) iHasta.value = today;
+        if(chkTodosPeligros) chkTodosPeligros.checked = true;
+        if(selPeligros){
+          selPeligros.disabled = true;
+          Array.from(selPeligros.options || []).forEach(o=>{ o.selected = false; });
+        }
         modal.show();
       });
+
+      if(chkTodosPeligros && selPeligros){
+        chkTodosPeligros.addEventListener("change", ()=>{
+          selPeligros.disabled = !!chkTodosPeligros.checked;
+          if(chkTodosPeligros.checked){
+            Array.from(selPeligros.options || []).forEach(o=>{ o.selected = false; });
+          }
+        });
+      }
 
       if(btnDo){
         btnDo.addEventListener("click", ()=>{
@@ -11562,7 +11669,12 @@ try{
             alert("Seleccione la fecha inicial y la fecha final.");
             return;
           }
-          __exportExcelListaEmergenciasByElab(d, h);
+          const peligros = (chkTodosPeligros && chkTodosPeligros.checked) ? [] : Array.from((selPeligros && selPeligros.selectedOptions) ? selPeligros.selectedOptions : []).map(o=>String(o.value||"").trim()).filter(Boolean);
+          if(chkTodosPeligros && !chkTodosPeligros.checked && peligros.length === 0){
+            alert("Seleccione al menos un peligro o marque Todos los peligros.");
+            return;
+          }
+          __exportExcelListaEmergenciasByElab(d, h, peligros);
           try{ modal.hide(); }catch(_e){}
         });
       }
