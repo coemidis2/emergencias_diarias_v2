@@ -18,7 +18,7 @@ body { background: #f5f5f5; }
 .card { margin-top: 1rem; }
 .table td input { width: 100%; }
 .hidden { display: none; }
-/* ======= VERSION 217 27/05/2026 15:00 hrs======= */
+/* ======= VERSION 218 27/05/2026 15:15 hrs======= */
 /* ======= VER (Listado de Emergencias): Formato de visualización/impresión ======= */
 .ver-report-wrap{ font-family: Calibri, Arial, sans-serif; font-size: 11pt; color:#111; }
 .ver-report-title{ font-family: Calibri, Arial, sans-serif; font-size:15pt; font-weight:700; color:#1F4E79; margin:0 0 6px 0; }
@@ -5240,6 +5240,29 @@ function __buildAccionesCompUnique(rcList){
   const byRc = [];
   const seen = new Set();
 
+  const __accionCompDateKey = (item)=>{
+    try{
+      const raw = String((item && typeof item === "object")
+        ? (item.fecha || item.fechaAccion || item.fechaRegistro || item.fechaHora || "")
+        : "").trim();
+      if(!raw) return 0;
+      const d = new Date(raw);
+      if(!isNaN(d.getTime())) return d.getTime();
+      const m = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+      if(m) return new Date(Number(m[1]), Number(m[2])-1, Number(m[3])).getTime();
+    }catch(_e){}
+    return 0;
+  };
+
+  const __sortAccionesCompDesc = (a, b)=>{
+    const rcDiff = (Number(b && b.__rcIdx) || 0) - (Number(a && a.__rcIdx) || 0);
+    if(rcDiff) return rcDiff;
+    const da = __accionCompDateKey(a && a.item);
+    const db = __accionCompDateKey(b && b.item);
+    if(db !== da) return db - da;
+    return 0;
+  };
+
   (Array.isArray(rcList) ? rcList : []).forEach((rc, idx)=>{
     const uniqueRc = [];
     const arr = __getAccionesCompArray(rc);
@@ -5269,9 +5292,11 @@ function __buildAccionesCompUnique(rcList){
       uniqueRc.push(row);
       out.push(row);
     });
+    uniqueRc.sort(__sortAccionesCompDesc);
     byRc[idx] = uniqueRc;
   });
 
+  out.sort(__sortAccionesCompDesc);
   return { all: out, byRc };
 }
 
