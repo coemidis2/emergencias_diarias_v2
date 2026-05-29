@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <!-- BUILD: 2026-02-20 autopull-cooldown-v206-fix-sync-v3 -->
-<script>window.__BUILD_ID='2026-02-20 autopull-cooldown-v206-fix-sync-v3';console.log('BUILD',window.__BUILD_ID);</script>
+<script>window.__BUILD_ID='2026-02-20 autopull-cooldown-v206-fix-sync-v3-sync-lock-v223';console.log('BUILD',window.__BUILD_ID);</script>
 
 <!-- build: VER_PRINT_RC_ALWAYS_VISIBLE v4 2026-01-11 -->
 <meta charset="UTF-8" />
@@ -18,7 +18,7 @@ body { background: #f5f5f5; }
 .card { margin-top: 1rem; }
 .table td input { width: 100%; }
 .hidden { display: none; }
-/* ======= VERSION 222 29/05/2026 16:00 hrs - sync startup fix + throttling sync/dashboard======= */
+/* ======= VERSION 223 29/05/2026 16:30 hrs - sync duplicate lock + polling optimized======= */
 /* ======= VER (Listado de Emergencias): Formato de visualización/impresión ======= */
 .ver-report-wrap{ font-family: Calibri, Arial, sans-serif; font-size: 11pt; color:#111; }
 .ver-report-title{ font-family: Calibri, Arial, sans-serif; font-size:15pt; font-weight:700; color:#1F4E79; margin:0 0 6px 0; }
@@ -10268,7 +10268,57 @@ async function __withFullEmergencia(objOrCodigo, cb){
   }
 }
 
+// ===== SYNC LOCK / POLLING OPTIMIZADO v223 =====
+// Evita ráfagas de /sync/list cuando se disparan varios eventos juntos
+// (pageshow, visibilitychange, pestaña Lista, botón Sincronizar, timers).
+window.__SYNC_RUNNING__ = false;
+window.__SYNC_RUNNING_PROMISE__ = null;
+window.__SYNC_PULL_PROMISE__ = null;
+window.__SYNC_LAST_EMPTY_KEY__ = window.__SYNC_LAST_EMPTY_KEY__ || "";
+window.__SYNC_LAST_EMPTY_AT__ = window.__SYNC_LAST_EMPTY_AT__ || 0;
+window.__SYNC_PULL_DEDUP_MS__ = window.__SYNC_PULL_DEDUP_MS__ || 90000;
+window.__SYNC_AUTO_MIN_GAP_MS = window.__SYNC_AUTO_MIN_GAP_MS || 120000;
+
+function __syncCanSkipRecentEmptyPull(key){
+  try{
+    const k = String(key || "");
+    if(!k) return false;
+    const lastK = String(window.__SYNC_LAST_EMPTY_KEY__ || "");
+    const lastAt = Number(window.__SYNC_LAST_EMPTY_AT__ || 0) || 0;
+    return !!(lastK && lastK === k && lastAt && (Date.now() - lastAt) < window.__SYNC_PULL_DEDUP_MS__);
+  }catch(e){ return false; }
+}
+
+function __syncMarkEmptyPull(key){
+  try{
+    window.__SYNC_LAST_EMPTY_KEY__ = String(key || "");
+    window.__SYNC_LAST_EMPTY_AT__ = Date.now();
+  }catch(e){}
+}
+
+function __syncMarkNonEmptyPull(){
+  try{
+    window.__SYNC_LAST_EMPTY_KEY__ = "";
+    window.__SYNC_LAST_EMPTY_AT__ = 0;
+  }catch(e){}
+}
+
 async function __syncPull(since){
+  const __pullKey = String(since || __getLastPull() || __syncEpoch());
+
+  // Si hay un pull en curso, todos esperan el mismo resultado.
+  // Esto evita 5-10 llamadas iguales a /sync/list por recarga/pestaña/eventos.
+  if(window.__SYNC_PULL_PROMISE__){
+    return await window.__SYNC_PULL_PROMISE__;
+  }
+
+  // Si hace pocos segundos ya consultamos el mismo cursor y vino vacío, no repetir.
+  if(__syncCanSkipRecentEmptyPull(__pullKey)){
+    return { ok:true, records:[], newSince: __pullKey, skipped:'recent_empty_pull' };
+  }
+
+  window.__SYNC_PULL_PROMISE__ = (async function(){
+
   if(!__isApiConfigured()) throw new Error('server_not_configured');
   if(!navigator.onLine) throw new Error('offline');
 
@@ -10382,6 +10432,19 @@ async function __syncPull(since){
   try{ cargarTablaEmergencias(); }catch(e){}
 
   return { ok:true, records: pulled, newSince: maxUpdated, conflicts: conflicts, mode:'list' };
+
+  })();
+
+  try{
+    const __res = await window.__SYNC_PULL_PROMISE__;
+    try{
+      if(__res && Array.isArray(__res.records) && __res.records.length === 0) __syncMarkEmptyPull(__pullKey);
+      else __syncMarkNonEmptyPull();
+    }catch(_e){}
+    return __res;
+  }finally{
+    window.__SYNC_PULL_PROMISE__ = null;
+  }
 }
 
 async function __syncAll(){
@@ -10484,6 +10547,27 @@ async function __syncAll(){
 }
 
 async function __syncPullAuto(opts){
+  opts = opts || {};
+  const force = !!opts.force;
+
+  // Candado global visible en consola: window.__SYNC_RUNNING__
+  if(window.__SYNC_RUNNING__){
+    return await (window.__SYNC_RUNNING_PROMISE__ || Promise.resolve({ ok:true, skipped:'sync_running' }));
+  }
+
+  // Polling optimizado: salvo force, no hacer autopull si ya se hizo uno reciente.
+  const now0 = Date.now();
+  const last0 = Number(window.__PULL_AUTO_LAST || 0) || 0;
+  const gap0 = Number(window.__SYNC_AUTO_MIN_GAP_MS || 120000) || 120000;
+  if(!force && last0 && (now0 - last0) < gap0){
+    try{ await __calcPending(); }catch(_e){}
+    return { ok:true, skipped:'cooldown' };
+  }
+
+  window.__SYNC_RUNNING__ = true;
+  window.__PULL_AUTO_LAST = now0;
+  window.__SYNC_RUNNING_PROMISE__ = (async function(){
+
   try{
     opts = opts || {};
     const force = !!opts.force;
@@ -10536,6 +10620,16 @@ async function __syncPullAuto(opts){
   }catch(e){
     __updateSyncUI(0);
   } finally {
+    window.__PULL_AUTO_INFLIGHT = false;
+  }
+
+  })();
+
+  try{
+    return await window.__SYNC_RUNNING_PROMISE__;
+  }finally{
+    window.__SYNC_RUNNING__ = false;
+    window.__SYNC_RUNNING_PROMISE__ = null;
     window.__PULL_AUTO_INFLIGHT = false;
   }
 }
@@ -11791,7 +11885,7 @@ document.addEventListener('DOMContentLoaded', async function(){
 
   window.addEventListener('online', function(){ __setNetBadge(); __calcPending(); try{ setTimeout(function(){ __syncPullAuto(); }, 300); }catch(_e){} });
   window.addEventListener('offline', function(){ __setNetBadge(); __updateSyncUI(0); });
-  window.addEventListener('pageshow', function(){ try{ setTimeout(function(){ __syncPullAuto(); }, 300); }catch(_e){} });
+  window.addEventListener('pageshow', function(ev){ try{ if(ev && ev.persisted) setTimeout(function(){ __syncPullAuto(); }, 300); }catch(_e){} });
   document.addEventListener('visibilitychange', function(){
     try{
       if(!document.hidden) setTimeout(function(){ __syncPullAuto(); }, 300);
@@ -11839,7 +11933,7 @@ document.addEventListener('DOMContentLoaded', async function(){
           __LIST_SORT.dir = -1;
           __listUpdateSortUI();
           (async ()=>{
-            try{ await __syncPullAuto(); }catch(_e){}
+            try{ if(!window.__SYNC_RUNNING__) await __syncPullAuto(); }catch(_e){}
             try{ cargarTablaEmergencias(); }catch(_e){}
           })();
         }catch(_e){}
@@ -11853,8 +11947,8 @@ try{
   if(!window.__LISTA_AUTOPULL_TIMER){
     window.__LISTA_AUTOPULL_TIMER = setInterval(()=>{
       const isActive = document.querySelector('a[href="#listaTab"]')?.classList.contains("active");
-      if(isActive) __syncPullAuto();
-    }, 60000);
+      if(isActive && !window.__SYNC_RUNNING__) __syncPullAuto();
+    }, 180000);
   }
 }catch(e){}
 
