@@ -18,7 +18,7 @@ body { background: #f5f5f5; }
 .card { margin-top: 1rem; }
 .table td input { width: 100%; }
 .hidden { display: none; }
-/* ======= VERSION 220 27/05/2026 17:00 hrs - sync startup fix + throttling sync/dashboard======= */
+/* ======= VERSION 221 29/05/2026 14:40 hrs - sync startup fix + throttling sync/dashboard======= */
 /* ======= VER (Listado de Emergencias): Formato de visualización/impresión ======= */
 .ver-report-wrap{ font-family: Calibri, Arial, sans-serif; font-size: 11pt; color:#111; }
 .ver-report-title{ font-family: Calibri, Arial, sans-serif; font-size:15pt; font-weight:700; color:#1F4E79; margin:0 0 6px 0; }
@@ -270,7 +270,7 @@ body { background: #f5f5f5; }
 
 </style>
 
- <script src="./patch_cf_sync.js?v=20260527_syncfix"></script>
+ <script src="./patch_cf_sync.js?v=20260529_listdetail"></script>
 <script>
   window.__API_CFG = window.__API_CFG || {};
   // Fallback: si no existe patch_cf_sync.js o no define baseUrl, usa este valor
@@ -3558,41 +3558,14 @@ async function __syncFetchServerRecordByCodigo(codigo){
   if(!navigator.onLine) throw new Error("offline");
 
   const token = __tokenGet();
-  const limit = 5000;
-  let since = '1970-01-01T00:00:00.000Z';
-  let guard = 0;
-  let found = null;
-
-  while(guard < 25){
-    const out = await __api('/sync/pull?since=' + encodeURIComponent(since) + '&limit=' + limit, { method:'GET', token: token });
-    if(out.res && out.res.status === 401) throw new Error('unauthorized');
-    if(!out.res || !out.res.ok){
-      const err = out.data && out.data.error ? out.data.error : 'pull_failed';
-      throw new Error(err);
-    }
-
-    const recs = (out.data && Array.isArray(out.data.records)) ? out.data.records : [];
-    if(recs.length === 0) break;
-
-    let maxUpdated = since;
-    for(const r of recs){
-      const upd = String(r && r.updated_at ? r.updated_at : '');
-      if(upd && upd > maxUpdated) maxUpdated = upd;
-      const rc = String(r && r.codigo ? r.codigo : '').trim();
-      if(rc === code){
-        if(!found || String(r && r.updated_at ? r.updated_at : '') >= String(found && found.updated_at ? found.updated_at : '')){
-          found = r;
-        }
-      }
-    }
-
-    if(recs.length < limit) break;
-    if(maxUpdated === since) break;
-    since = maxUpdated;
-    guard++;
+  const out = await __api('/sync/detail?codigo=' + encodeURIComponent(code), { method:'GET', token: token });
+  if(out.res && out.res.status === 401) throw new Error('unauthorized');
+  if(out.res && out.res.status === 404) return null;
+  if(!out.res || !out.res.ok){
+    const err = out.data && out.data.error ? out.data.error : 'detail_failed';
+    throw new Error(err);
   }
-
-  return found;
+  return out.data && out.data.record ? out.data.record : null;
 }
 
 function __syncApplyServerRecord(codigo, rec){
@@ -10178,36 +10151,110 @@ async function __syncPull(since){
   let pulledAll = [];
   let guard = 0;
 
-  while(guard < 25){
-    const out = await __api('/sync/pull?since=' + encodeURIComponent(s) + '&limit=' + limit, { method:'GET', token: token });
-    if(out.res && out.res.status === 401) throw new Error('unauthorized');
-    if(!out.res || !out.res.ok){
-      const err = out.data && out.data.error ? out.data.error : 'pull_failed';
-      throw new Error(err);
+  // Modo optimizado: cuando ya existe data local, primero consulta /sync/list (sin payload_json)
+  // y solo baja /sync/detail para códigos nuevos o con hash cambiado.
+  // Si es arranque limpio / rehidratación completa, mantiene /sync/pull para no romper dashboard/listados.
+  const localBase = Array.isArray(emergencias) ? emergencias : __loadEmergencias();
+  const localCount = Array.isArray(localBase) ? localBase.length : 0;
+  const fullHydration = (localCount === 0 || String(s || '') === __syncEpoch());
+
+  if(fullHydration){
+    while(guard < 25){
+      const out = await __api('/sync/pull?since=' + encodeURIComponent(s) + '&limit=' + limit, { method:'GET', token: token });
+      if(out.res && out.res.status === 401) throw new Error('unauthorized');
+      if(!out.res || !out.res.ok){
+        const err = out.data && out.data.error ? out.data.error : 'pull_failed';
+        throw new Error(err);
+      }
+
+      const pulled = out.data && Array.isArray(out.data.records) ? out.data.records : [];
+      if(pulled.length === 0) break;
+      pulledAll = pulledAll.concat(pulled);
+
+      let maxUpdatedBatch = s;
+      for(const r of pulled){
+        const upd = String(r && r.updated_at ? r.updated_at : "");
+        if(upd && upd > maxUpdatedBatch) maxUpdatedBatch = upd;
+      }
+      if(pulled.length < limit) { s = maxUpdatedBatch; break; }
+      if(maxUpdatedBatch === s) break;
+      s = maxUpdatedBatch;
+      guard++;
     }
-
-    const pulled = out.data && Array.isArray(out.data.records) ? out.data.records : [];
-    if(pulled.length === 0) break;
-
-    pulledAll = pulledAll.concat(pulled);
-
-    // calcular maxUpdated de este lote
-    let maxUpdatedBatch = s;
-    for(const r of pulled){
-      const upd = String(r && r.updated_at ? r.updated_at : "");
-      if(upd && upd > maxUpdatedBatch) maxUpdatedBatch = upd;
+  }else{
+    const localIdx = {};
+    for(let i=0;i<localBase.length;i++){
+      const c = String(localBase[i] && localBase[i].codigo ? localBase[i].codigo : '').trim();
+      if(c) localIdx[c] = localBase[i];
     }
+    const map0 = __getHashMap();
 
-    // si vino menos del límite, ya terminamos
-    if(pulled.length < limit) { s = maxUpdatedBatch; break; }
+    while(guard < 25){
+      let out = await __api('/sync/list?since=' + encodeURIComponent(s) + '&limit=' + limit, { method:'GET', token: token });
 
-    // si no avanzó since, cortar para evitar bucle
-    if(maxUpdatedBatch === s) break;
+      // Compatibilidad: si el Worker aún no tiene /sync/list, usar /sync/pull tradicional.
+      if(out.res && out.res.status === 404){
+        out = await __api('/sync/pull?since=' + encodeURIComponent(s) + '&limit=' + limit, { method:'GET', token: token });
+        if(out.res && out.res.status === 401) throw new Error('unauthorized');
+        if(!out.res || !out.res.ok){
+          const err = out.data && out.data.error ? out.data.error : 'pull_failed';
+          throw new Error(err);
+        }
+        const pulled = out.data && Array.isArray(out.data.records) ? out.data.records : [];
+        if(pulled.length === 0) break;
+        pulledAll = pulledAll.concat(pulled);
+        let maxUpdatedBatch = s;
+        for(const r of pulled){
+          const upd = String(r && r.updated_at ? r.updated_at : "");
+          if(upd && upd > maxUpdatedBatch) maxUpdatedBatch = upd;
+        }
+        if(pulled.length < limit) { s = maxUpdatedBatch; break; }
+        if(maxUpdatedBatch === s) break;
+        s = maxUpdatedBatch;
+        guard++;
+        continue;
+      }
 
-    s = maxUpdatedBatch;
-    guard++;
+      if(out.res && out.res.status === 401) throw new Error('unauthorized');
+      if(!out.res || !out.res.ok){
+        const err = out.data && out.data.error ? out.data.error : 'list_failed';
+        throw new Error(err);
+      }
+
+      const metas = out.data && Array.isArray(out.data.records) ? out.data.records : [];
+      if(metas.length === 0) break;
+
+      let maxUpdatedBatch = s;
+      for(const m of metas){
+        const codigo = String(m && m.codigo ? m.codigo : '').trim();
+        const serverHash = String((m && (m.hash || m.payload_hash)) || '');
+        const upd = String(m && m.updated_at ? m.updated_at : '');
+        if(upd && upd > maxUpdatedBatch) maxUpdatedBatch = upd;
+        if(!codigo) continue;
+
+        const localRec = localIdx[codigo] || null;
+        const knownHash = String(map0[codigo] || (localRec && localRec.__serverHash) || '');
+        if(localRec && serverHash && knownHash === serverHash){
+          try{ localRec.__serverHash = serverHash; localRec.__serverUpdatedAt = upd; localRec.estado_sync = 'Sincronizado'; }catch(_e){}
+          continue;
+        }
+
+        const detail = await __api('/sync/detail?codigo=' + encodeURIComponent(codigo), { method:'GET', token: token });
+        if(detail.res && detail.res.status === 401) throw new Error('unauthorized');
+        if(detail.res && detail.res.status === 404) continue;
+        if(!detail.res || !detail.res.ok){
+          const err = detail.data && detail.data.error ? detail.data.error : 'detail_failed';
+          throw new Error(err);
+        }
+        if(detail.data && detail.data.record) pulledAll.push(detail.data.record);
+      }
+
+      if(metas.length < limit) { s = maxUpdatedBatch; break; }
+      if(maxUpdatedBatch === s) break;
+      s = maxUpdatedBatch;
+      guard++;
+    }
   }
-
   const pulled = pulledAll;
   if(pulled.length === 0){
     return { ok:true, records: [], newSince: (since || __getLastPull()) };
