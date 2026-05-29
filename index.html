@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <!-- BUILD: 2026-02-20 autopull-cooldown-v206-fix-sync-v3 -->
-<script>window.__BUILD_ID='2026-02-20 autopull-cooldown-v206-fix-sync-v3-sync-lock-v223';console.log('BUILD',window.__BUILD_ID);</script>
+<script>window.__BUILD_ID='2026-02-20 autopull-cooldown-v206-fix-sync-v3-sync-lock-v224-badgefix';console.log('BUILD',window.__BUILD_ID);</script>
 
 <!-- build: VER_PRINT_RC_ALWAYS_VISIBLE v4 2026-01-11 -->
 <meta charset="UTF-8" />
@@ -18,7 +18,7 @@ body { background: #f5f5f5; }
 .card { margin-top: 1rem; }
 .table td input { width: 100%; }
 .hidden { display: none; }
-/* ======= VERSION 223 29/05/2026 16:30 hrs - sync duplicate lock + polling optimized======= */
+/* ======= VERSION 224 29/05/2026 - sync lock + polling optimized + badge pendientes corregido======= */
 /* ======= VER (Listado de Emergencias): Formato de visualización/impresión ======= */
 .ver-report-wrap{ font-family: Calibri, Arial, sans-serif; font-size: 11pt; color:#111; }
 .ver-report-title{ font-family: Calibri, Arial, sans-serif; font-size:15pt; font-weight:700; color:#1F4E79; margin:0 0 6px 0; }
@@ -9551,26 +9551,55 @@ async function __calcPending(){
     const map = __getHashMap();
     const arr = Array.isArray(emergencias) ? emergencias : __loadEmergencias();
     let pending = 0;
+
     for(const e of arr){
       const codigo = String(e && e.codigo ? e.codigo : "").trim();
       if(!codigo) continue;
-        if(String(e && e.estado_sync ? e.estado_sync : "") === "Rechazado") continue;
 
-    // Registrador: solo empujar sus propios registros y solo si están en Borrador/Observado
-    try{
-      const role = currentUser ? currentUser.role : "";
-      if(role === __ROLES.REG){
-        const me = String(currentUser && currentUser.email ? currentUser.email : "").trim().toLowerCase();
-        const owner = String(__segRegistrar(e) || "").trim().toLowerCase();
-        const stage = __segStage(e);
-        if(owner && me && owner !== me) continue;
-        if(!(stage === "Borrador" || stage === "Observado")) continue;
+      const syncState = String(e && e.estado_sync ? e.estado_sync : "");
+
+      // Los rechazados se muestran en su propio badge rojo; no deben inflar pendientes.
+      if(syncState === "Rechazado") continue;
+
+      // CORRECCIÓN v224:
+      // Los registros resumen que vienen de /sync/list NO contienen payload completo.
+      // Su hash local nunca debe compararse contra el hash del servidor, porque eso
+      // hacía que casi todo el universo local aparezca como "Pendientes".
+      if(typeof __syncIsSummaryOnly === "function" && __syncIsSummaryOnly(e)){
+        continue;
       }
-    }catch(_e){}
-      const h = await __syncHash(e);
-      const base = (map[codigo] || e.__serverHash || "");
-      if(base && base !== h) pending++;
+      if(e && (e.__summaryOnly === true || e.__needsDetail === true)){
+        continue;
+      }
+
+      // Registrador: solo considerar sus propios registros y solo en etapas editables.
+      try{
+        const role = currentUser ? currentUser.role : "";
+        if(role === __ROLES.REG){
+          const me = String(currentUser && currentUser.email ? currentUser.email : "").trim().toLowerCase();
+          const owner = String(__segRegistrar(e) || "").trim().toLowerCase();
+          const stage = __segStage(e);
+          if(owner && me && owner !== me) continue;
+          if(!(stage === "Borrador" || stage === "Observado")) continue;
+        }
+      }catch(_e){}
+
+      // Si una acción dejó el registro explícitamente pendiente, contarlo.
+      if(syncState === "Pendiente"){
+        pending++;
+        continue;
+      }
+
+      // Para registros completos, mantener la validación por hash como respaldo.
+      // Si el servidor todavía no tiene hash base, no se marca como pendiente por conteo visual.
+      try{
+        const base = (map[codigo] || e.__serverHash || "");
+        if(!base) continue;
+        const h = await __syncHash(e);
+        if(base !== h) pending++;
+      }catch(_e){}
     }
+
     __updateSyncUI(pending);
     return pending;
   }catch(e){
@@ -9578,7 +9607,6 @@ async function __calcPending(){
     return 0;
   }
 }
-
 // ---- AUTH local fallback (si el Worker falla) ----
 async function __loginLocalFallback(rawEmail, password){
   try{
