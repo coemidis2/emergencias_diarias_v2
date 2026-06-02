@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <!-- BUILD: 2026-02-20 autopull-cooldown-v206-fix-sync-v3 -->
-<script>window.__BUILD_ID='2026-02-20 autopull-cooldown-v206-fix-sync-v3-sync-lock-v230-dashmap-dep-peligro-page5';console.log('BUILD',window.__BUILD_ID);</script>
+<script>window.__BUILD_ID='2026-02-20 autopull-cooldown-v206-fix-sync-v3-sync-lock-v231-excel-full-detail';console.log('BUILD',window.__BUILD_ID);</script>
 
 <!-- build: VER_PRINT_RC_ALWAYS_VISIBLE v4 2026-01-11 -->
 <meta charset="UTF-8" />
@@ -18,7 +18,7 @@ body { background: #f5f5f5; }
 .card { margin-top: 1rem; }
 .table td input { width: 100%; }
 .hidden { display: none; }
-/* ======= VERSION 230 02/06/2026 - dashmap resumen departamento + peligro page5 ======= */
+/* ======= VERSION 231 02/06/2026 - export excel hydrate full detail ======= */
 /* ======= VER (Listado de Emergencias): Formato de visualización/impresión ======= */
 .ver-report-wrap{ font-family: Calibri, Arial, sans-serif; font-size: 11pt; color:#111; }
 .ver-report-title{ font-family: Calibri, Arial, sans-serif; font-size:15pt; font-weight:700; color:#1F4E79; margin:0 0 6px 0; }
@@ -12028,7 +12028,7 @@ function __excelParseElab(em){
   }catch(e){ return null; }
 }
 
-function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO, peligrosSeleccionados){
+async function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO, peligrosSeleccionados){
   try{
     if(!window.XLSX){
       alert("No se pudo cargar la librería de Excel (XLSX). Verifique su conexión a internet.");
@@ -12054,6 +12054,61 @@ function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO, peligrosSelecci
     const etiquetaPeligros = filtrarPorPeligro ? peligrosFiltro.join(", ") : "Todos los peligros";
 
     const __ACCION_PRELIMINAR_BASE = "El COE MIDIS solicita al equipo territorial realizar el monitoreo de la emergencia a fin de determinar si existe afectación a usuarios o servicios de los programas nacionales. El COE MIDIS mantiene el seguimiento continuo del evento a través de los Espacios de Monitoreo y Seguimiento Sectorial (EMSS), a fin de consolidar información estratégica para la toma de decisiones y acciones sectoriales de respuesta.";
+
+    // FIX v231: en la Lista ahora se trabaja con metadatos (/sync/list) y el payload completo
+    // solo se trae bajo demanda. Para que Excel no salga con columnas vacías, antes de armar
+    // el libro se hidratan los registros filtrados con /sync/detail cuando haga falta.
+    const __firstExcelText = (...vals)=>{
+      for(const v of vals){
+        if(v === null || v === undefined) continue;
+        if(Array.isArray(v) || (typeof v === "object")) continue;
+        const s = String(v).trim();
+        if(s) return s;
+      }
+      return "";
+    };
+
+    const __coalesceExcelObject = (...vals)=>{
+      for(let v of vals){
+        if(typeof v === "string"){
+          try{ v = JSON.parse(v); }catch(_e){}
+        }
+        if(v && typeof v === "object") return v;
+      }
+      return null;
+    };
+
+    const __needsExcelDetail = (em)=>{
+      try{
+        if(!em) return false;
+        if(typeof __syncIsSummaryOnly === "function" && __syncIsSummaryOnly(em)) return true;
+        return !(
+          __firstExcelText(em.hechos, em.hecho, em.descripcionHechos, em.detalleHechos) ||
+          __firstExcelText(em.daniosOtros, em.dañosOtros, em.danosOtros, em.daniosOtrosSectores, em.danosOtrosSectores) ||
+          __coalesceExcelObject(em.daniosMIDIS, em.dañosMIDIS, em.danosMIDIS, em.daniosSector, em.daniosSectorMidis, em.daniosSectorDesarrollo) ||
+          em.accionesPreliminar || em.accionesRP || em.accionesPreliminares || em.acciones ||
+          (Array.isArray(em.rcReportes) && em.rcReportes.some(rc => rc && !rc.__summaryOnly && (rc.acciones || rc.accionesRC || rc.accionesComplementario || rc.accionesComplementarias || rc.accionesComp || rc.daniosMIDIS)))
+        );
+      }catch(e){ return false; }
+    };
+
+    const __hydrateExcelItems = async (selected)=>{
+      const arr = Array.isArray(selected) ? selected : [];
+      let fullCount = 0;
+      for(let i=0; i<arr.length; i++){
+        const em = arr[i];
+        if(!em || !em.codigo || !__needsExcelDetail(em)) continue;
+        try{
+          if(typeof __ensureFullEmergencia === "function"){
+            const full = await __ensureFullEmergencia(em.codigo);
+            if(full){ arr[i] = full; fullCount++; }
+          }
+        }catch(_e){
+          // Si un detalle falla, no se detiene toda la exportación; se exporta lo disponible.
+        }
+      }
+      return fullCount;
+    };
 
     const __fmtAcciones = (a)=>{
       let arr = a;
@@ -12192,6 +12247,7 @@ function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO, peligrosSelecci
     const resumenMap = new Map();
     const globalTotals = { emergencias:0, departamentos:new Set(), ua:0, sa:0, ups:0, uf:0, ma:0 };
 
+    let selectedEmergencias = [];
     (Array.isArray(emergencias) ? emergencias : []).forEach(em=>{
       try{
         if(typeof __isDeleted === "function" && __isDeleted(em)) return;
@@ -12201,12 +12257,33 @@ function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO, peligrosSelecci
         if(!elabDate) return;
         if(elabDate < desde || elabDate > hasta) return;
         if(filtrarPorPeligro && !peligrosSet.has(String(em.peligro||"").trim().toLowerCase())) return;
+        selectedEmergencias.push(em);
+      }catch(_e){}
+    });
 
-        const danosOtros = String(em.daniosOtros || "");
-        const danosInfo  = __fmtDaniosMIDIS(em.daniosMIDIS);
+    if(selectedEmergencias.length === 0){
+      alert("No se encontraron emergencias en ese rango y peligro seleccionado (según la fecha de elaboración).\n\nVerifique la fecha inicial, fecha final y el filtro de peligros.");
+      return;
+    }
+
+    await __hydrateExcelItems(selectedEmergencias);
+
+    selectedEmergencias.forEach(em=>{
+      try{
+        if(typeof __isDeleted === "function" && __isDeleted(em)) return;
+        if(__isSeguimientoRecord(em)) return;
+
+        const elabDate = __getElabDateOnly(em);
+        if(!elabDate) return;
+        if(elabDate < desde || elabDate > hasta) return;
+        if(filtrarPorPeligro && !peligrosSet.has(String(em.peligro||"").trim().toLowerCase())) return;
+
+        const danosOtros = __firstExcelText(em.daniosOtros, em.dañosOtros, em.danosOtros, em.daniosOtrosSectores, em.danosOtrosSectores, em.afectacionOtrosSectores);
+        const danosObj = __coalesceExcelObject(em.daniosMIDIS, em.dañosMIDIS, em.danosMIDIS, em.daniosSector, em.daniosSectorMidis, em.daniosSectorDesarrollo);
+        const danosInfo  = __fmtDaniosMIDIS(danosObj);
         const danosMIDIS = danosInfo.text;
-        __addDaniosPorPrograma(em.daniosMIDIS);
-        const accPre     = __fmtAccionesPreliminar(em.accionesPreliminar);
+        __addDaniosPorPrograma(danosObj);
+        const accPre     = __fmtAccionesPreliminar(em.accionesPreliminar ?? em.accionesPreliminares ?? em.accionesRP ?? em.accionesPreliminarRP ?? em.accionesSectorPreliminar);
         const accComp    = __fmtAccionesComplementario(em);
 
         const row = [
@@ -12216,7 +12293,7 @@ function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO, peligrosSelecci
           String(em.departamento||""),
           String(em.provincia||""),
           String(em.distrito||""),
-          String(em.hechos||""),
+          __firstExcelText(em.hechos, em.hecho, em.descripcionHechos, em.detalleHechos, em.descripcion),
           danosOtros,
           danosMIDIS,
           accPre,
@@ -12482,7 +12559,7 @@ try{
       }
 
       if(btnDo){
-        btnDo.addEventListener("click", ()=>{
+        btnDo.addEventListener("click", async ()=>{
           const d = (iDesde && iDesde.value) ? iDesde.value : "";
           const h = (iHasta && iHasta.value) ? iHasta.value : "";
           if(!d || !h){
@@ -12494,8 +12571,16 @@ try{
             alert("Seleccione al menos un peligro o marque Todos los peligros.");
             return;
           }
-          __exportExcelListaEmergenciasByElab(d, h, peligros);
-          try{ modal.hide(); }catch(_e){}
+          const oldTxt = btnDo.textContent;
+          try{
+            btnDo.disabled = true;
+            btnDo.textContent = "Exportando...";
+            await __exportExcelListaEmergenciasByElab(d, h, peligros);
+            try{ modal.hide(); }catch(_e){}
+          }finally{
+            btnDo.disabled = false;
+            btnDo.textContent = oldTxt || "Exportar";
+          }
         });
       }
     }
