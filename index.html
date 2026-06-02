@@ -18,7 +18,7 @@ body { background: #f5f5f5; }
 .card { margin-top: 1rem; }
 .table td input { width: 100%; }
 .hidden { display: none; }
-/* ======= VERSION 224 29/05/2026 - sync lock + polling optimized + badge pendientes corregido======= */
+/* ======= VERSION 225 02/06/2026 - sync lock + polling optimized + badge pendientes corregido======= */
 /* ======= VER (Listado de Emergencias): Formato de visualización/impresión ======= */
 .ver-report-wrap{ font-family: Calibri, Arial, sans-serif; font-size: 11pt; color:#111; }
 .ver-report-title{ font-family: Calibri, Arial, sans-serif; font-size:15pt; font-weight:700; color:#1F4E79; margin:0 0 6px 0; }
@@ -2776,6 +2776,106 @@ function __lastRCAprobEstado(em){
   }catch(e){ return null; }
 }
 
+
+// ======= FIX v225: normalización segura de pendientes RP y coordenadas manuales =======
+function __firstNonEmpty(){
+  for(let i=0;i<arguments.length;i++){
+    const v = arguments[i];
+    if(v === null || v === undefined) continue;
+    const s = String(v).trim();
+    if(s !== "") return s;
+  }
+  return "";
+}
+
+function __rpGlobalValue(em){
+  try{
+    return __firstNonEmpty(
+      em && em.numeroGlobal,
+      em && em.numeroReporte,
+      em && em.numGlobalRP,
+      em && em.numeroGlobalRP,
+      em && em.nroGlobal,
+      em && em.nGlobal
+    );
+  }catch(e){ return ""; }
+}
+
+function __rpEnviadoPorValue(em){
+  try{
+    return __firstNonEmpty(
+      em && em.rpEnviadoPor,
+      em && em.elaboradoPor,
+      em && em.createdBy,
+      em && em.createdByEmail,
+      em && em.ownerEmail,
+      currentUser && currentUser.fullName,
+      currentUser && currentUser.email
+    );
+  }catch(e){ return ""; }
+}
+
+function __rpEnviadoEnValue(em){
+  try{
+    return __firstNonEmpty(
+      em && em.rpEnviadoEn,
+      em && em.updatedAt,
+      em && em.fechaHora,
+      em && em.fechaRegistro,
+      em && em.createdAt
+    );
+  }catch(e){ return ""; }
+}
+
+function __ensureRPGlobalNumber(em){
+  try{
+    if(!em) return "";
+    let n = __rpGlobalValue(em);
+    if(!n){
+      const maxN = (typeof numeroReporteGlobal !== "undefined" ? (Number(numeroReporteGlobal) || 0) : 0);
+      const next = maxN + 1;
+      if(typeof numeroReporteGlobal !== "undefined") numeroReporteGlobal = next;
+      n = String(next);
+    }
+    em.numeroGlobal = n;
+    if(!em.numeroReporte) em.numeroReporte = n;
+    if(!em.numGlobalRP) em.numGlobalRP = n;
+    return n;
+  }catch(e){ return ""; }
+}
+
+function __ensureRPPendingFields(em){
+  try{
+    if(!em) return em;
+    if(String(em.rpAprobEstado || "") === "Pendiente"){
+      const n = __ensureRPGlobalNumber(em);
+      em.numeroGlobal = n || em.numeroGlobal || em.numeroReporte || "";
+      if(!em.numeroReporte) em.numeroReporte = em.numeroGlobal;
+      if(!em.rpEnviadoPor) em.rpEnviadoPor = __rpEnviadoPorValue(em);
+      if(!em.rpEnviadoPorEmail && currentUser && currentUser.email) em.rpEnviadoPorEmail = currentUser.email;
+      if(!em.rpEnviadoEn) em.rpEnviadoEn = __rpEnviadoEnValue(em) || __nowIso();
+    }
+    return em;
+  }catch(e){ return em; }
+}
+
+let __rpCoordsManual = false;
+function __markRPManualCoords(){
+  __rpCoordsManual = true;
+}
+function __resetRPManualCoords(){
+  __rpCoordsManual = false;
+}
+function __setRPCoordsFromUbigeo(lat, lon){
+  const latInput = document.getElementById("latitudRP");
+  const lonInput = document.getElementById("longitudRP");
+  if(latInput) latInput.value = __normCoord(lat);
+  if(lonInput) lonInput.value = __normCoord(lon);
+  __resetRPManualCoords();
+  try{ actualizarMarcadorRP(false); }catch(e){}
+}
+
+
 function __rpEstadoEtiqueta(em){
   const rpSt = (em && em.rpAprobEstado) ? String(em.rpAprobEstado) : "Borrador";
   const rcSt = __lastRCAprobEstado(em);
@@ -2924,13 +3024,16 @@ function __collectPendientes(){
   try{
     (Array.isArray(emergencias)?emergencias:[]).forEach(em=>{
       if(typeof __isDeleted === 'function' && __isDeleted(em)) return;
+
       if(em?.rpAprobEstado === "Pendiente"){
+        __ensureRPPendingFields(em);
+        const rpGlobal = __rpGlobalValue(em);
         out.push({
           type:"RP",
           codigo: em.codigo,
-          detail:`RP N° Global ${em.numeroGlobal || ""}`,
-          enviadoPor: em.rpEnviadoPor || em.elaboradoPor || "",
-          enviadoEn: em.rpEnviadoEn || "",
+          detail:`RP N° Global ${rpGlobal || ""}`,
+          enviadoPor: __rpEnviadoPorValue(em),
+          enviadoEn: __rpEnviadoEnValue(em),
           ref:{kind:"rp", codigo: em.codigo}
         });
       }
@@ -2943,8 +3046,8 @@ function __collectPendientes(){
               type:"RC",
               codigo: em.codigo,
               detail:`RC ${idx+1} N° Global ${rc.numeroGlobal || rc.numeroReporteRC || ""}`,
-              enviadoPor: rc.enviadoPor || rc.elaboradoPor || "",
-              enviadoEn: rc.enviadoEn || rc.fechaRegistro || "",
+              enviadoPor: rc.enviadoPor || rc.elaboradoPor || rc.createdBy || em.elaboradoPor || "",
+              enviadoEn: rc.enviadoEn || rc.updatedAt || rc.fechaRegistro || em.updatedAt || em.fechaHora || "",
               ref:{kind:"rc", codigo: em.codigo, idx}
             });
           }
@@ -2957,8 +3060,8 @@ function __collectPendientes(){
           type:"CIERRE",
           codigo: em.codigo,
           detail:"Solicitud de cierre",
-          enviadoPor: em.cierreSolicitadoPor || "",
-          enviadoEn: em.cierreSolicitadoEn || "",
+          enviadoPor: em.cierreSolicitadoPor || em.elaboradoPor || em.createdBy || "",
+          enviadoEn: em.cierreSolicitadoEn || em.updatedAt || em.fechaHora || "",
           ref:{kind:"cierre", codigo: em.codigo}
         });
       }
@@ -3153,8 +3256,10 @@ function __enviarRP(){
     return;
   }
   em.rpAprobEstado = "Pendiente";
-  em.rpEnviadoPor = __getCurrentUserName();
-  em.rpEnviadoEn = __nowIso();
+  __ensureRPGlobalNumber(em);
+  em.rpEnviadoPor = __rpEnviadoPorValue(em) || __getCurrentUserName();
+  em.rpEnviadoPorEmail = currentUser ? currentUser.email : (em.rpEnviadoPorEmail || null);
+  em.rpEnviadoEn = __rpEnviadoEnValue(em) || __nowIso();
   __audit("ENVIAR_RP_APROBACION", "emergencia", em.codigo, null);
   __saveEmergencias();
   cargarTablaEmergencias();
@@ -4165,6 +4270,7 @@ function inicializarUbigeo() {
   // Cambio de Departamento -> Provincias
   depSelect.addEventListener("change", () => {
     const dep = depSelect.value;
+    __resetRPManualCoords();
     provSelect.innerHTML = '<option value="">Seleccione...</option>';
     distSelect.innerHTML = '<option value="">Seleccione...</option>';
     latInput.value = "";
@@ -4186,6 +4292,7 @@ function inicializarUbigeo() {
   provSelect.addEventListener("change", () => {
     const dep  = depSelect.value;
     const prov = provSelect.value;
+    __resetRPManualCoords();
     distSelect.innerHTML = '<option value="">Seleccione...</option>';
     latInput.value = "";
     lonInput.value = "";
@@ -4207,6 +4314,7 @@ function inicializarUbigeo() {
     const dep  = depSelect.value;
     const prov = provSelect.value;
     const dist = distSelect.value;
+    __resetRPManualCoords();
     latInput.value = "";
     lonInput.value = "";
 
@@ -4219,9 +4327,7 @@ function inicializarUbigeo() {
     );
 
     if (row) {
-      latInput.value = row.lat;
-      lonInput.value = row.lon;
-      actualizarMarcadorRP();
+      __setRPCoordsFromUbigeo(row.lat, row.lon);
     }
   });
 }
@@ -4495,7 +4601,8 @@ function __initMapRP(){
       const lonEl = document.getElementById("longitudRP");
       if(latEl) latEl.value = lat;
       if(lonEl) lonEl.value = lon;
-      actualizarMarcadorRP();
+      __markRPManualCoords();
+      actualizarMarcadorRP(true);
     });
 
     return true;
@@ -4506,23 +4613,31 @@ function __initMapRP(){
   }
 }
 
-function actualizarMarcadorRP() {
+function actualizarMarcadorRP(manual=false) {
   if(!__initMapRP()) return;
 
   const latEl = document.getElementById("latitudRP");
   const lonEl = document.getElementById("longitudRP");
-  let lat = parseFloat(latEl?.value);
-  let lon = parseFloat(lonEl?.value);
+  let lat = parseFloat(__normCoord(latEl?.value));
+  let lon = parseFloat(__normCoord(lonEl?.value));
 
   if (!isNaN(lat) && !isNaN(lon)) {
+    if(manual) __markRPManualCoords();
     if (markerRP) mapRP.removeLayer(markerRP);
-    markerRP = L.marker([lat, lon]).addTo(mapRP);
+    markerRP = L.marker([lat, lon], { draggable: true }).addTo(mapRP);
+    markerRP.on("dragend", function(ev){
+      const ll = ev.target.getLatLng();
+      if(latEl) latEl.value = ll.lat.toFixed(6);
+      if(lonEl) lonEl.value = ll.lng.toFixed(6);
+      __markRPManualCoords();
+      try{ mapRP.setView([ll.lat, ll.lng], mapRP.getZoom() || 14); }catch(e){}
+    });
     mapRP.setView([lat, lon], 14);
   }
 }
 
-document.getElementById("latitudRP")?.addEventListener("change", actualizarMarcadorRP);
-document.getElementById("longitudRP")?.addEventListener("change", actualizarMarcadorRP);
+document.getElementById("latitudRP")?.addEventListener("change", ()=>{ __markRPManualCoords(); actualizarMarcadorRP(true); });
+document.getElementById("longitudRP")?.addEventListener("change", ()=>{ __markRPManualCoords(); actualizarMarcadorRP(true); });
 
 // Inicializar el mapa cuando se entra a la pestaña RP (evita tamaños 0)
 document.addEventListener("DOMContentLoaded", ()=>{
@@ -4608,6 +4723,7 @@ document.getElementById("btnNuevoRP").onclick = () => {
 
   accionesRPTemp = [];
   cargarAccionesRP();
+  try{ __resetRPManualCoords(); }catch(e){}
   if (markerRP && mapRP) {
     try { mapRP.removeLayer(markerRP); } catch(e) {}
     markerRP = null;
@@ -4984,14 +5100,23 @@ function __saveRP(opts){
   base.elaboradoPor = elaborado;
   base.aprobadoPor  = (String(aprobadoUI||"" ).trim() !== "") ? aprobadoUI : ((existing && (existing.aprobadoPor || existing.rpAprobadoPor)) ? (existing.aprobadoPor || existing.rpAprobadoPor) : "");
 
+  // Garantizar N° Global visible y trazabilidad mínima en RP pendiente
+  if(submit || String(base.rpAprobEstado || "") === "Pendiente"){
+    __ensureRPGlobalNumber(base);
+    if(!base.rpEnviadoPor) base.rpEnviadoPor = __rpEnviadoPorValue(base);
+    if(!base.rpEnviadoPorEmail && currentUser && currentUser.email) base.rpEnviadoPorEmail = currentUser.email;
+    if(!base.rpEnviadoEn) base.rpEnviadoEn = __rpEnviadoEnValue(base) || __nowIso();
+  }
+
   // Enviar a aprobación en la misma acción (Registrador)
   if(submit){
     // Si estaba Observado, se vuelve a enviar como Pendiente
     if(base.rpAprobEstado !== "Pendiente"){
       base.rpAprobEstado = "Pendiente";
-      base.rpEnviadoPor  = __getCurrentUserName();
-      base.rpEnviadoPorEmail = currentUser ? currentUser.email : null;
-      base.rpEnviadoEn   = __nowIso();
+      __ensureRPGlobalNumber(base);
+      base.rpEnviadoPor  = __rpEnviadoPorValue(base) || __getCurrentUserName();
+      base.rpEnviadoPorEmail = currentUser ? currentUser.email : (base.rpEnviadoPorEmail || null);
+      base.rpEnviadoEn   = __rpEnviadoEnValue(base) || __nowIso();
       base.rpObs         = null;
       __audit("GUARDAR_Y_ENVIAR_RP", "emergencia", base.codigo, null);
       __histPush(base, "RP_ENVIADO_APROBACION", null);
@@ -5069,8 +5194,10 @@ document.getElementById("btnGuardarAprobarRPAdmin")?.addEventListener("click", a
 
   if(em.rpAprobEstado !== "Pendiente" && em.rpAprobEstado !== "Aprobado"){
     em.rpAprobEstado = "Pendiente";
-    em.rpEnviadoPor  = __getCurrentUserName();
-    em.rpEnviadoEn   = __nowIso();
+    __ensureRPGlobalNumber(em);
+    em.rpEnviadoPor  = __rpEnviadoPorValue(em) || __getCurrentUserName();
+    em.rpEnviadoPorEmail = currentUser ? currentUser.email : (em.rpEnviadoPorEmail || null);
+    em.rpEnviadoEn   = __rpEnviadoEnValue(em) || __nowIso();
     __audit("ENVIAR_RP_APROBACION", "emergencia", em.codigo, null);
   }
 
