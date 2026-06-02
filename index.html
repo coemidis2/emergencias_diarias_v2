@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <!-- BUILD: 2026-02-20 autopull-cooldown-v206-fix-sync-v3 -->
-<script>window.__BUILD_ID='2026-02-20 autopull-cooldown-v206-fix-sync-v3-sync-lock-v226-dashmap-allstatus';console.log('BUILD',window.__BUILD_ID);</script>
+<script>window.__BUILD_ID='2026-02-20 autopull-cooldown-v206-fix-sync-v3-sync-lock-v228-dashmap-dep-pages';console.log('BUILD',window.__BUILD_ID);</script>
 
 <!-- build: VER_PRINT_RC_ALWAYS_VISIBLE v4 2026-01-11 -->
 <meta charset="UTF-8" />
@@ -18,7 +18,7 @@ body { background: #f5f5f5; }
 .card { margin-top: 1rem; }
 .table td input { width: 100%; }
 .hidden { display: none; }
-/* ======= VERSION 227 02/06/2026 - dashmap all estados + coords fallback + duplicados visibles ======= */
+/* ======= VERSION 228 02/06/2026 - dashmap resumen departamento paginado ======= */
 /* ======= VER (Listado de Emergencias): Formato de visualización/impresión ======= */
 .ver-report-wrap{ font-family: Calibri, Arial, sans-serif; font-size: 11pt; color:#111; }
 .ver-report-title{ font-family: Calibri, Arial, sans-serif; font-size:15pt; font-weight:700; color:#1F4E79; margin:0 0 6px 0; }
@@ -856,6 +856,24 @@ body { background: #f5f5f5; }
             <div class="small text-muted" id="dashMapDeptHint">Seleccione un departamento para acercar el mapa y ver el resumen.</div>
           </div>
         </div>
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+          <div class="d-flex align-items-center gap-2">
+            <span class="small text-muted">Mostrar</span>
+            <select id="dashMapDeptPageSize" class="form-select form-select-sm" style="width:auto;">
+              <option value="5">5</option>
+              <option value="10" selected>10</option>
+              <option value="25">25</option>
+              <option value="50">50</option>
+              <option value="100">100</option>
+            </select>
+            <span class="small text-muted">registros</span>
+          </div>
+          <div class="btn-group btn-group-sm" role="group" aria-label="Paginación resumen departamento">
+            <button id="dashMapDeptPrev" type="button" class="btn btn-outline-secondary">Anterior</button>
+            <button id="dashMapDeptNext" type="button" class="btn btn-outline-secondary">Siguiente</button>
+          </div>
+        </div>
+        <div id="dashMapDeptPageInfo" class="small text-muted mb-1">0 a 0 de 0 registros</div>
         <div class="table-responsive">
           <table class="table table-sm table-bordered align-middle mb-0">
             <thead>
@@ -8531,6 +8549,7 @@ function __dashGetCoords(e){
 }
 
 let __dashMapSelectedDepartamento = "";
+let __dashMapDeptPager = { size: 10, page: 1 };
 
 function __dashMapGetSelectedDepartamento(){
   try{
@@ -8573,31 +8592,52 @@ function __dashMapPopulateDepartamento(data){
   }
 }
 
+function __dashMapGetDeptPageSize(){
+  const n = Number(document.getElementById("dashMapDeptPageSize")?.value || __dashMapDeptPager.size || 10);
+  return [5,10,25,50,100].includes(n) ? n : 10;
+}
+
 function __dashMapRenderDepartamentoResumen(data){
   const tbody = document.getElementById("dashMapDeptTbody");
   const hint = document.getElementById("dashMapDeptHint");
+  const pageInfo = document.getElementById("dashMapDeptPageInfo");
+  const btnPrev = document.getElementById("dashMapDeptPrev");
+  const btnNext = document.getElementById("dashMapDeptNext");
   if(!tbody) return;
 
   const depRaw = String(document.getElementById("dashMapDepartamento")?.value || "").trim();
-  const list = __dashMapApplyDepartamentoFilter(data);
-  if(hint){
-    hint.textContent = depRaw
-      ? `Departamento seleccionado: ${depRaw}. Emergencias mostradas: ${list.length}.`
-      : `Mostrando todos los departamentos. Emergencias mostradas: ${list.length}.`;
-  }
-
-  if(!list.length){
-    tbody.innerHTML = '<tr><td colspan="5" class="text-muted small">Sin emergencias para el departamento seleccionado.</td></tr>';
-    return;
-  }
-
-  const rows = list.slice().sort((a,b)=>{
+  const list = __dashMapApplyDepartamentoFilter(data).slice().sort((a,b)=>{
     const pa = String(a?.peligro || "");
     const pb = String(b?.peligro || "");
     const da = String(a?.distrito || "");
     const db = String(b?.distrito || "");
     return pa.localeCompare(pb,"es") || da.localeCompare(db,"es") || String(a?.codigo||"").localeCompare(String(b?.codigo||""),"es");
-  }).map(e=>{
+  });
+
+  __dashMapDeptPager.size = __dashMapGetDeptPageSize();
+  const total = list.length;
+  const totalPages = Math.max(1, Math.ceil(total / __dashMapDeptPager.size));
+  __dashMapDeptPager.page = Math.min(Math.max(1, Number(__dashMapDeptPager.page || 1)), totalPages);
+
+  if(hint){
+    hint.textContent = depRaw
+      ? `Departamento seleccionado: ${depRaw}. Emergencias mostradas: ${total}.`
+      : `Mostrando todos los departamentos. Emergencias mostradas: ${total}.`;
+  }
+
+  if(!total){
+    tbody.innerHTML = '<tr><td colspan="5" class="text-muted small">Sin emergencias para el departamento seleccionado.</td></tr>';
+    if(pageInfo) pageInfo.textContent = "0 a 0 de 0 registros";
+    if(btnPrev) btnPrev.disabled = true;
+    if(btnNext) btnNext.disabled = true;
+    return;
+  }
+
+  const start = (__dashMapDeptPager.page - 1) * __dashMapDeptPager.size;
+  const end = Math.min(start + __dashMapDeptPager.size, total);
+  const pageRows = list.slice(start, end);
+
+  const rows = pageRows.map(e=>{
     const t = __dashSumDanios(__dashCurrentDaniosMidis(e));
     return `<tr>
       <td>${__dashHtmlEscape(e?.codigo || "")}</td>
@@ -8608,6 +8648,10 @@ function __dashMapRenderDepartamentoResumen(data){
     </tr>`;
   }).join("");
   tbody.innerHTML = rows;
+
+  if(pageInfo) pageInfo.textContent = `${start + 1} a ${end} de ${total} registros`;
+  if(btnPrev) btnPrev.disabled = (__dashMapDeptPager.page <= 1);
+  if(btnNext) btnNext.disabled = (__dashMapDeptPager.page >= totalPages);
 }
 
 function __dashGetStatus(e){
@@ -9392,10 +9436,23 @@ document.addEventListener("DOMContentLoaded", ()=>{
   __dashMapSyncButtons();
 
   document.getElementById("dashMapDepartamento")?.addEventListener("change", ()=>{
+    __dashMapDeptPager.page = 1;
     dashboardRefresh({force:true});
   });
 
-
+  document.getElementById("dashMapDeptPageSize")?.addEventListener("change", ()=>{
+    __dashMapDeptPager.size = __dashMapGetDeptPageSize();
+    __dashMapDeptPager.page = 1;
+    __dashMapRenderDepartamentoResumen(__dashLastFiltered || __dashGetFiltered());
+  });
+  document.getElementById("dashMapDeptPrev")?.addEventListener("click", ()=>{
+    __dashMapDeptPager.page = Math.max(1, (__dashMapDeptPager.page || 1) - 1);
+    __dashMapRenderDepartamentoResumen(__dashLastFiltered || __dashGetFiltered());
+  });
+  document.getElementById("dashMapDeptNext")?.addEventListener("click", ()=>{
+    __dashMapDeptPager.page = (__dashMapDeptPager.page || 1) + 1;
+    __dashMapRenderDepartamentoResumen(__dashLastFiltered || __dashGetFiltered());
+  });
 
   if(btnHoy) btnHoy.addEventListener("click", ()=>{
     const hoy = __dashTodayPeruYMD() || new Date().toISOString().slice(0,10);
