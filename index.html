@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <!-- BUILD: 2026-02-20 autopull-cooldown-v206-fix-sync-v3 -->
-<script>window.__BUILD_ID='2026-02-20 autopull-cooldown-v206-fix-sync-v3-sync-lock-v229-dashmap-dep-peligro';console.log('BUILD',window.__BUILD_ID);</script>
+<script>window.__BUILD_ID='2026-02-20 autopull-cooldown-v206-fix-sync-v3-sync-lock-v230-dashmap-dep-peligro-page5';console.log('BUILD',window.__BUILD_ID);</script>
 
 <!-- build: VER_PRINT_RC_ALWAYS_VISIBLE v4 2026-01-11 -->
 <meta charset="UTF-8" />
@@ -18,7 +18,7 @@ body { background: #f5f5f5; }
 .card { margin-top: 1rem; }
 .table td input { width: 100%; }
 .hidden { display: none; }
-/* ======= VERSION 229 02/06/2026 - dashmap resumen departamento + peligro ======= */
+/* ======= VERSION 230 02/06/2026 - dashmap resumen departamento + peligro page5 ======= */
 /* ======= VER (Listado de Emergencias): Formato de visualización/impresión ======= */
 .ver-report-wrap{ font-family: Calibri, Arial, sans-serif; font-size: 11pt; color:#111; }
 .ver-report-title{ font-family: Calibri, Arial, sans-serif; font-size:15pt; font-weight:700; color:#1F4E79; margin:0 0 6px 0; }
@@ -866,8 +866,8 @@ body { background: #f5f5f5; }
           <div class="d-flex align-items-center gap-2">
             <span class="small text-muted">Mostrar</span>
             <select id="dashMapDeptPageSize" class="form-select form-select-sm" style="width:auto;">
-              <option value="5">5</option>
-              <option value="10" selected>10</option>
+              <option value="5" selected>5</option>
+              <option value="10">10</option>
               <option value="25">25</option>
               <option value="50">50</option>
               <option value="100">100</option>
@@ -8555,7 +8555,7 @@ function __dashGetCoords(e){
 }
 
 let __dashMapSelectedDepartamento = "";
-let __dashMapDeptPager = { size: 10, page: 1 };
+let __dashMapDeptPager = { size: 5, page: 1 };
 
 function __dashMapGetSelectedDepartamento(){
   try{
@@ -8626,8 +8626,8 @@ function __dashMapPopulatePeligro(data){
 }
 
 function __dashMapGetDeptPageSize(){
-  const n = Number(document.getElementById("dashMapDeptPageSize")?.value || __dashMapDeptPager.size || 10);
-  return [5,10,25,50,100].includes(n) ? n : 10;
+  const n = Number(document.getElementById("dashMapDeptPageSize")?.value || __dashMapDeptPager.size || 5);
+  return [5,10,25,50,100].includes(n) ? n : 5;
 }
 
 function __dashMapRenderDepartamentoResumen(data){
