@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <!-- BUILD: 2026-02-20 autopull-cooldown-v206-fix-sync-v3 -->
-<script>window.__BUILD_ID='2026-02-20 autopull-cooldown-v206-fix-sync-v3-sync-lock-v228-dashmap-dep-pages';console.log('BUILD',window.__BUILD_ID);</script>
+<script>window.__BUILD_ID='2026-02-20 autopull-cooldown-v206-fix-sync-v3-sync-lock-v229-dashmap-dep-peligro';console.log('BUILD',window.__BUILD_ID);</script>
 
 <!-- build: VER_PRINT_RC_ALWAYS_VISIBLE v4 2026-01-11 -->
 <meta charset="UTF-8" />
@@ -18,7 +18,7 @@ body { background: #f5f5f5; }
 .card { margin-top: 1rem; }
 .table td input { width: 100%; }
 .hidden { display: none; }
-/* ======= VERSION 228 02/06/2026 - dashmap resumen departamento paginado ======= */
+/* ======= VERSION 229 02/06/2026 - dashmap resumen departamento + peligro ======= */
 /* ======= VER (Listado de Emergencias): Formato de visualización/impresión ======= */
 .ver-report-wrap{ font-family: Calibri, Arial, sans-serif; font-size: 11pt; color:#111; }
 .ver-report-title{ font-family: Calibri, Arial, sans-serif; font-size:15pt; font-weight:700; color:#1F4E79; margin:0 0 6px 0; }
@@ -852,8 +852,14 @@ body { background: #f5f5f5; }
               <option value="">(Todos)</option>
             </select>
           </div>
-          <div class="col-md-8">
-            <div class="small text-muted" id="dashMapDeptHint">Seleccione un departamento para acercar el mapa y ver el resumen.</div>
+          <div class="col-md-4">
+            <label class="form-label mb-1">Peligro</label>
+            <select id="dashMapPeligro" class="form-control form-control-sm">
+              <option value="">(Todos)</option>
+            </select>
+          </div>
+          <div class="col-md-4">
+            <div class="small text-muted" id="dashMapDeptHint">Seleccione un departamento y/o peligro para acercar el mapa y ver el resumen.</div>
           </div>
         </div>
         <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
@@ -8557,6 +8563,12 @@ function __dashMapGetSelectedDepartamento(){
   }catch(e){ return ""; }
 }
 
+function __dashMapGetSelectedPeligro(){
+  try{
+    return __dashNormText(document.getElementById("dashMapPeligro")?.value || "");
+  }catch(e){ return ""; }
+}
+
 function __dashCurrentDaniosMidis(e){
   try{
     const rcList = (typeof __getRCList === "function") ? __getRCList(e) : [];
@@ -8572,8 +8584,11 @@ function __dashCurrentDaniosMidis(e){
 
 function __dashMapApplyDepartamentoFilter(data){
   const dep = __dashMapGetSelectedDepartamento();
-  if(!dep) return Array.isArray(data) ? data : [];
-  return (Array.isArray(data) ? data : []).filter(e => __dashNormText(e && e.departamento) === dep);
+  const peligro = __dashMapGetSelectedPeligro();
+  let out = Array.isArray(data) ? data : [];
+  if(dep) out = out.filter(e => __dashNormText(e && e.departamento) === dep);
+  if(peligro) out = out.filter(e => __dashNormText(e && e.peligro) === peligro);
+  return out;
 }
 
 function __dashMapPopulateDepartamento(data){
@@ -8587,6 +8602,24 @@ function __dashMapPopulateDepartamento(data){
   sel.innerHTML = '<option value="">(Todos)</option>' + deps.map(d=>`<option value="${__dashHtmlEscape(d)}">${__dashHtmlEscape(d)}</option>`).join("");
   if(prev && deps.some(d => __dashNormText(d) === __dashNormText(prev))){
     sel.value = deps.find(d => __dashNormText(d) === __dashNormText(prev)) || "";
+  }else{
+    sel.value = "";
+  }
+}
+
+function __dashMapPopulatePeligro(data){
+  const sel = document.getElementById("dashMapPeligro");
+  if(!sel) return;
+  const prev = String(sel.value || "");
+  const dep = __dashMapGetSelectedDepartamento();
+  const base = (Array.isArray(data) ? data : []).filter(e => !dep || __dashNormText(e && e.departamento) === dep);
+  const peligros = Array.from(new Set(base
+    .map(e => String((e && e.peligro) || "").trim())
+    .filter(Boolean)))
+    .sort((a,b)=>a.localeCompare(b,"es"));
+  sel.innerHTML = '<option value="">(Todos)</option>' + peligros.map(x=>`<option value="${__dashHtmlEscape(x)}">${__dashHtmlEscape(x)}</option>`).join("");
+  if(prev && peligros.some(x => __dashNormText(x) === __dashNormText(prev))){
+    sel.value = peligros.find(x => __dashNormText(x) === __dashNormText(prev)) || "";
   }else{
     sel.value = "";
   }
@@ -8619,14 +8652,15 @@ function __dashMapRenderDepartamentoResumen(data){
   const totalPages = Math.max(1, Math.ceil(total / __dashMapDeptPager.size));
   __dashMapDeptPager.page = Math.min(Math.max(1, Number(__dashMapDeptPager.page || 1)), totalPages);
 
+  const peligroRaw = String(document.getElementById("dashMapPeligro")?.value || "").trim();
   if(hint){
-    hint.textContent = depRaw
-      ? `Departamento seleccionado: ${depRaw}. Emergencias mostradas: ${total}.`
-      : `Mostrando todos los departamentos. Emergencias mostradas: ${total}.`;
+    const depTxt = depRaw ? `Departamento seleccionado: ${depRaw}` : "Todos los departamentos";
+    const peligroTxt = peligroRaw ? `Peligro seleccionado: ${peligroRaw}` : "Todos los peligros";
+    hint.textContent = `${depTxt}. ${peligroTxt}. Emergencias mostradas: ${total}.`;
   }
 
   if(!total){
-    tbody.innerHTML = '<tr><td colspan="5" class="text-muted small">Sin emergencias para el departamento seleccionado.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="5" class="text-muted small">Sin emergencias para el filtro seleccionado.</td></tr>';
     if(pageInfo) pageInfo.textContent = "0 a 0 de 0 registros";
     if(btnPrev) btnPrev.disabled = true;
     if(btnNext) btnNext.disabled = true;
@@ -9379,7 +9413,9 @@ function __dashBuildRenderSignature(){
     }).join("|");
     let impacto = "";
     try{ impacto = __dashGetImpactoGroupBy ? __dashGetImpactoGroupBy() : ""; }catch(_e){}
-    return [arr.length, maxUpd, f, impacto, Array.from(__dashMapStatusEnabled || []).sort().join(",")].join("||");
+    let mapExtra = "";
+    try{ mapExtra = [document.getElementById("dashMapDepartamento")?.value || "", document.getElementById("dashMapPeligro")?.value || ""].join("|"); }catch(_e){}
+    return [arr.length, maxUpd, f, impacto, Array.from(__dashMapStatusEnabled || []).sort().join(","), mapExtra].join("||");
   }catch(e){
     return String(Date.now());
   }
@@ -9404,6 +9440,7 @@ function dashboardRefresh(opts){
 
 
   __dashMapPopulateDepartamento(data);
+  __dashMapPopulatePeligro(data);
   const mapData = __dashMapApplyDepartamentoFilter(data);
   __dashRenderMap(mapData);
   __dashMapRenderDepartamentoResumen(data);
@@ -9436,6 +9473,11 @@ document.addEventListener("DOMContentLoaded", ()=>{
   __dashMapSyncButtons();
 
   document.getElementById("dashMapDepartamento")?.addEventListener("change", ()=>{
+    __dashMapDeptPager.page = 1;
+    dashboardRefresh({force:true});
+  });
+
+  document.getElementById("dashMapPeligro")?.addEventListener("change", ()=>{
     __dashMapDeptPager.page = 1;
     dashboardRefresh({force:true});
   });
