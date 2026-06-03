@@ -18,7 +18,7 @@ body { background: #f5f5f5; }
 .card { margin-top: 1rem; }
 .table td input { width: 100%; }
 .hidden { display: none; }
-/* ======= VERSION 235 03/06/2026 - Dashboard Emergencias del día: N° Global saneado ======= */
+/* ======= VERSION 236 03/06/2026 - Detalle emergencia: N° Global saneado ======= */
 /* ======= VER (Listado de Emergencias): Formato de visualización/impresión ======= */
 .ver-report-wrap{ font-family: Calibri, Arial, sans-serif; font-size: 11pt; color:#111; }
 .ver-report-title{ font-family: Calibri, Arial, sans-serif; font-size:15pt; font-weight:700; color:#1F4E79; margin:0 0 6px 0; }
@@ -5554,7 +5554,7 @@ function __verNrosGlobalesHistorial(e, rcList){
   const parts = [];
   const seen = new Set();
 
-  const rpGlobal = safe(e && (e.numeroGlobal || e.numeroReporte || e.numGlobal || e.nroGlobal));
+  const rpGlobal = (typeof __numeroGlobalVisible === "function") ? __numeroGlobalVisible(e) : safe(e && (e.numeroGlobal || e.numeroReporte || e.numGlobal || e.nroGlobal));
   const rpFecha = __verDateOnly(__verFechaRegistroRP(e));
   const rpTxt = `RP – ${rpGlobal ? `N° Global ${rpGlobal}` : "N° Global"}${rpFecha ? ` | Fecha de registro ${rpFecha}` : ""}`;
   parts.push(rpTxt);
@@ -5617,7 +5617,7 @@ function verEmergencia(e) {
   aprobadoPorTxt = __normalizeAdminName(aprobadoPorTxt);
   if(!String(aprobadoPorTxt||"").trim()) aprobadoPorTxt = __getPrimaryAdminName();
 
-  const nroGlobalWord = (lastRC && (lastRC.numeroGlobal || lastRC.numeroReporteRC)) ? (lastRC.numeroGlobal || lastRC.numeroReporteRC) : (e.numeroGlobal || "");
+  const nroGlobalWord = (lastRC && (lastRC.numeroGlobal || lastRC.numeroReporteRC)) ? (lastRC.numeroGlobal || lastRC.numeroReporteRC) : ((typeof __numeroGlobalVisible === "function") ? __numeroGlobalVisible(e) : (e.numeroGlobal || ""));
   const fechaHoraWord = (lastRC && (lastRC.fechaHoraRC || lastRC.fechaHora || lastRC.fechaRegistro || lastRC.updatedAt)) ? (lastRC.fechaHoraRC || lastRC.fechaHora || lastRC.fechaRegistro || lastRC.updatedAt) : (e.fechaHora || "");
 
   // Contexto para exportar a Word desde VER
@@ -9185,6 +9185,26 @@ function __dashSliceForPager(arr, pager){
   return { slice: list.slice(start, start + size), pages };
 }
 
+
+
+// ======= FIX v236: N° Global visible en Detalle / Dashboard =======
+function __numeroGlobalVisible(e){
+  try{
+    if(typeof __dashNumeroGlobalVisible === "function") return __dashNumeroGlobalVisible(e);
+  }catch(_e){}
+  try{
+    return __dashFirstNonEmptyValue(
+      e && e.numeroGlobal,
+      e && e.numeroReporte,
+      e && e.numGlobalRP,
+      e && e.numeroGlobalRP,
+      e && e.nroGlobal,
+      e && e.nGlobal
+    );
+  }catch(_e){
+    return (e && e.numeroGlobal) ? String(e.numeroGlobal) : "";
+  }
+}
 
 // ======= FIX v235: N° Global visible en Dashboard / Emergencias del día =======
 // Corrige casos donde el RP quedó con un correlativo local provisional (ej. 22/23)
