@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <!-- BUILD: 2026-02-20 autopull-cooldown-v206-fix-sync-v3 -->
-<script>window.__BUILD_ID='2026-02-20 autopull-cooldown-v206-fix-sync-v3-sync-lock-v234-full-detail-loading';console.log('BUILD',window.__BUILD_ID);</script>
+<script>window.__BUILD_ID='2026-02-20 autopull-cooldown-v206-fix-sync-v3-sync-lock-v235-dash-activas-global-fix';console.log('BUILD',window.__BUILD_ID);</script>
 
 <!-- build: VER_PRINT_RC_ALWAYS_VISIBLE v4 2026-01-11 -->
 <meta charset="UTF-8" />
@@ -18,7 +18,7 @@ body { background: #f5f5f5; }
 .card { margin-top: 1rem; }
 .table td input { width: 100%; }
 .hidden { display: none; }
-/* ======= VERSION 234 03/06/2026 - detalle completo bajo demanda con aviso de carga ======= */
+/* ======= VERSION 235 03/06/2026 - Dashboard Emergencias del día: N° Global saneado ======= */
 /* ======= VER (Listado de Emergencias): Formato de visualización/impresión ======= */
 .ver-report-wrap{ font-family: Calibri, Arial, sans-serif; font-size: 11pt; color:#111; }
 .ver-report-title{ font-family: Calibri, Arial, sans-serif; font-size:15pt; font-weight:700; color:#1F4E79; margin:0 0 6px 0; }
@@ -9185,6 +9185,80 @@ function __dashSliceForPager(arr, pager){
   return { slice: list.slice(start, start + size), pages };
 }
 
+
+// ======= FIX v235: N° Global visible en Dashboard / Emergencias del día =======
+// Corrige casos donde el RP quedó con un correlativo local provisional (ej. 22/23)
+// pero el correlativo global real se puede inferir de registros cercanos ya sincronizados.
+function __dashExtractRPSeq(codigo){
+  try{
+    const m = String(codigo || "").trim().match(/^RP-(\d+)-(\d{4})$/i);
+    if(!m) return null;
+    return { seq: Number(m[1]) || 0, year: String(m[2] || "") };
+  }catch(e){ return null; }
+}
+
+function __dashFirstNonEmptyValue(){
+  for(let i=0;i<arguments.length;i++){
+    const v = arguments[i];
+    if(v === null || v === undefined) continue;
+    const s = String(v).trim();
+    if(s !== "") return s;
+  }
+  return "";
+}
+
+function __dashRawNumeroGlobal(e){
+  try{
+    return __dashFirstNonEmptyValue(
+      e && e.numeroGlobal,
+      e && e.numeroReporte,
+      e && e.numGlobalRP,
+      e && e.numeroGlobalRP,
+      e && e.nroGlobal,
+      e && e.nGlobal
+    );
+  }catch(_e){ return ""; }
+}
+
+function __dashGlobalOffsetForYear(year){
+  try{
+    const counts = {};
+    const arr = (typeof __dashGetEmergencias === "function") ? __dashGetEmergencias() : (Array.isArray(emergencias) ? emergencias : []);
+    (Array.isArray(arr) ? arr : []).forEach(x=>{
+      const rp = __dashExtractRPSeq(x && x.codigo);
+      if(!rp || String(rp.year) !== String(year) || !rp.seq) return;
+      const raw = __dashRawNumeroGlobal(x);
+      const g = Number(raw);
+      // Solo usar registros claramente válidos para calcular el desfase.
+      if(!Number.isFinite(g) || g <= 1000 || rp.seq <= 1000) return;
+      const off = g - rp.seq;
+      if(!Number.isFinite(off) || off < 0 || off > 1000) return;
+      counts[String(off)] = (counts[String(off)] || 0) + 1;
+    });
+    let best = null;
+    let bestCount = 0;
+    Object.keys(counts).forEach(k=>{
+      if(counts[k] > bestCount){ best = Number(k); bestCount = counts[k]; }
+    });
+    return (best !== null && bestCount > 0) ? best : null;
+  }catch(e){ return null; }
+}
+
+function __dashNumeroGlobalVisible(e){
+  const raw = __dashRawNumeroGlobal(e);
+  const rp = __dashExtractRPSeq(e && e.codigo);
+  if(!rp || !rp.seq) return raw;
+
+  const n = Number(raw);
+  const offset = __dashGlobalOffsetForYear(rp.year);
+
+  // Si el registro grande aparece con N° Global chico, es un provisional local.
+  if(offset !== null && rp.seq > 1000 && (!raw || (Number.isFinite(n) && n > 0 && n < 1000))){
+    return String(rp.seq + offset);
+  }
+  return raw;
+}
+
 function __dashRenderActivasHoy(){
   const tbody = document.getElementById("dashActivasTbody");
   if(tbody) tbody.innerHTML = "";
@@ -9247,7 +9321,7 @@ function __dashRenderActivasHoy(){
         <td>${e.peligro||""}</td>
         <td>${ub}</td>
         <td>${e.fechaPeligro||""}</td>
-        <td>${e.numeroGlobal||""}</td>
+        <td>${__dashNumeroGlobalVisible(e)}</td>
         <td>${badge} ${st.name}</td>
         <td class="text-center">
           <button type="button" class="btn btn-sm btn-outline-primary" title="Ver RP/RC"
