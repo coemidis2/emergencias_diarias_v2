@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <!-- BUILD: 2026-02-20 autopull-cooldown-v206-fix-sync-v3 -->
-<script>window.__BUILD_ID='2026-02-20 autopull-cooldown-v206-fix-sync-v3-sync-lock-v231-excel-full-detail';console.log('BUILD',window.__BUILD_ID);</script>
+<script>window.__BUILD_ID='2026-02-20 autopull-cooldown-v206-fix-sync-v3-sync-lock-v232-dashmap-fecha-peligro';console.log('BUILD',window.__BUILD_ID);</script>
 
 <!-- build: VER_PRINT_RC_ALWAYS_VISIBLE v4 2026-01-11 -->
 <meta charset="UTF-8" />
@@ -18,7 +18,7 @@ body { background: #f5f5f5; }
 .card { margin-top: 1rem; }
 .table td input { width: 100%; }
 .hidden { display: none; }
-/* ======= VERSION 231 02/06/2026 - export excel hydrate full detail ======= */
+/* ======= VERSION 232 02/06/2026 - dashmap filtros fecha peligro ======= */
 /* ======= VER (Listado de Emergencias): Formato de visualización/impresión ======= */
 .ver-report-wrap{ font-family: Calibri, Arial, sans-serif; font-size: 11pt; color:#111; }
 .ver-report-title{ font-family: Calibri, Arial, sans-serif; font-size:15pt; font-weight:700; color:#1F4E79; margin:0 0 6px 0; }
@@ -858,8 +858,16 @@ body { background: #f5f5f5; }
               <option value="">(Todos)</option>
             </select>
           </div>
-          <div class="col-md-4">
-            <div class="small text-muted" id="dashMapDeptHint">Seleccione un departamento y/o peligro para acercar el mapa y ver el resumen.</div>
+          <div class="col-md-2">
+            <label class="form-label mb-1">Fecha inicial</label>
+            <input type="date" id="dashMapFechaInicial" class="form-control form-control-sm">
+          </div>
+          <div class="col-md-2">
+            <label class="form-label mb-1">Fecha Final</label>
+            <input type="date" id="dashMapFechaFinal" class="form-control form-control-sm">
+          </div>
+          <div class="col-md-12">
+            <div class="small text-muted" id="dashMapDeptHint">Seleccione un departamento, peligro y/o rango de fecha del peligro para acercar el mapa y ver el resumen.</div>
           </div>
         </div>
         <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
@@ -8569,6 +8577,44 @@ function __dashMapGetSelectedPeligro(){
   }catch(e){ return ""; }
 }
 
+function __dashMapDateOnly(v){
+  try{
+    if(!v) return "";
+    const s = String(v).trim();
+    if(!s) return "";
+    const m = s.match(/^(\d{4}-\d{2}-\d{2})/);
+    if(m) return m[1];
+    const dmy = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+    if(dmy) return `${dmy[3]}-${String(dmy[2]).padStart(2,"0")}-${String(dmy[1]).padStart(2,"0")}`;
+    const d = new Date(s);
+    if(!isNaN(d.getTime())) return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+  }catch(e){}
+  return "";
+}
+
+function __dashMapGetFechaInicial(){
+  try{ return String(document.getElementById("dashMapFechaInicial")?.value || "").trim(); }
+  catch(e){ return ""; }
+}
+
+function __dashMapGetFechaFinal(){
+  try{ return String(document.getElementById("dashMapFechaFinal")?.value || "").trim(); }
+  catch(e){ return ""; }
+}
+
+function __dashMapFechaPeligroInRange(e){
+  try{
+    const desde = __dashMapGetFechaInicial();
+    const hasta = __dashMapGetFechaFinal();
+    if(!desde && !hasta) return true;
+    const f = __dashMapDateOnly(e && (e.fechaPeligro || e.fechaDelPeligro || e.fechaEvento || e.fecha));
+    if(!f) return false;
+    if(desde && f < desde) return false;
+    if(hasta && f > hasta) return false;
+    return true;
+  }catch(err){ return true; }
+}
+
 function __dashCurrentDaniosMidis(e){
   try{
     const rcList = (typeof __getRCList === "function") ? __getRCList(e) : [];
@@ -8588,6 +8634,7 @@ function __dashMapApplyDepartamentoFilter(data){
   let out = Array.isArray(data) ? data : [];
   if(dep) out = out.filter(e => __dashNormText(e && e.departamento) === dep);
   if(peligro) out = out.filter(e => __dashNormText(e && e.peligro) === peligro);
+  out = out.filter(e => __dashMapFechaPeligroInRange(e));
   return out;
 }
 
@@ -8653,10 +8700,13 @@ function __dashMapRenderDepartamentoResumen(data){
   __dashMapDeptPager.page = Math.min(Math.max(1, Number(__dashMapDeptPager.page || 1)), totalPages);
 
   const peligroRaw = String(document.getElementById("dashMapPeligro")?.value || "").trim();
+  const fechaIniRaw = String(document.getElementById("dashMapFechaInicial")?.value || "").trim();
+  const fechaFinRaw = String(document.getElementById("dashMapFechaFinal")?.value || "").trim();
   if(hint){
     const depTxt = depRaw ? `Departamento seleccionado: ${depRaw}` : "Todos los departamentos";
     const peligroTxt = peligroRaw ? `Peligro seleccionado: ${peligroRaw}` : "Todos los peligros";
-    hint.textContent = `${depTxt}. ${peligroTxt}. Emergencias mostradas: ${total}.`;
+    const fechaTxt = (fechaIniRaw || fechaFinRaw) ? `Fecha del peligro: ${fechaIniRaw || "inicio"} a ${fechaFinRaw || "fin"}` : "Todas las fechas del peligro";
+    hint.textContent = `${depTxt}. ${peligroTxt}. ${fechaTxt}. Emergencias mostradas: ${total}.`;
   }
 
   if(!total){
@@ -9414,7 +9464,12 @@ function __dashBuildRenderSignature(){
     let impacto = "";
     try{ impacto = __dashGetImpactoGroupBy ? __dashGetImpactoGroupBy() : ""; }catch(_e){}
     let mapExtra = "";
-    try{ mapExtra = [document.getElementById("dashMapDepartamento")?.value || "", document.getElementById("dashMapPeligro")?.value || ""].join("|"); }catch(_e){}
+    try{ mapExtra = [
+      document.getElementById("dashMapDepartamento")?.value || "",
+      document.getElementById("dashMapPeligro")?.value || "",
+      document.getElementById("dashMapFechaInicial")?.value || "",
+      document.getElementById("dashMapFechaFinal")?.value || ""
+    ].join("|"); }catch(_e){}
     return [arr.length, maxUpd, f, impacto, Array.from(__dashMapStatusEnabled || []).sort().join(","), mapExtra].join("||");
   }catch(e){
     return String(Date.now());
@@ -9478,6 +9533,16 @@ document.addEventListener("DOMContentLoaded", ()=>{
   });
 
   document.getElementById("dashMapPeligro")?.addEventListener("change", ()=>{
+    __dashMapDeptPager.page = 1;
+    dashboardRefresh({force:true});
+  });
+
+  document.getElementById("dashMapFechaInicial")?.addEventListener("change", ()=>{
+    __dashMapDeptPager.page = 1;
+    dashboardRefresh({force:true});
+  });
+
+  document.getElementById("dashMapFechaFinal")?.addEventListener("change", ()=>{
     __dashMapDeptPager.page = 1;
     dashboardRefresh({force:true});
   });
