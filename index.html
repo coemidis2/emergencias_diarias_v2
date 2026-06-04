@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <!-- BUILD: 2026-02-20 autopull-cooldown-v206-fix-sync-v3 -->
-<script>window.__BUILD_ID='2026-02-20 autopull-cooldown-v206-fix-sync-v3-sync-lock-v242-dashboard-excel-eventos';console.log('BUILD',window.__BUILD_ID);</script>
+<script>window.__BUILD_ID='2026-02-20 autopull-cooldown-v206-fix-sync-v3-sync-lock-v243-dashboard-impacto-excel-align';console.log('BUILD',window.__BUILD_ID);</script>
 
 <!-- build: VER_PRINT_RC_ALWAYS_VISIBLE v4 2026-01-11 -->
 <meta charset="UTF-8" />
@@ -18,9 +18,9 @@ body { background: #f5f5f5; }
 .card { margin-top: 1rem; }
 .table td input { width: 100%; }
 .hidden { display: none; }
-/* ======= VERSION 242 04/06/2026 - Estabilidad modal Ver: evita cuelgue por instancias/backdrops duplicados ======= */
+/* ======= VERSION 243 04/06/2026 - Estabilidad modal Ver: evita cuelgue por instancias/backdrops duplicados ======= */
 .ver-detail-loading{display:flex;align-items:center;gap:.5rem;}
-/* ======= VERSION 242 04/06/2026 - Detalle emergencia: N° Global saneado ======= */
+/* ======= VERSION 243 04/06/2026 - Detalle emergencia: N° Global saneado ======= */
 /* ======= VER (Listado de Emergencias): Formato de visualización/impresión ======= */
 .ver-report-wrap{ font-family: Calibri, Arial, sans-serif; font-size: 11pt; color:#111; }
 .ver-report-title{ font-family: Calibri, Arial, sans-serif; font-size:15pt; font-weight:700; color:#1F4E79; margin:0 0 6px 0; }
@@ -6103,7 +6103,267 @@ async function __printRC_PDF(idxOpt){
       return;
     }
     w.document.open();
-    w.document.write(`<html><head><title>${titulo}</title>${styles}</head><body>${header}<div id="printRoot">${clone.innerHTML}</div></body></html>`);
+    w.document.write(`<html><head><title>${titulo}</title>${styles}</head><body>${header}<div id="printRoot">${clone.innerHTML}</div>
+
+<script>
+// ======= VERSION 243: Dashboard - Impacto MIDIS alineado con Exportar Excel =======
+// Alcance: SOLO Dashboard. No toca Listado, RP, RC, usuarios ni sincronización.
+(function(){
+  const __oldDashboardRefreshV243 = window.dashboardRefresh;
+
+  function n(v){ const x = Number(v || 0); return Number.isFinite(x) ? x : 0; }
+  function norm(v){
+    try{ return String(v || '').normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim().toUpperCase().replace(/\s+/g,' '); }
+    catch(_e){ return String(v || '').trim().toUpperCase(); }
+  }
+  function esc(v){
+    try{ if(typeof __dashHtmlEscape === 'function') return __dashHtmlEscape(v); }catch(_e){}
+    return String(v ?? '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
+  }
+  function isDeleted(em){ try{ return (typeof __isDeleted === 'function') ? __isDeleted(em) : false; }catch(_e){ return false; } }
+  function isSeguimiento(em){
+    try{
+      const vals = [em?.tipo, em?.modulo, em?.origen, em?.source, em?.vista, em?.seccion].map(v => String(v || '').toLowerCase());
+      return vals.some(v => v.includes('seguimiento'));
+    }catch(_e){ return false; }
+  }
+  function parseObj(o){
+    if(typeof o === 'string'){
+      try{ o = JSON.parse(o); }catch(_e){ o = {}; }
+    }
+    return (o && typeof o === 'object') ? o : {};
+  }
+  function firstObj(){
+    for(let i=0;i<arguments.length;i++){
+      const o = parseObj(arguments[i]);
+      if(o && typeof o === 'object' && Object.keys(o).length) return o;
+    }
+    return {};
+  }
+  function programKey(k){
+    const x = norm(k);
+    if(x.includes('CUNA')) return 'CUNA MAS';
+    if(x.includes('PENSION')) return 'PENSION 65';
+    if(x.includes('ALIMENTACION')) return 'ALIMENTACION ESCOLAR';
+    if(x.includes('CONTIGO')) return 'CONTIGO';
+    if(x.includes('FONCODES')) return 'FONCODES';
+    if(x.includes('JUNTOS')) return 'JUNTOS';
+    if(x.includes('PAIS')) return 'PAIS';
+    if(x === 'PCA' || x.includes('COMPLEMENTACION')) return 'PCA';
+    return x || 'SIN DATO';
+  }
+  function progList(){
+    return (Array.isArray(window.programas) && window.programas.length)
+      ? window.programas
+      : ['Contigo','CUNA MAS','FONCODES','JUNTOS','PAIS','PENSION 65','PCA','ALIMENTACION ESCOLAR'];
+  }
+  function progLabel(p){
+    return String(p || '').replace('CUNA MAS','CUNA MÁS').replace('PENSION 65','PENSIÓN 65').replace('ALIMENTACION ESCOLAR','ALIMENTACIÓN ESCOLAR');
+  }
+  function progData(dm, p){
+    dm = parseObj(dm);
+    const want = programKey(p);
+    const out = {ua:0, sa:0, ups:0, uf:0, ma:0};
+    Object.keys(dm || {}).forEach(k => {
+      if(programKey(k) !== want) return;
+      const d = dm[k] || {};
+      out.ua  += n(d.usuariosAfectados ?? d.ua ?? d.usuarios_afectados);
+      out.sa  += n(d.serviciosAfectados ?? d.sa ?? d.servicios_afectados);
+      out.ups += n(d.usuariosPorServicios ?? d.ups ?? d.usuarios_por_servicios);
+      out.uf  += n(d.usuariosFallecidos ?? d.uf ?? d.fallecidos ?? d.usuarios_fallecidos);
+      out.ma  += n(d.moduloAfectado ?? d.modulosAfectados ?? d.ma ?? d.modulos_afectados);
+    });
+    return out;
+  }
+  function totalsFromDanios(dm){
+    const t = {ua:0, sa:0, ups:0, uf:0, ma:0};
+    progList().forEach(p => {
+      const d = progData(dm, p);
+      t.ua += d.ua; t.sa += d.sa; t.ups += d.ups; t.uf += d.uf; t.ma += d.ma;
+    });
+    return t;
+  }
+  function getDaniosExcelLike(em){
+    // Misma fuente base usada por Exportar Excel: matriz MIDIS consolidada del registro.
+    // Si el registro llega como resumen sin matriz, se toma la última matriz RC disponible como respaldo visual.
+    let dm = firstObj(em?.daniosMIDIS, em?.dañosMIDIS, em?.danosMIDIS, em?.daniosSector, em?.daniosSectorMidis, em?.daniosSectorDesarrollo);
+    let t = totalsFromDanios(dm);
+    if((t.ua + t.sa + t.ups + t.uf + t.ma) > 0) return dm;
+
+    let rcs = em?.rcReportes;
+    if(typeof rcs === 'string'){ try{ rcs = JSON.parse(rcs); }catch(_e){ rcs = []; } }
+    if(Array.isArray(rcs) && rcs.length){
+      for(let i=rcs.length-1; i>=0; i--){
+        const rc = rcs[i] || {};
+        const cand = firstObj(rc.daniosMIDIS, rc.dañosMIDIS, rc.danosMIDIS, rc.daniosSector, rc.daniosSectorMidis, rc.daniosSectorDesarrollo);
+        const tt = totalsFromDanios(cand);
+        if((tt.ua + tt.sa + tt.ups + tt.uf + tt.ma) > 0) return cand;
+      }
+    }
+    return dm;
+  }
+  function ymdFromAny(raw){
+    raw = String(raw || '').trim();
+    if(!raw) return '';
+    const m = raw.match(/^(\d{4}-\d{2}-\d{2})/);
+    if(m) return m[1];
+    const d = new Date(raw);
+    if(isNaN(d.getTime())) return '';
+    const mm = String(d.getMonth()+1).padStart(2,'0');
+    const dd = String(d.getDate()).padStart(2,'0');
+    return `${d.getFullYear()}-${mm}-${dd}`;
+  }
+  function fechaElab(em){ return ymdFromAny(em?.fechaHora || em?.fechaElaboracion || em?.fechaRegistro || em?.createdAt || em?.__serverCreatedAt); }
+  function fechaEvento(em){ return ymdFromAny(em?.fechaPeligro); }
+  function currentFiltered(){
+    const tipo = document.getElementById('dashTipoFecha')?.value || 'evento';
+    const desde = String(document.getElementById('dashDesde')?.value || '').trim();
+    const hasta = String(document.getElementById('dashHasta')?.value || '').trim();
+    const solo = !!document.getElementById('dashSoloMidis')?.checked;
+    const base = (Array.isArray(window.emergencias) ? window.emergencias : []).filter(em => em && !isDeleted(em) && !isSeguimiento(em));
+    return base.filter(em => {
+      const f = (tipo === 'registro') ? fechaElab(em) : fechaEvento(em);
+      if((desde || hasta) && !f) return false;
+      if(desde && f < desde) return false;
+      if(hasta && f > hasta) return false;
+      if(solo){ const t = totalsFromDanios(getDaniosExcelLike(em)); if((t.ua+t.sa+t.ups+t.uf+t.ma) <= 0) return false; }
+      return true;
+    });
+  }
+  function needsDetail(em){
+    try{
+      if(!em || !em.codigo || em.__detailHydratedAt) return false;
+      if(typeof __syncIsSummaryOnly === 'function' && __syncIsSummaryOnly(em)) return true;
+      if(em.__summaryOnly || em.__needsDetail) return true;
+      const t = totalsFromDanios(getDaniosExcelLike(em));
+      return (t.ua + t.sa + t.ups + t.uf + t.ma) === 0 && !(em.daniosMIDIS || em.dañosMIDIS || em.danosMIDIS);
+    }catch(_e){ return false; }
+  }
+  async function hydrateDashboard(list){
+    if(typeof __ensureFullEmergencia !== 'function') return list;
+    const arr = Array.isArray(list) ? list.slice() : [];
+    const jobs = arr.map((em,i)=>({em,i})).filter(x => needsDetail(x.em));
+    if(!jobs.length) return arr;
+    let cur = 0;
+    const workers = Array.from({length: Math.min(8, jobs.length)}, async () => {
+      while(cur < jobs.length){
+        const job = jobs[cur++];
+        try{
+          const full = await __ensureFullEmergencia(job.em.codigo);
+          if(full){
+            arr[job.i] = full;
+            try{
+              const idx = window.emergencias.findIndex(e => String(e?.codigo||'') === String(full.codigo||''));
+              if(idx >= 0) window.emergencias[idx] = full;
+            }catch(_e){}
+          }
+        }catch(_e){}
+      }
+    });
+    await Promise.all(workers);
+    return arr;
+  }
+  function ensureChart(ch, id, dual){
+    if(ch) return ch;
+    if(typeof Chart === 'undefined') return null;
+    const el = document.getElementById(id); if(!el) return null;
+    const old = Chart.getChart(el); if(old) return old;
+    const datasets = dual ? [{label:'Servicios afectados', data:[]},{label:'Usuarios por servicios', data:[]}] : [{label:'', data:[]}];
+    return new Chart(el, {type:'bar', data:{labels:[], datasets}, options:{responsive:true, maintainAspectRatio:false, animation:false, plugins:{legend:{display:true}}, scales:{y:{beginAtZero:true,ticks:{precision:0}}, x:{ticks:{autoSkip:false,maxRotation:45}}}}});
+  }
+  function setChart(ch, labels, values, label){
+    if(!ch) return;
+    ch.data.labels = labels;
+    if(!ch.data.datasets[0]) ch.data.datasets[0] = {label:label, data:[]};
+    ch.data.datasets[0].label = label;
+    ch.data.datasets[0].data = values;
+    ch.update();
+    try{ ch.resize(); }catch(_e){}
+  }
+  function renderImpact(data, groupBy){
+    groupBy = groupBy || (document.querySelector('input[name="dashImpactoClasif"]:checked')?.value || 'programa');
+    try{ if(typeof __dashSetImpactoLabels === 'function') __dashSetImpactoLabels(groupBy); }catch(_e){}
+
+    const progs = progList();
+    let labels=[], ua=[], sa=[], ups=[], uf=[];
+    if(groupBy === 'programa'){
+      labels = progs.map(progLabel);
+      ua = progs.map(()=>0); sa = progs.map(()=>0); ups = progs.map(()=>0); uf = progs.map(()=>0);
+      data.forEach(em => {
+        const dm = getDaniosExcelLike(em);
+        progs.forEach((p,i) => { const d = progData(dm,p); ua[i]+=d.ua; sa[i]+=d.sa; ups[i]+=d.ups; uf[i]+=d.uf; });
+      });
+    }else{
+      const map = new Map();
+      data.forEach(em => {
+        const k = String((groupBy === 'evento' ? em?.peligro : em?.departamento) || 'Sin dato').trim() || 'Sin dato';
+        const t = totalsFromDanios(getDaniosExcelLike(em));
+        if(!map.has(k)) map.set(k, {ua:0,sa:0,ups:0,uf:0});
+        const a = map.get(k); a.ua += t.ua; a.sa += t.sa; a.ups += t.ups; a.uf += t.uf;
+      });
+      const entries = Array.from(map.entries()).map(([k,v])=>({k,...v})).sort((a,b)=>(b.ua-a.ua)||(b.sa-a.sa)||a.k.localeCompare(b.k,'es'));
+      labels = entries.map(x=>x.k); ua = entries.map(x=>x.ua); sa = entries.map(x=>x.sa); ups = entries.map(x=>x.ups); uf = entries.map(x=>x.uf);
+    }
+    const totalUA = ua.reduce((a,b)=>a+b,0), totalSA = sa.reduce((a,b)=>a+b,0), totalUPS = ups.reduce((a,b)=>a+b,0), totalUF = uf.reduce((a,b)=>a+b,0);
+    [['dashTotalUsuarios',totalUA],['dashTotalServicios',totalSA],['dashTotalUsuariosPorServicios',totalUPS],['dashTotalFallecidos',totalUF]].forEach(([id,val])=>{ const el=document.getElementById(id); if(el) el.textContent=String(val); });
+
+    window.dashChartUsuariosProg = ensureChart(window.dashChartUsuariosProg, 'dashChartUsuariosProg', false);
+    window.dashChartServiciosProg = ensureChart(window.dashChartServiciosProg, 'dashChartServiciosProg', true);
+    window.dashChartAfectProg = ensureChart(window.dashChartAfectProg, 'dashChartAfectProg', false);
+    setChart(window.dashChartUsuariosProg, labels, ua, 'Usuarios afectados');
+    if(window.dashChartServiciosProg){
+      window.dashChartServiciosProg.data.labels = labels;
+      window.dashChartServiciosProg.data.datasets = [{label:'Servicios afectados', data:sa},{label:'Usuarios por servicios', data:ups}];
+      window.dashChartServiciosProg.update();
+      try{ window.dashChartServiciosProg.resize(); }catch(_e){}
+    }
+    setChart(window.dashChartAfectProg, labels, uf, 'Usuarios fallecidos');
+  }
+  function renderAfectaTable(data){
+    const tbody = document.getElementById('dashAfectaMidisTbody');
+    if(!tbody) return;
+    const list = data.filter(em => { const t=totalsFromDanios(getDaniosExcelLike(em)); return (t.ua+t.sa+t.ups+t.uf+t.ma)>0; })
+      .sort((a,b)=>String(b.fechaPeligro||'').localeCompare(String(a.fechaPeligro||'')) || String(b.codigo||'').localeCompare(String(a.codigo||'')));
+    try{ if(typeof __dashUpdatePagerUI === 'function' && typeof __dashSliceForPager === 'function'){
+      __dashPagerMidis.size = (typeof __dashReadPageSize === 'function') ? __dashReadPageSize('dashAfectaMidisPageSize', __dashPagerMidis.size || 10) : (__dashPagerMidis.size || 10);
+      var page = __dashSliceForPager(list, __dashPagerMidis);
+      __dashUpdatePagerUI(__dashPagerMidis, list.length, 'dashAfectaMidisPageInfo', 'dashAfectaMidisPrev', 'dashAfectaMidisNext');
+      list.splice(0, list.length, ...page.slice);
+    }}catch(_e){}
+    tbody.innerHTML = '';
+    if(!list.length){ tbody.innerHTML='<tr><td colspan="10" class="text-muted small">Sin emergencias con afectación MIDIS para el filtro seleccionado.</td></tr>'; return; }
+    list.forEach(em => {
+      const st = (typeof __dashGetStatus === 'function') ? __dashGetStatus(em) : {name:em?.cerrada?'Cerrada':'Abierta', color:em?.cerrada?'#198754':'#dc3545'};
+      const t = totalsFromDanios(getDaniosExcelLike(em));
+      tbody.innerHTML += `<tr><td>${esc(em.codigo||'')}</td><td><span class="badge" style="background:${st.color}"> </span> ${esc(st.name)}</td><td>${esc(em.peligro||'')}</td><td>${esc(em.departamento||'')}</td><td>${esc(em.provincia||'')}</td><td>${esc(em.distrito||'')}</td><td>${esc(em.fechaPeligro||'')}</td><td>${t.ua}</td><td>${t.sa}</td><td class="text-center"><button type="button" class="btn btn-sm btn-outline-primary" title="Ver RP/RC" onclick='__openVerByCodigo(${JSON.stringify(String(em.codigo||''))})'>👁</button></td></tr>`;
+    });
+  }
+
+  window.__dashCurrentDaniosMidis = function(em){ return getDaniosExcelLike(em); };
+  window.__dashSumDanios = function(dm){ const t = totalsFromDanios(dm); return {usuarios:t.ua, servicios:t.sa, ups:t.ups, fallecidos:t.uf, modulo:t.ma}; };
+  window.__dashAfectaMidis = function(em){ const t = totalsFromDanios(getDaniosExcelLike(em)); return (t.ua+t.sa+t.ups+t.uf+t.ma)>0; };
+
+  window.dashboardRefresh = async function(opts){
+    try{ if(typeof __oldDashboardRefreshV243 === 'function') __oldDashboardRefreshV243(opts || {}); }catch(_e){}
+    let data = currentFiltered();
+    data = await hydrateDashboard(data);
+    // Refiltra por si la hidratación completó campos de afectación y está activo "Solo MIDIS".
+    data = currentFiltered();
+    const groupBy = document.querySelector('input[name="dashImpactoClasif"]:checked')?.value || 'programa';
+    renderImpact(data, groupBy);
+    renderAfectaTable(data);
+  };
+
+  document.addEventListener('DOMContentLoaded', function(){
+    [600, 1800, 3500].forEach(ms => setTimeout(()=>{ try{ window.dashboardRefresh({force:true}); }catch(_e){} }, ms));
+    document.querySelectorAll('input[name="dashImpactoClasif"]').forEach(el => el.addEventListener('change', ()=>setTimeout(()=>{ try{ window.dashboardRefresh({force:true}); }catch(_e){} }, 100)));
+    document.getElementById('dashBtnAplicar')?.addEventListener('click', ()=>setTimeout(()=>{ try{ window.dashboardRefresh({force:true}); }catch(_e){} }, 150));
+    document.getElementById('dashSoloMidis')?.addEventListener('change', ()=>setTimeout(()=>{ try{ window.dashboardRefresh({force:true}); }catch(_e){} }, 150));
+  });
+})();
+</script>
+
+</body></html>`);
     w.document.close();
     w.focus();
     w.onload = () => { try{ w.print(); }catch(_e){} };
