@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <!-- BUILD: 2026-02-20 autopull-cooldown-v206-fix-sync-v3 -->
-<script>window.__BUILD_ID='2026-02-20 autopull-cooldown-v206-fix-sync-v3-sync-lock-v235-dash-activas-global-fix';console.log('BUILD',window.__BUILD_ID);</script>
+<script>window.__BUILD_ID='2026-02-20 autopull-cooldown-v206-fix-sync-v3-sync-lock-v239-excel-export-fix';console.log('BUILD',window.__BUILD_ID);</script>
 
 <!-- build: VER_PRINT_RC_ALWAYS_VISIBLE v4 2026-01-11 -->
 <meta charset="UTF-8" />
@@ -18,6 +18,8 @@ body { background: #f5f5f5; }
 .card { margin-top: 1rem; }
 .table td input { width: 100%; }
 .hidden { display: none; }
+/* ======= VERSION 237 04/06/2026 - Estabilidad modal Ver: evita cuelgue por instancias/backdrops duplicados ======= */
+.ver-detail-loading{display:flex;align-items:center;gap:.5rem;}
 /* ======= VERSION 236 03/06/2026 - Detalle emergencia: N° Global saneado ======= */
 /* ======= VER (Listado de Emergencias): Formato de visualización/impresión ======= */
 .ver-report-wrap{ font-family: Calibri, Arial, sans-serif; font-size: 11pt; color:#111; }
@@ -266,6 +268,39 @@ body { background: #f5f5f5; }
   .modal-sm,
   .modal-lg,
   .modal-xl{ --bs-modal-width: calc(100vw - .75rem); }
+}
+
+
+/* ======= VERSION 238: Dashboard Impacto MIDIS - visualización completa ======= */
+#dashTab #dashChartUsuariosProg,
+#dashTab #dashChartServiciosProg,
+#dashTab #dashChartAfectProg{
+  height:260px !important;
+  max-height:260px !important;
+}
+#dashTab #dashChartAfectProg{
+  margin-bottom:8px;
+}
+#dashTab #dashAfectaMidisTbody td,
+#dashTab #dashAfectaMidisTbody th{
+  vertical-align:middle;
+}
+#dashTab .dash-impact-chart-box{
+  height:280px;
+  min-height:280px;
+  position:relative;
+}
+@media (max-width: 768px){
+  #dashTab #dashChartUsuariosProg,
+  #dashTab #dashChartServiciosProg,
+  #dashTab #dashChartAfectProg{
+    height:220px !important;
+    max-height:220px !important;
+  }
+  #dashTab .dash-impact-chart-box{
+    height:240px;
+    min-height:240px;
+  }
 }
 
 </style>
@@ -1111,18 +1146,18 @@ body { background: #f5f5f5; }
       <div class="row g-3 mb-3">
         <div class="col-md-6">
           <h5 class="text-primary">Usuarios afectados <span class="text-muted small" id="dashLblUsuariosAfectados">(por programa)</span></h5>
-          <canvas id="dashChartUsuariosProg"></canvas>
+          <div class="dash-impact-chart-box"><canvas id="dashChartUsuariosProg"></canvas></div>
         </div>
         <div class="col-md-6">
           <h5 class="text-primary">Servicios afectados y usuarios por servicios <span class="text-muted small" id="dashLblServiciosUsuarios">(por programa)</span></h5>
-          <canvas id="dashChartServiciosProg"></canvas>
+          <div class="dash-impact-chart-box"><canvas id="dashChartServiciosProg"></canvas></div>
         </div>
       </div>
 
       <!-- 4. Histograma de afectación de programas nacionales (N° emergencias) -->
       <div class="mb-3">
         <h5 class="text-primary">Usuarios fallecidos <span class="text-muted small" id="dashLblFallecidos">(por programa)</span></h5>
-        <canvas id="dashChartAfectProg"></canvas>
+        <div class="dash-impact-chart-box"><canvas id="dashChartAfectProg"></canvas></div>
       </div>
 
       <!-- 5. Emergencias que afectan MIDIS -->
@@ -4034,6 +4069,7 @@ function __renderSyncConflictsTable(){
 
 // ===================== INIT AUTH UI =====================
 document.addEventListener("DOMContentLoaded", ()=>{
+  try{ __initVerModalStabilityOnce(); }catch(e){}
   // Bootstrap auth
   __bootstrapAuth();
 
@@ -5317,8 +5353,12 @@ window.__COBERTURA_PROGRAMAS_CACHE = window.__COBERTURA_PROGRAMAS_CACHE || null;
 async function __loadCoberturaProgramas(){
   // Cache en memoria para no hacer múltiples fetch
   if(window.__COBERTURA_PROGRAMAS_CACHE) return window.__COBERTURA_PROGRAMAS_CACHE;
-  const url = 'cobertura_programas.json?v=' + Date.now(); // bust cache
-  const res = await fetch(url, { cache: 'no-store' });
+  const url = 'cobertura_programas.json?v=202605';
+  const controller = new AbortController();
+  const t = setTimeout(()=>controller.abort(), 10000);
+  let res;
+  try{ res = await fetch(url, { cache: 'force-cache', signal: controller.signal }); }
+  finally{ clearTimeout(t); }
   if(!res.ok) throw new Error('No se pudo cargar cobertura_programas.json');
   const data = await res.json();
   // Esperado: { version, labels, rows }
@@ -5422,6 +5462,70 @@ async function __renderCoberturaAnexo(em, containerId){
 }
 
 // ===================== FUNCIÓN VER EMERGENCIA CERRADA =====================
+
+// ======= FIX v237: Modal Ver estable (evita backdrops/instancias duplicadas y doble apertura) =======
+window.__VER_MODAL_OPENING__ = window.__VER_MODAL_OPENING__ || false;
+window.__DETAIL_FETCH_PROMISES__ = window.__DETAIL_FETCH_PROMISES__ || {};
+
+function __getVerModalInstance(){
+  try{
+    const modalEl = document.getElementById("modalVerEmergencia");
+    if(!modalEl || !window.bootstrap) return null;
+    return bootstrap.Modal.getOrCreateInstance(modalEl, { backdrop:true, keyboard:true, focus:true });
+  }catch(e){ return null; }
+}
+
+function __showVerModalSafe(){
+  try{
+    const inst = __getVerModalInstance();
+    if(inst) inst.show();
+  }catch(e){}
+}
+
+function __cleanupVerModalBackdrops(){
+  try{
+    // Bootstrap a veces deja el body bloqueado si se abre el mismo modal mientras otro show/hide está en curso.
+    const modalEl = document.getElementById("modalVerEmergencia");
+    const anyShown = document.querySelector('.modal.show');
+    if(anyShown) return;
+    document.body.classList.remove('modal-open');
+    document.body.style.removeProperty('overflow');
+    document.body.style.removeProperty('padding-right');
+    document.querySelectorAll('.modal-backdrop').forEach(b=>b.remove());
+    if(modalEl) modalEl.removeAttribute('aria-hidden');
+  }catch(e){}
+}
+
+function __initVerModalStabilityOnce(){
+  try{
+    if(window.__VER_MODAL_STABILITY_INIT__) return;
+    window.__VER_MODAL_STABILITY_INIT__ = true;
+    const modalEl = document.getElementById("modalVerEmergencia");
+    if(!modalEl) return;
+    modalEl.addEventListener('hidden.bs.modal', ()=>{
+      window.__VER_MODAL_OPENING__ = false;
+      window.__VER_EMERG_ACTUAL = null;
+      window.__VER_WORD_CTX = null;
+      window.__VER_COBERTURA_PROMISE = null;
+      setTimeout(__cleanupVerModalBackdrops, 80);
+    });
+    modalEl.addEventListener('shown.bs.modal', ()=>{
+      window.__VER_MODAL_OPENING__ = false;
+    });
+  }catch(e){}
+}
+
+function __setVerButtonsBusy(busy){
+  try{
+    const modalEl = document.getElementById("modalVerEmergencia");
+    if(!modalEl) return;
+    modalEl.querySelectorAll('.modal-footer button').forEach(b=>{ b.disabled = !!busy; });
+    if(!busy){
+      const closeBtn = modalEl.querySelector('.modal-footer .btn-secondary');
+      if(closeBtn) closeBtn.disabled = false;
+    }
+  }catch(e){}
+}
 function __getAccionesCompArray(rc){
   if(!rc) return [];
   let a = rc.acciones ?? rc.accionesRC ?? rc.accionesComplementario ?? rc.accionesComplementarias ?? rc.accionesComp;
@@ -5778,8 +5882,8 @@ try{
   if(menu) menu.innerHTML = "";
 }catch(_e){}
 
-const modal = new bootstrap.Modal(document.getElementById("modalVerEmergencia"));
-  modal.show();
+__initVerModalStabilityOnce();
+  __showVerModalSafe();
 }
 
 
@@ -8465,10 +8569,18 @@ function __dashInitIfNeeded(){
     return;
   }
 
-  const mkBar = (el, label) => new Chart(el, {
+  const mkBar = (el, label, extraOptions={}) => new Chart(el, {
     type:"bar",
     data:{labels:[], datasets:[{label, data:[]}]},
-    options:{responsive:true}
+    options:Object.assign({
+      responsive:true,
+      maintainAspectRatio:false,
+      plugins:{legend:{display:true}},
+      scales:{
+        x:{ticks:{autoSkip:false, maxRotation:45, minRotation:0}},
+        y:{beginAtZero:true, ticks:{precision:0}}
+      }
+    }, extraOptions || {})
   });
 
   if(!dashChartEvento) dashChartEvento = mkBar(document.getElementById("dashChartEvento"), "Emergencias");
@@ -8492,9 +8604,9 @@ function __dashInitIfNeeded(){
         });
       }
     }
-    if(!dashChartUsuariosProg) dashChartUsuariosProg = mkBar(document.getElementById("dashChartUsuariosProg"), "Usuarios afectados");
-  if(!dashChartServiciosProg) dashChartServiciosProg = mkBar(document.getElementById("dashChartServiciosProg"), "Servicios afectados");
-  if(!dashChartAfectProg) dashChartAfectProg = mkBar(document.getElementById("dashChartAfectProg"), "N° emergencias");
+    if(!dashChartUsuariosProg) dashChartUsuariosProg = mkBar(document.getElementById("dashChartUsuariosProg"), "Usuarios afectados", {scales:{x:{ticks:{autoSkip:false, maxRotation:45, minRotation:0}}, y:{beginAtZero:true, ticks:{precision:0}}}});
+  if(!dashChartServiciosProg) dashChartServiciosProg = mkBar(document.getElementById("dashChartServiciosProg"), "Servicios afectados", {scales:{x:{ticks:{autoSkip:false, maxRotation:45, minRotation:0}}, y:{beginAtZero:true, ticks:{precision:0}}}});
+  if(!dashChartAfectProg) dashChartAfectProg = mkBar(document.getElementById("dashChartAfectProg"), "Usuarios fallecidos", {scales:{x:{ticks:{autoSkip:false, maxRotation:45, minRotation:0}}, y:{beginAtZero:true, ticks:{precision:0}}}});
 }
 
 // ======= FIX v226: Mapa Dashboard - todos los estados, coordenadas alternativas y puntos coincidentes visibles =======
@@ -8945,6 +9057,39 @@ function __dashExportActivasHoyWord(){
   table{border-collapse:collapse; width:100%;}
   th,td{border:1px solid #000; padding:6px; vertical-align:top;}
   th{background:#FEE599; color:#1F4E79; font-weight:bold; text-align:center;}
+
+/* ======= VERSION 238: Dashboard Impacto MIDIS - visualización completa ======= */
+#dashTab #dashChartUsuariosProg,
+#dashTab #dashChartServiciosProg,
+#dashTab #dashChartAfectProg{
+  height:260px !important;
+  max-height:260px !important;
+}
+#dashTab #dashChartAfectProg{
+  margin-bottom:8px;
+}
+#dashTab #dashAfectaMidisTbody td,
+#dashTab #dashAfectaMidisTbody th{
+  vertical-align:middle;
+}
+#dashTab .dash-impact-chart-box{
+  height:280px;
+  min-height:280px;
+  position:relative;
+}
+@media (max-width: 768px){
+  #dashTab #dashChartUsuariosProg,
+  #dashTab #dashChartServiciosProg,
+  #dashTab #dashChartAfectProg{
+    height:220px !important;
+    max-height:220px !important;
+  }
+  #dashTab .dash-impact-chart-box{
+    height:240px;
+    min-height:240px;
+  }
+}
+
 </style>
 </head>
 <body>
@@ -9409,6 +9554,14 @@ function __dashSumDanios(daniosMIDIS){
   return {usuarios, servicios, ups, fallecidos};
 }
 
+function __dashResizeImpactCharts(){
+  try{
+    [dashChartUsuariosProg, dashChartServiciosProg, dashChartAfectProg].forEach(ch=>{
+      if(ch && typeof ch.resize === "function") ch.resize();
+    });
+  }catch(e){}
+}
+
 function __dashRenderImpacto(data, groupBy){
   groupBy = groupBy || "programa";
   __dashSetImpactoLabels(groupBy);
@@ -9520,6 +9673,7 @@ function __dashRenderImpacto(data, groupBy){
     dashChartAfectProg.data.datasets[0].data = f;
     dashChartAfectProg.update();
   }
+  __dashResizeImpactCharts();
 }
 
 function __dashRenderAfectaMidisTable(data){
@@ -10947,11 +11101,12 @@ function __showDetailLoadingModal(){
   try{
     const cont = document.getElementById("contenidoVerEmergencia");
     if(cont){
-      cont.innerHTML = '<div class="alert alert-info mb-0"><strong>Cargando detalle completo...</strong><br><span class="small">Consultando la información completa del registro en D1.</span></div>';
+      cont.innerHTML = '<div class="alert alert-info mb-0 ver-detail-loading"><span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span><span><strong>Cargando detalle completo...</strong><br><span class="small">Consultando la información completa del registro en D1.</span></span></div>';
     }
     const modalEl = document.getElementById("modalVerEmergencia");
     if(modalEl && window.bootstrap){
-      bootstrap.Modal.getOrCreateInstance(modalEl).show();
+      __initVerModalStabilityOnce();
+      __showVerModalSafe();
     }
   }catch(e){}
 }
@@ -10972,15 +11127,23 @@ async function __syncFetchDetail(codigo){
   if(!code) throw new Error("codigo_invalido");
   if(!__isApiConfigured()) throw new Error('server_not_configured');
   if(!navigator.onLine) throw new Error('offline');
+  if(window.__DETAIL_FETCH_PROMISES__ && window.__DETAIL_FETCH_PROMISES__[code]) return window.__DETAIL_FETCH_PROMISES__[code];
   const token = __tokenGet();
-  const out = await __api('/sync/detail?codigo=' + encodeURIComponent(code), { method:'GET', token: token });
-  if(out.res && out.res.status === 401) throw new Error('unauthorized');
-  if(out.res && out.res.status === 404) throw new Error('not_found');
-  if(!out.res || !out.res.ok){
-    const err = out.data && out.data.error ? out.data.error : 'detail_failed';
-    throw new Error(err);
-  }
-  return out.data && out.data.record ? out.data.record : null;
+  const p = (async ()=>{
+    const apiPromise = __api('/sync/detail?codigo=' + encodeURIComponent(code), { method:'GET', token: token });
+    const timeoutPromise = new Promise((_, reject)=>setTimeout(()=>reject(new Error('detail_timeout')), 15000));
+    const out = await Promise.race([apiPromise, timeoutPromise]);
+    if(out.res && out.res.status === 401) throw new Error('unauthorized');
+    if(out.res && out.res.status === 404) throw new Error('not_found');
+    if(!out.res || !out.res.ok){
+      const err = out.data && out.data.error ? out.data.error : 'detail_failed';
+      throw new Error(err);
+    }
+    return out.data && out.data.record ? out.data.record : null;
+  })();
+  window.__DETAIL_FETCH_PROMISES__[code] = p;
+  try{ return await p; }
+  finally{ try{ delete window.__DETAIL_FETCH_PROMISES__[code]; }catch(_e){} }
 }
 
 async function __ensureFullEmergencia(objOrCodigo){
@@ -11023,7 +11186,16 @@ async function __withFullEmergencia(objOrCodigo, cb, opts){
     local = arr.find(e => String(e && e.codigo ? e.codigo : '').trim() === code) || (typeof objOrCodigo === 'object' ? objOrCodigo : null);
   }catch(_e){}
 
+  if(options.loadingModal && window.__VER_MODAL_OPENING__ && window.__VER_MODAL_CODE__ === code){
+    return;
+  }
+
   try{
+    if(options.loadingModal){
+      window.__VER_MODAL_OPENING__ = true;
+      window.__VER_MODAL_CODE__ = code;
+      __setVerButtonsBusy(true);
+    }
     if(options.loadingModal && (!local || !__isFullEmergenciaSufficient(local))){
       __showDetailLoadingModal();
     }
@@ -11036,6 +11208,11 @@ async function __withFullEmergencia(objOrCodigo, cb, opts){
       return;
     }
     alert('No se pudo cargar el detalle desde D1: ' + ((e && e.message) ? e.message : e));
+  }finally{
+    if(options.loadingModal){
+      window.__VER_MODAL_OPENING__ = false;
+      __setVerButtonsBusy(false);
+    }
   }
 }
 
@@ -12357,34 +12534,76 @@ async function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO, peligrosS
       return null;
     };
 
+    // FIX v239: Exportar Excel no debe quedarse esperando por hidratación secuencial.
+    // Se identifica mejor cuándo un registro requiere /sync/detail y se hidrata en paralelo controlado.
+    const __hasExcelUsefulText = (...vals)=> !!__firstExcelText(...vals);
+    const __hasExcelUsefulObj = (...vals)=>{
+      const o = __coalesceExcelObject(...vals);
+      if(!o || typeof o !== "object") return false;
+      try{
+        return Object.keys(o).some(k=>{
+          const v = o[k];
+          if(v === null || v === undefined) return false;
+          if(typeof v !== "object") return String(v).trim() !== "";
+          return Object.values(v).some(x=> Number(x||0) !== 0 || String(x||"").trim() !== "");
+        });
+      }catch(_e){ return true; }
+    };
+
     const __needsExcelDetail = (em)=>{
       try{
-        if(!em) return false;
+        if(!em || !em.codigo) return false;
+        if(em.__detailHydratedAt) return false;
         if(typeof __syncIsSummaryOnly === "function" && __syncIsSummaryOnly(em)) return true;
-        return !(
-          __firstExcelText(em.hechos, em.hecho, em.descripcionHechos, em.detalleHechos) ||
-          __firstExcelText(em.daniosOtros, em.dañosOtros, em.danosOtros, em.daniosOtrosSectores, em.danosOtrosSectores) ||
-          __coalesceExcelObject(em.daniosMIDIS, em.dañosMIDIS, em.danosMIDIS, em.daniosSector, em.daniosSectorMidis, em.daniosSectorDesarrollo) ||
-          em.accionesPreliminar || em.accionesRP || em.accionesPreliminares || em.acciones ||
-          (Array.isArray(em.rcReportes) && em.rcReportes.some(rc => rc && !rc.__summaryOnly && (rc.acciones || rc.accionesRC || rc.accionesComplementario || rc.accionesComplementarias || rc.accionesComp || rc.daniosMIDIS)))
-        );
+        if(em.__summaryOnly || em.__needsDetail) return true;
+
+        const hasHechos = __hasExcelUsefulText(em.hechos, em.hecho, em.descripcionHechos, em.detalleHechos, em.descripcion);
+        const hasDaniosOtros = __hasExcelUsefulText(em.daniosOtros, em.dañosOtros, em.danosOtros, em.daniosOtrosSectores, em.danosOtrosSectores, em.afectacionOtrosSectores);
+        const hasDaniosMidis = __hasExcelUsefulObj(em.daniosMIDIS, em.dañosMIDIS, em.danosMIDIS, em.daniosSector, em.daniosSectorMidis, em.daniosSectorDesarrollo);
+        const hasAccPre = !!(em.accionesPreliminar || em.accionesPreliminares || em.accionesRP || em.accionesPreliminarRP || em.accionesSectorPreliminar);
+        const hasRcFull = Array.isArray(em.rcReportes) && em.rcReportes.some(rc => rc && !rc.__summaryOnly && (rc.acciones || rc.accionesRC || rc.accionesComplementario || rc.accionesComplementarias || rc.accionesComp || rc.daniosMIDIS || rc.dañosMIDIS || rc.danosMIDIS));
+
+        // Si faltan campos largos que deberían venir del payload completo, se consulta detalle.
+        return !(hasHechos && (hasDaniosOtros || hasDaniosMidis || hasAccPre || hasRcFull));
       }catch(e){ return false; }
     };
 
     const __hydrateExcelItems = async (selected)=>{
       const arr = Array.isArray(selected) ? selected : [];
-      let fullCount = 0;
+      const queue = [];
       for(let i=0; i<arr.length; i++){
         const em = arr[i];
-        if(!em || !em.codigo || !__needsExcelDetail(em)) continue;
-        try{
-          if(typeof __ensureFullEmergencia === "function"){
-            const full = await __ensureFullEmergencia(em.codigo);
-            if(full){ arr[i] = full; fullCount++; }
+        if(em && em.codigo && __needsExcelDetail(em)) queue.push({i, codigo: em.codigo});
+      }
+      if(queue.length === 0) return 0;
+
+      const btnProgress = document.getElementById("btnDoExportExcelLista");
+      const oldTxtProgress = btnProgress ? btnProgress.textContent : "";
+      let done = 0, fullCount = 0;
+      const concurrency = Math.min(8, queue.length);
+      let cursor = 0;
+
+      const worker = async ()=>{
+        while(cursor < queue.length){
+          const job = queue[cursor++];
+          try{
+            if(btnProgress) btnProgress.textContent = `Cargando detalle ${done + 1}/${queue.length}...`;
+            if(typeof __ensureFullEmergencia === "function"){
+              const full = await __ensureFullEmergencia(job.codigo);
+              if(full){ arr[job.i] = full; fullCount++; }
+            }
+          }catch(_e){
+            // Si un detalle falla, no se detiene toda la exportación; se exporta lo disponible.
+          }finally{
+            done++;
           }
-        }catch(_e){
-          // Si un detalle falla, no se detiene toda la exportación; se exporta lo disponible.
         }
+      };
+
+      try{
+        await Promise.all(Array.from({length: concurrency}, worker));
+      }finally{
+        if(btnProgress) btnProgress.textContent = oldTxtProgress || "Exportar";
       }
       return fullCount;
     };
