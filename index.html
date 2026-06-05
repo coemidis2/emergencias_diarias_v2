@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <!-- BUILD: 2026-02-20 autopull-cooldown-v206-fix-sync-v3 -->
-<script>window.__BUILD_ID='2026-02-20 autopull-cooldown-v206-fix-sync-v3-sync-lock-v240-rp-submit-confirm-d1';console.log('BUILD',window.__BUILD_ID);</script>
+<script>window.__BUILD_ID='2026-02-20 autopull-cooldown-v206-fix-sync-v3';console.log('BUILD',window.__BUILD_ID);</script>
 
 <!-- build: VER_PRINT_RC_ALWAYS_VISIBLE v4 2026-01-11 -->
 <meta charset="UTF-8" />
@@ -18,7 +18,7 @@ body { background: #f5f5f5; }
 .card { margin-top: 1rem; }
 .table td input { width: 100%; }
 .hidden { display: none; }
-/* ======= VERSION 242 05/06/2026 - fix RP approve fresh detail/sync ======= */
+/* ======= VERSION 219 27/05/2026 16:00 hrs - sync startup fix======= */
 /* ======= VER (Listado de Emergencias): Formato de visualización/impresión ======= */
 .ver-report-wrap{ font-family: Calibri, Arial, sans-serif; font-size: 11pt; color:#111; }
 .ver-report-title{ font-family: Calibri, Arial, sans-serif; font-size:15pt; font-weight:700; color:#1F4E79; margin:0 0 6px 0; }
@@ -842,69 +842,6 @@ body { background: #f5f5f5; }
         <span class="badge mx-2" style="background:#fd7e14"> </span> En proceso
         <span class="badge mx-2" style="background:#198754"> </span> Cerrada
       </div>
-
-      <!-- Resumen dinámico por Departamento (solo Mapa de Emergencias) -->
-      <div class="border rounded p-2 mt-2" id="dashMapDeptBox">
-        <div class="row g-2 align-items-end mb-2">
-          <div class="col-md-4">
-            <label class="form-label mb-1">Departamento</label>
-            <select id="dashMapDepartamento" class="form-control form-control-sm">
-              <option value="">(Todos)</option>
-            </select>
-          </div>
-          <div class="col-md-4">
-            <label class="form-label mb-1">Peligro</label>
-            <select id="dashMapPeligro" class="form-control form-control-sm">
-              <option value="">(Todos)</option>
-            </select>
-          </div>
-          <div class="col-md-2">
-            <label class="form-label mb-1">Fecha inicial</label>
-            <input type="date" id="dashMapFechaInicial" class="form-control form-control-sm">
-          </div>
-          <div class="col-md-2">
-            <label class="form-label mb-1">Fecha Final</label>
-            <input type="date" id="dashMapFechaFinal" class="form-control form-control-sm">
-          </div>
-          <div class="col-md-12">
-            <div class="small text-muted" id="dashMapDeptHint">Seleccione un departamento, peligro y/o rango de fecha del peligro para acercar el mapa y ver el resumen.</div>
-          </div>
-        </div>
-        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
-          <div class="d-flex align-items-center gap-2">
-            <span class="small text-muted">Mostrar</span>
-            <select id="dashMapDeptPageSize" class="form-select form-select-sm" style="width:auto;">
-              <option value="5" selected>5</option>
-              <option value="10">10</option>
-              <option value="25">25</option>
-              <option value="50">50</option>
-              <option value="100">100</option>
-            </select>
-            <span class="small text-muted">registros</span>
-          </div>
-          <div class="btn-group btn-group-sm" role="group" aria-label="Paginación resumen departamento">
-            <button id="dashMapDeptPrev" type="button" class="btn btn-outline-secondary">Anterior</button>
-            <button id="dashMapDeptNext" type="button" class="btn btn-outline-secondary">Siguiente</button>
-          </div>
-        </div>
-        <div id="dashMapDeptPageInfo" class="small text-muted mb-1">0 a 0 de 0 registros</div>
-        <div class="table-responsive">
-          <table class="table table-sm table-bordered align-middle mb-0">
-            <thead>
-              <tr>
-                <th>Código</th>
-                <th>Distrito</th>
-                <th>Peligro</th>
-                <th class="text-end">Total usuarios afectados</th>
-                <th class="text-end">Total servicios afectados</th>
-              </tr>
-            </thead>
-            <tbody id="dashMapDeptTbody">
-              <tr><td colspan="5" class="text-muted small">Sin datos para mostrar.</td></tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
       </div>
 
       <!-- ====================== ÁREA 2: EMERGENCIAS DEL DÍA ======================= -->
@@ -1160,7 +1097,7 @@ body { background: #f5f5f5; }
             </div>
 
       
-<small class="text-muted">Usa la información ya cargada en memoria y se actualiza al ingresar a la pestaña o cuando cambian los filtros.</small>
+<small class="text-muted">Se actualiza automáticamente cada 10 segundos y al ingresar a esta pestaña.</small>
     </div>
   </div>
 </div>
@@ -2839,106 +2776,6 @@ function __lastRCAprobEstado(em){
   }catch(e){ return null; }
 }
 
-
-// ======= FIX v225: normalización segura de pendientes RP y coordenadas manuales =======
-function __firstNonEmpty(){
-  for(let i=0;i<arguments.length;i++){
-    const v = arguments[i];
-    if(v === null || v === undefined) continue;
-    const s = String(v).trim();
-    if(s !== "") return s;
-  }
-  return "";
-}
-
-function __rpGlobalValue(em){
-  try{
-    return __firstNonEmpty(
-      em && em.numeroGlobal,
-      em && em.numeroReporte,
-      em && em.numGlobalRP,
-      em && em.numeroGlobalRP,
-      em && em.nroGlobal,
-      em && em.nGlobal
-    );
-  }catch(e){ return ""; }
-}
-
-function __rpEnviadoPorValue(em){
-  try{
-    return __firstNonEmpty(
-      em && em.rpEnviadoPor,
-      em && em.elaboradoPor,
-      em && em.createdBy,
-      em && em.createdByEmail,
-      em && em.ownerEmail,
-      currentUser && currentUser.fullName,
-      currentUser && currentUser.email
-    );
-  }catch(e){ return ""; }
-}
-
-function __rpEnviadoEnValue(em){
-  try{
-    return __firstNonEmpty(
-      em && em.rpEnviadoEn,
-      em && em.updatedAt,
-      em && em.fechaHora,
-      em && em.fechaRegistro,
-      em && em.createdAt
-    );
-  }catch(e){ return ""; }
-}
-
-function __ensureRPGlobalNumber(em){
-  try{
-    if(!em) return "";
-    let n = __rpGlobalValue(em);
-    if(!n){
-      const maxN = (typeof numeroReporteGlobal !== "undefined" ? (Number(numeroReporteGlobal) || 0) : 0);
-      const next = maxN + 1;
-      if(typeof numeroReporteGlobal !== "undefined") numeroReporteGlobal = next;
-      n = String(next);
-    }
-    em.numeroGlobal = n;
-    if(!em.numeroReporte) em.numeroReporte = n;
-    if(!em.numGlobalRP) em.numGlobalRP = n;
-    return n;
-  }catch(e){ return ""; }
-}
-
-function __ensureRPPendingFields(em){
-  try{
-    if(!em) return em;
-    if(String(em.rpAprobEstado || "") === "Pendiente"){
-      const n = __ensureRPGlobalNumber(em);
-      em.numeroGlobal = n || em.numeroGlobal || em.numeroReporte || "";
-      if(!em.numeroReporte) em.numeroReporte = em.numeroGlobal;
-      if(!em.rpEnviadoPor) em.rpEnviadoPor = __rpEnviadoPorValue(em);
-      if(!em.rpEnviadoPorEmail && currentUser && currentUser.email) em.rpEnviadoPorEmail = currentUser.email;
-      if(!em.rpEnviadoEn) em.rpEnviadoEn = __rpEnviadoEnValue(em) || __nowIso();
-    }
-    return em;
-  }catch(e){ return em; }
-}
-
-let __rpCoordsManual = false;
-function __markRPManualCoords(){
-  __rpCoordsManual = true;
-}
-function __resetRPManualCoords(){
-  __rpCoordsManual = false;
-}
-function __setRPCoordsFromUbigeo(lat, lon){
-  const latInput = document.getElementById("latitudRP");
-  const lonInput = document.getElementById("longitudRP");
-  if(latInput) latInput.value = __normCoord(lat);
-  if(lonInput) lonInput.value = __normCoord(lon);
-  __resetRPManualCoords();
-  try{ actualizarMarcadorRP(false); }catch(e){}
-}
-
-
 function __rpEstadoEtiqueta(em){
   const rpSt = (em && em.rpAprobEstado) ? String(em.rpAprobEstado) : "Borrador";
   const rcSt = __lastRCAprobEstado(em);
@@ -3087,16 +2924,13 @@ function __collectPendientes(){
   try{
     (Array.isArray(emergencias)?emergencias:[]).forEach(em=>{
       if(typeof __isDeleted === 'function' && __isDeleted(em)) return;
-
       if(em?.rpAprobEstado === "Pendiente"){
-        __ensureRPPendingFields(em);
-        const rpGlobal = __rpGlobalValue(em);
         out.push({
           type:"RP",
           codigo: em.codigo,
-          detail:`RP N° Global ${rpGlobal || ""}`,
-          enviadoPor: __rpEnviadoPorValue(em),
-          enviadoEn: __rpEnviadoEnValue(em),
+          detail:`RP N° Global ${em.numeroGlobal || ""}`,
+          enviadoPor: em.rpEnviadoPor || em.elaboradoPor || "",
+          enviadoEn: em.rpEnviadoEn || "",
           ref:{kind:"rp", codigo: em.codigo}
         });
       }
@@ -3109,8 +2943,8 @@ function __collectPendientes(){
               type:"RC",
               codigo: em.codigo,
               detail:`RC ${idx+1} N° Global ${rc.numeroGlobal || rc.numeroReporteRC || ""}`,
-              enviadoPor: rc.enviadoPor || rc.elaboradoPor || rc.createdBy || em.elaboradoPor || "",
-              enviadoEn: rc.enviadoEn || rc.updatedAt || rc.fechaRegistro || em.updatedAt || em.fechaHora || "",
+              enviadoPor: rc.enviadoPor || rc.elaboradoPor || "",
+              enviadoEn: rc.enviadoEn || rc.fechaRegistro || "",
               ref:{kind:"rc", codigo: em.codigo, idx}
             });
           }
@@ -3123,8 +2957,8 @@ function __collectPendientes(){
           type:"CIERRE",
           codigo: em.codigo,
           detail:"Solicitud de cierre",
-          enviadoPor: em.cierreSolicitadoPor || em.elaboradoPor || em.createdBy || "",
-          enviadoEn: em.cierreSolicitadoEn || em.updatedAt || em.fechaHora || "",
+          enviadoPor: em.cierreSolicitadoPor || "",
+          enviadoEn: em.cierreSolicitadoEn || "",
           ref:{kind:"cierre", codigo: em.codigo}
         });
       }
@@ -3166,41 +3000,21 @@ function __renderAprobaciones(){
       const ref = JSON.parse(b.getAttribute("data-apr"));
       const code = String(ref && ref.codigo ? ref.codigo : '').trim();
       if(!code) return;
-      b.disabled = true;
-      const oldTxt = b.textContent;
-      try{
-        b.textContent = "Aprobando...";
-        if(ref && ref.kind === "rp"){
-          const res = await __aprobarRPServidorAtomico(code, { source:'modal' });
-          if(res && res.payload){
-            try{ if(emergenciaSeleccionada && String(emergenciaSeleccionada.codigo||'').trim() === code) abrirRP(res.payload); }catch(_e){}
-          }
-          try{ cargarTablaEmergencias?.(); }catch(_e){}
-          try{ dashboardRefresh?.({force:true}); }catch(_e){}
-          try{ __renderAprobaciones(); }catch(_e){}
-          alert((res && res.message) ? res.message : 'Operación finalizada.');
-          return;
-        }
-
-        const target = (Array.isArray(emergencias)?emergencias:[]).find(x=>String(x && x.codigo ? x.codigo : '').trim()===code) || null;
-        const snapshot = target ? JSON.parse(JSON.stringify(target)) : null;
-        try{ if(__isApiConfigured && __isApiConfigured() && navigator.onLine){ await __syncPullAuto({force:true}); } }catch(_e){}
-        __aprobar(ref);
-        __saveEmergencias();
-        __renderAprobaciones();
-        cargarTablaEmergencias?.();
-        dashboardRefresh?.();
-        const res = await __syncCommitCodigo(code, snapshot, {
-          successMessage: 'Aprobación confirmada en servidor.',
-          pendingMessage: 'Aprobación guardada en local. Pendiente de sincronizar.',
-          failurePrefix: 'No se pudo confirmar la aprobación en servidor'
-        });
-        __renderAprobaciones();
-        if(res && res.message) alert(res.message);
-      }finally{
-        b.disabled = false;
-        b.textContent = oldTxt || "Aprobar";
-      }
+      const target = (Array.isArray(emergencias)?emergencias:[]).find(x=>String(x && x.codigo ? x.codigo : '').trim()===code) || null;
+      const snapshot = target ? JSON.parse(JSON.stringify(target)) : null;
+      try{ if(__isApiConfigured && __isApiConfigured() && navigator.onLine){ await __syncPullAuto(); } }catch(_e){}
+      __aprobar(ref);
+      __saveEmergencias();
+      __renderAprobaciones();
+      cargarTablaEmergencias?.();
+      dashboardRefresh?.();
+      const res = await __syncCommitCodigo(code, snapshot, {
+        successMessage: 'Aprobación confirmada en servidor.',
+        pendingMessage: 'Aprobación guardada en local. Pendiente de sincronizar.',
+        failurePrefix: 'No se pudo confirmar la aprobación en servidor'
+      });
+      __renderAprobaciones();
+      if(res && res.message) alert(res.message);
     });
   });
   tbody.querySelectorAll("[data-obs]").forEach(b=>{
@@ -3339,10 +3153,8 @@ function __enviarRP(){
     return;
   }
   em.rpAprobEstado = "Pendiente";
-  __ensureRPGlobalNumber(em);
-  em.rpEnviadoPor = __rpEnviadoPorValue(em) || __getCurrentUserName();
-  em.rpEnviadoPorEmail = currentUser ? currentUser.email : (em.rpEnviadoPorEmail || null);
-  em.rpEnviadoEn = __rpEnviadoEnValue(em) || __nowIso();
+  em.rpEnviadoPor = __getCurrentUserName();
+  em.rpEnviadoEn = __nowIso();
   __audit("ENVIAR_RP_APROBACION", "emergencia", em.codigo, null);
   __saveEmergencias();
   cargarTablaEmergencias();
@@ -4131,23 +3943,10 @@ document.addEventListener("DOMContentLoaded", ()=>{
   });
 
   // Aprobaciones modal
-  // FIX v240: antes de listar pendientes, el Administrador jala la versión vigente desde D1.
-  document.getElementById("btnAprob")?.addEventListener("click", async ()=>{
-    const btn = document.getElementById("btnAprob");
-    const oldTxt = btn ? btn.textContent : "";
-    try{
-      if(btn){ btn.disabled = true; btn.textContent = "Actualizando..."; }
-      if(__isApiConfigured && __isApiConfigured() && navigator.onLine){
-        await __syncPullAuto({ force:true });
-      }
-    }catch(e){
-      console.warn("No se pudo actualizar pendientes desde D1 antes de abrir Aprobaciones.", e);
-    }finally{
-      try{ __renderAprobaciones(); }catch(e){}
-      const modal = new bootstrap.Modal(document.getElementById("modalAprob"));
-      modal.show();
-      if(btn){ btn.disabled = false; btn.textContent = oldTxt || "Aprobaciones"; }
-    }
+  document.getElementById("btnAprob")?.addEventListener("click", ()=>{
+    __renderAprobaciones();
+    const modal = new bootstrap.Modal(document.getElementById("modalAprob"));
+    modal.show();
   });
 
   // Envíos a aprobación
@@ -4158,13 +3957,28 @@ document.addEventListener("DOMContentLoaded", ()=>{
     if(!__isAdmin()) return;
     const codigo = (document.getElementById("codigoRP")?.value || "").trim();
     if(!codigo){ alert("No hay RP cargado."); return; }
-    const res = await __aprobarRPServidorAtomico(codigo, { source:'form-direct' });
+    const em = emergencias.find(e=>e.codigo===codigo);
+    if(!em){ alert("No se encontró la emergencia."); return; }
+    if(em.rpAprobEstado !== "Pendiente"){
+      alert("El RP no está en estado 'Por aprobar'. Primero debe enviarse a aprobación.");
+      return;
+    }
+    const snapshot = JSON.parse(JSON.stringify(em));
+    __aprobar({kind:"rp", codigo});
+    __saveEmergencias();
+    cargarTablaEmergencias();
+    const res = await __syncCommitCodigo(codigo, snapshot, {
+      successMessage: 'RP aprobado en servidor.',
+      pendingMessage: 'RP aprobado en local. Pendiente de sincronizar.',
+      failurePrefix: 'No se pudo confirmar la aprobación del RP en servidor'
+    });
     try{
-      if(res && res.payload){
-        abrirRP(res.payload);
-        if(res.ok && !res.pending) __lockRPFormAdminApproved?.();
-        else __syncRPAdminApproveButtonState(res.payload);
-      }
+      const fresh = emergencias.find(e=>e.codigo===codigo);
+      const apr = document.getElementById("aprobadoRP");
+      if(apr && fresh) apr.value = fresh.rpAprobadoPor || __getApproverName();
+      const btnApr = document.getElementById("btnAprobarRPAdmin");
+      if(btnApr) btnApr.disabled = !!(res.ok && !res.pending);
+      if(res.ok && !res.pending) __lockRPFormAdminApproved?.();
     }catch(e){}
     alert(res.message || 'Operación finalizada.');
   });
@@ -4351,7 +4165,6 @@ function inicializarUbigeo() {
   // Cambio de Departamento -> Provincias
   depSelect.addEventListener("change", () => {
     const dep = depSelect.value;
-    __resetRPManualCoords();
     provSelect.innerHTML = '<option value="">Seleccione...</option>';
     distSelect.innerHTML = '<option value="">Seleccione...</option>';
     latInput.value = "";
@@ -4373,7 +4186,6 @@ function inicializarUbigeo() {
   provSelect.addEventListener("change", () => {
     const dep  = depSelect.value;
     const prov = provSelect.value;
-    __resetRPManualCoords();
     distSelect.innerHTML = '<option value="">Seleccione...</option>';
     latInput.value = "";
     lonInput.value = "";
@@ -4395,7 +4207,6 @@ function inicializarUbigeo() {
     const dep  = depSelect.value;
     const prov = provSelect.value;
     const dist = distSelect.value;
-    __resetRPManualCoords();
     latInput.value = "";
     lonInput.value = "";
 
@@ -4408,7 +4219,9 @@ function inicializarUbigeo() {
     );
 
     if (row) {
-      __setRPCoordsFromUbigeo(row.lat, row.lon);
+      latInput.value = row.lat;
+      lonInput.value = row.lon;
+      actualizarMarcadorRP();
     }
   });
 }
@@ -4682,8 +4495,7 @@ function __initMapRP(){
       const lonEl = document.getElementById("longitudRP");
       if(latEl) latEl.value = lat;
       if(lonEl) lonEl.value = lon;
-      __markRPManualCoords();
-      actualizarMarcadorRP(true);
+      actualizarMarcadorRP();
     });
 
     return true;
@@ -4694,31 +4506,23 @@ function __initMapRP(){
   }
 }
 
-function actualizarMarcadorRP(manual=false) {
+function actualizarMarcadorRP() {
   if(!__initMapRP()) return;
 
   const latEl = document.getElementById("latitudRP");
   const lonEl = document.getElementById("longitudRP");
-  let lat = parseFloat(__normCoord(latEl?.value));
-  let lon = parseFloat(__normCoord(lonEl?.value));
+  let lat = parseFloat(latEl?.value);
+  let lon = parseFloat(lonEl?.value);
 
   if (!isNaN(lat) && !isNaN(lon)) {
-    if(manual) __markRPManualCoords();
     if (markerRP) mapRP.removeLayer(markerRP);
-    markerRP = L.marker([lat, lon], { draggable: true }).addTo(mapRP);
-    markerRP.on("dragend", function(ev){
-      const ll = ev.target.getLatLng();
-      if(latEl) latEl.value = ll.lat.toFixed(6);
-      if(lonEl) lonEl.value = ll.lng.toFixed(6);
-      __markRPManualCoords();
-      try{ mapRP.setView([ll.lat, ll.lng], mapRP.getZoom() || 14); }catch(e){}
-    });
+    markerRP = L.marker([lat, lon]).addTo(mapRP);
     mapRP.setView([lat, lon], 14);
   }
 }
 
-document.getElementById("latitudRP")?.addEventListener("change", ()=>{ __markRPManualCoords(); actualizarMarcadorRP(true); });
-document.getElementById("longitudRP")?.addEventListener("change", ()=>{ __markRPManualCoords(); actualizarMarcadorRP(true); });
+document.getElementById("latitudRP")?.addEventListener("change", actualizarMarcadorRP);
+document.getElementById("longitudRP")?.addEventListener("change", actualizarMarcadorRP);
 
 // Inicializar el mapa cuando se entra a la pestaña RP (evita tamaños 0)
 document.addEventListener("DOMContentLoaded", ()=>{
@@ -4804,7 +4608,6 @@ document.getElementById("btnNuevoRP").onclick = () => {
 
   accionesRPTemp = [];
   cargarAccionesRP();
-  try{ __resetRPManualCoords(); }catch(e){}
   if (markerRP && mapRP) {
     try { mapRP.removeLayer(markerRP); } catch(e) {}
     markerRP = null;
@@ -5181,23 +4984,14 @@ function __saveRP(opts){
   base.elaboradoPor = elaborado;
   base.aprobadoPor  = (String(aprobadoUI||"" ).trim() !== "") ? aprobadoUI : ((existing && (existing.aprobadoPor || existing.rpAprobadoPor)) ? (existing.aprobadoPor || existing.rpAprobadoPor) : "");
 
-  // Garantizar N° Global visible y trazabilidad mínima en RP pendiente
-  if(submit || String(base.rpAprobEstado || "") === "Pendiente"){
-    __ensureRPGlobalNumber(base);
-    if(!base.rpEnviadoPor) base.rpEnviadoPor = __rpEnviadoPorValue(base);
-    if(!base.rpEnviadoPorEmail && currentUser && currentUser.email) base.rpEnviadoPorEmail = currentUser.email;
-    if(!base.rpEnviadoEn) base.rpEnviadoEn = __rpEnviadoEnValue(base) || __nowIso();
-  }
-
   // Enviar a aprobación en la misma acción (Registrador)
   if(submit){
     // Si estaba Observado, se vuelve a enviar como Pendiente
     if(base.rpAprobEstado !== "Pendiente"){
       base.rpAprobEstado = "Pendiente";
-      __ensureRPGlobalNumber(base);
-      base.rpEnviadoPor  = __rpEnviadoPorValue(base) || __getCurrentUserName();
-      base.rpEnviadoPorEmail = currentUser ? currentUser.email : (base.rpEnviadoPorEmail || null);
-      base.rpEnviadoEn   = __rpEnviadoEnValue(base) || __nowIso();
+      base.rpEnviadoPor  = __getCurrentUserName();
+      base.rpEnviadoPorEmail = currentUser ? currentUser.email : null;
+      base.rpEnviadoEn   = __nowIso();
       base.rpObs         = null;
       __audit("GUARDAR_Y_ENVIAR_RP", "emergencia", base.codigo, null);
       __histPush(base, "RP_ENVIADO_APROBACION", null);
@@ -5254,151 +5048,72 @@ document.getElementById("btnGuardarRP").onclick = async () => {
 document.getElementById("btnGuardarAprobarRPAdmin")?.addEventListener("click", async () => {
   if(!(__isAdmin && __isAdmin())) return;
 
-  const btn = document.getElementById("btnGuardarAprobarRPAdmin");
-  const oldTxt = btn ? btn.textContent : "";
-  if(btn){
-    btn.disabled = true;
-    btn.textContent = "Grabando...";
-  }
-
-  let code = "";
   try{
-    const saved = __saveRP({submit:false});
-    if(!saved) return;
-
-    code = (document.getElementById("codigoRP")?.value || "").trim();
-    if(!code){ alert("No hay RP cargado."); return; }
-
-    const localRec = (Array.isArray(emergencias)?emergencias:[]).find(e=>String(e && e.codigo ? e.codigo : '').trim()===code) || null;
-    if(!localRec){ alert("No se encontró la emergencia."); return; }
-
-    if(String(localRec.rpAprobEstado || "") !== "Pendiente"){
-      localRec.rpAprobEstado = "Pendiente";
-      __ensureRPGlobalNumber(localRec);
-      localRec.rpEnviadoPor  = __rpEnviadoPorValue(localRec) || __getCurrentUserName();
-      localRec.rpEnviadoPorEmail = currentUser ? currentUser.email : (localRec.rpEnviadoPorEmail || null);
-      localRec.rpEnviadoEn   = __rpEnviadoEnValue(localRec) || __nowIso();
-      try{ __audit("ENVIAR_RP_APROBACION", "emergencia", localRec.codigo, null); }catch(_e){}
-      try{ __histPush(localRec, "RP_ENVIADO_APROBACION", null); }catch(_e){}
-      try{ __touch(localRec); }catch(_e){}
-      __saveEmergencias();
+    if(__isApiConfigured && __isApiConfigured() && navigator.onLine){
+      await __syncPullAuto();
     }
+  }catch(e){}
 
-    if(btn) btn.textContent = "Aprobando...";
-    const res = await __aprobarRPServidorAtomico(code, { localOverride: localRec, source:'form-save-approve' });
+  const codigo = (document.getElementById("codigoRP")?.value || "").trim();
+  const prev = codigo ? ((Array.isArray(emergencias)?emergencias:[]).find(e=>String(e && e.codigo ? e.codigo : '').trim()===codigo) || null) : null;
+  const snapshot = prev ? JSON.parse(JSON.stringify(prev)) : null;
 
-    try{
-      let fresh = res && res.payload ? res.payload : ((Array.isArray(emergencias)?emergencias:[]).find(e=>String(e && e.codigo ? e.codigo : '').trim()===code) || null);
-      if(fresh){
-        abrirRP(fresh);
-        if(res && res.ok && !res.pending) __lockRPFormAdminApproved?.();
-        else __syncRPAdminApproveButtonState(fresh);
-      }
-    }catch(e){}
+  const saved = __saveRP({submit:false});
+  if(!saved) return;
 
-    alert((res && res.message) ? res.message : 'Operación finalizada.');
-  }catch(e){
-    const msg = (e && e.message) ? e.message : String(e);
-    alert("No se pudo grabar y aprobar el RP: " + msg);
-    try{
-      if(code && __isApiConfigured && __isApiConfigured() && navigator.onLine){
-        const fresh = await __forceServerFullEmergencia(code, { required:false });
-        if(fresh) abrirRP(fresh);
-      }
-    }catch(_e){}
-  }finally{
-    if(btn){
-      btn.textContent = oldTxt || "Grabar y aprobar RP";
-      try{
-        const codeNow = (document.getElementById("codigoRP")?.value || "").trim();
-        const rec = (Array.isArray(emergencias)?emergencias:[]).find(e=>String(e && e.codigo ? e.codigo : '').trim()===codeNow) || null;
-        __syncRPAdminApproveButtonState(rec);
-      }catch(e){ btn.disabled = false; }
-    }
+  const code = (document.getElementById("codigoRP")?.value || "").trim();
+  if(!code){ alert("No hay RP cargado."); return; }
+
+  const em = emergencias.find(e=>String(e && e.codigo ? e.codigo : '').trim()===code);
+  if(!em){ alert("No se encontró la emergencia."); return; }
+
+  if(em.rpAprobEstado !== "Pendiente" && em.rpAprobEstado !== "Aprobado"){
+    em.rpAprobEstado = "Pendiente";
+    em.rpEnviadoPor  = __getCurrentUserName();
+    em.rpEnviadoEn   = __nowIso();
+    __audit("ENVIAR_RP_APROBACION", "emergencia", em.codigo, null);
   }
-});
 
+  if(em.rpAprobEstado === "Pendiente"){
+    __aprobar({kind:"rp", codigo: code});
+  }
+
+  __saveEmergencias();
+  cargarTablaEmergencias();
+
+  const res = await __syncCommitCodigo(code, snapshot, {
+    successMessage: 'Reporte Preliminar guardado y aprobado en servidor.',
+    pendingMessage: 'Reporte Preliminar aprobado en local. Pendiente de sincronizar.',
+    failurePrefix: 'No se pudo confirmar la aprobación del RP en servidor'
+  });
+
+  try{
+    const fresh = emergencias.find(e=>String(e && e.codigo ? e.codigo : '').trim()===code);
+    const apr = document.getElementById("aprobadoRP");
+    if(apr && fresh) apr.value = fresh.rpAprobadoPor || __getApproverName();
+    if(res.ok && !res.pending) __lockRPFormAdminApproved?.();
+  }catch(e){}
+
+  alert(res.message || 'Operación finalizada.');
+});
+;
 
 // Botón Registrador: guarda y envía a aprobación (1 solo botón)
-// FIX v240: no mostrar "enviado" hasta confirmar subida del código en D1.
 document.getElementById("btnGuardarEnviarRP").onclick = async () => {
-  const btn = document.getElementById("btnGuardarEnviarRP");
-  const oldTxt = btn ? btn.textContent : "";
-  let codigo = (document.getElementById("codigoRP")?.value || "").trim();
-  let snapshot = null;
-
   try{
-    if(btn){ btn.disabled = true; btn.textContent = "Validando..."; }
-
-    // Si el RP ya existe, tomar como base la versión oficial completa para evitar enviar sobre hash viejo.
-    if(codigo && __isApiConfigured && __isApiConfigured() && navigator.onLine){
-      try{
-        const fresh = await __forceServerFullEmergencia(codigo, { required:false });
-        if(fresh) snapshot = JSON.parse(JSON.stringify(fresh));
-      }catch(e){
-        console.warn("No se pudo traer detalle vigente antes de enviar RP.", e);
-      }
-    }else if(__isApiConfigured && __isApiConfigured() && navigator.onLine){
-      try{ await __syncPullAuto(); }catch(e){}
+    if(__isApiConfigured && __isApiConfigured() && navigator.onLine){
+      await __syncPullAuto();
     }
+  }catch(e){}
 
-    if(!snapshot && codigo){
-      const prev = (Array.isArray(emergencias)?emergencias:[]).find(e=>String(e && e.codigo ? e.codigo : '').trim()===codigo) || null;
-      if(prev) snapshot = JSON.parse(JSON.stringify(prev));
-    }
-
-    if(btn) btn.textContent = "Guardando...";
-    const saved = __saveRP({submit:true});
-    if(!saved){
-      if(btn){ btn.disabled = false; btn.textContent = oldTxt || "Grabar y enviar a aprobación"; }
-      return;
-    }
-
-    codigo = String(saved.codigo || (document.getElementById("codigoRP")?.value || "")).trim();
-    if(!codigo){
-      alert("RP guardado localmente, pero no se obtuvo el código para sincronizar con el servidor.");
-      return;
-    }
-
-    if(btn) btn.textContent = "Sincronizando...";
-    const res = await __syncCommitCodigo(codigo, snapshot, {
-      successMessage: "RP enviado a aprobación y confirmado en servidor.",
-      pendingMessage: "RP guardado localmente. Pendiente de sincronizar con el servidor. El Administrador aún no lo verá hasta que se confirme en D1.",
-      failurePrefix: "No se pudo enviar el RP al servidor"
-    });
-
+  const saved = __saveRP({submit:true});
+  if(saved){
     try{
-      if(res && res.ok && !res.pending){
-        const fresh = (Array.isArray(emergencias)?emergencias:[]).find(e=>String(e && e.codigo ? e.codigo : '').trim()===codigo) || saved;
-        if(fresh) abrirRP(fresh);
-        try{ __lockRPForm(true); }catch(e){}
-        const b = document.getElementById("btnGuardarEnviarRP");
-        if(b) b.disabled = true;
-      }else if(res && !res.ok){
-        // Si hubo conflicto/rechazo/error, repintar con la versión vigente para no dejar pantalla falsa.
-        let fresh = null;
-        try{
-          if(__isApiConfigured && __isApiConfigured() && navigator.onLine){
-            fresh = await __forceServerFullEmergencia(codigo, { required:false });
-          }
-        }catch(_e){}
-        if(fresh) abrirRP(fresh);
-        else if(snapshot) abrirRP(snapshot);
+      if(__isApiConfigured && __isApiConfigured() && navigator.onLine){
+        await __syncPush();
       }
     }catch(e){}
-
-    alert((res && res.message) ? res.message : "Operación finalizada.");
-  }catch(e){
-    const msg = (e && e.message) ? e.message : String(e);
-    alert("RP guardado localmente, pero no se pudo enviar al servidor. El Administrador aún no lo verá. Detalle: " + msg);
-  }finally{
-    if(btn){
-      btn.textContent = oldTxt || "Grabar y enviar a aprobación";
-      const codeNow = (document.getElementById("codigoRP")?.value || "").trim();
-      const rec = (Array.isArray(emergencias)?emergencias:[]).find(e=>String(e && e.codigo ? e.codigo : '').trim()===codeNow) || null;
-      const locked = !!(rec && (String(rec.rpAprobEstado||"") === "Pendiente" || String(rec.rpAprobEstado||"") === "Aprobado"));
-      btn.disabled = locked;
-    }
+    alert("RP guardado y enviado a aprobación.");
   }
 };
 
@@ -6787,10 +6502,8 @@ async function __cerrarEmergenciasSeleccionadas(){
   let ok = 0, fail = 0;
   const errores = [];
 
-  for(let em of abiertos){
+  for(const em of abiertos){
     const code = String(em && em.codigo ? em.codigo : "").trim();
-    try{ em = await __ensureFullEmergencia(code); }catch(_e){}
-    if(!em){ fail++; errores.push(`${code}: no se pudo cargar detalle.`); continue; }
     const snapshot = JSON.parse(JSON.stringify(em));
     try{
       const sinAfectacionMidis = !__dashAfectaMidis(em);
@@ -6807,7 +6520,7 @@ async function __cerrarEmergenciasSeleccionadas(){
       __histPush(em, "CIERRE_DIRECTO_ADMIN_BULK", { bulk:true });
       __touch(em);
       __saveEmergencias();
-      try{ dashboardRefresh({force:true}); }catch(_e){}
+      try{ dashboardRefresh(); }catch(_e){}
       const res = await __syncCommitCodigo(code, snapshot, {
         successMessage: "Emergencia cerrada en servidor.",
         pendingMessage: "Emergencia cerrada en local. Pendiente de sincronizar.",
@@ -6835,7 +6548,7 @@ async function __cerrarEmergenciasSeleccionadas(){
     }
   }catch(e){}
   try{ cargarTablaEmergencias(); }catch(e){}
-  try{ dashboardRefresh({force:true}); }catch(e){}
+  try{ dashboardRefresh(); }catch(e){}
   __bulkToggleCloseActionBtn();
 
   let msg = `Cierre por bloques finalizado.\n\nConfirmados: ${ok}`;
@@ -7109,7 +6822,7 @@ function cargarTablaEmergencias() {
     // Handlers de botones según disponibilidad
     const btnVer = tr.querySelector(".btnVer");
     if (btnVer && !btnVer.disabled && btnVer.style.display !== "none") {
-      btnVer.onclick = () => __withFullEmergencia(e, (full)=>{ verEmergencia(full); if(__getRCList(full).length>0) __scrollVerToLastRC(); });
+      btnVer.onclick = () => { verEmergencia(e); if(__getRCList(e).length>0) __scrollVerToLastRC(); };
     }
 
     const btnRP = tr.querySelector(".btnRP");
@@ -7134,27 +6847,27 @@ function cargarTablaEmergencias() {
         btnRP.title = "Emergencia cerrada: RP bloqueado";
       }
       if (!btnRP.disabled) {
-        btnRP.onclick = () => __withFreshFullEmergencia(e, (full)=>abrirRP(full));
+        btnRP.onclick = () => abrirRP(e);
       }
     }
 
     const btnRC = tr.querySelector(".btnRC");
     if (btnRC && !btnRC.disabled && btnRC.style.display !== "none") {
-      btnRC.onclick = () => __withFullEmergencia(e, (full)=>abrirRC(full));
+      btnRC.onclick = () => abrirRC(e);
     }
 
     // Admin-only: Modificar / Eliminar
     const btnEditRP = tr.querySelector(".btnEditRP");
     if(btnEditRP && __isAdmin && __isAdmin()){
-      btnEditRP.onclick = () => __withFreshFullEmergencia(e, (full)=>__abrirRPAdminEditarDesdeListado(full));
+      btnEditRP.onclick = () => __abrirRPAdminEditarDesdeListado(e);
     }
     const btnEditRC = tr.querySelector(".btnEditRC");
     if(btnEditRC && __isAdmin && __isAdmin()){
-      btnEditRC.onclick = () => __withFullEmergencia(e, (full)=>__abrirRCAdminEditarDesdeListado(full));
+      btnEditRC.onclick = () => __abrirRCAdminEditarDesdeListado(e);
     }
     const btnDel = tr.querySelector(".btnDel");
     if(btnDel && __isAdmin && __isAdmin()){
-      btnDel.onclick = () => __withFullEmergencia(e, (full)=>__adminDeleteEmergencia(full.codigo));
+      btnDel.onclick = () => __adminDeleteEmergencia(e.codigo);
     }
 
     const chkBulk = tr.querySelector('.chk-bulk-close');
@@ -7221,7 +6934,7 @@ async function __adminDeleteEmergencia(codigo){
     __saveEmergencias();
     try{ if(emergenciaSeleccionada && String(emergenciaSeleccionada.codigo||"").trim()===cod) emergenciaSeleccionada = null; }catch(e){}
     try{ cargarTablaEmergencias(); }catch(e){}
-    try{ dashboardRefresh({force:true}); }catch(e){}
+    try{ dashboardRefresh(); }catch(e){}
     try{ __calcPending(); }catch(e){}
 
     const syncRes = await __syncCommitCodigo(cod, snapshot, {
@@ -7562,12 +7275,11 @@ try{
   }
 }catch(e){}
 
-    // Botones de aprobación Admin: estado limpio según el RP real cargado
+    // Botón aprobar (admin) habilitado solo si RP está pendiente
   const btnApr = document.getElementById("btnAprobarRPAdmin");
   if(btnApr){
     btnApr.disabled = !(__isAdmin() && obj.rpAprobEstado === "Pendiente");
   }
-  try{ __syncRPAdminApproveButtonState(obj); }catch(e){}
 
   // Admin: si el RP ya está aprobado, bloquear todos los campos (solo Retornar activo)
   try{
@@ -8479,101 +8191,31 @@ function __dashGetStatus(e){
   return {name:"En proceso", color:"#fd7e14"};
 }
 
-function __dashNum(v){
-  if(v === null || v === undefined || v === "") return 0;
-  const n = Number(String(v).replace(",", "."));
-  return Number.isFinite(n) ? n : 0;
-}
-
-function __dashNumAny(){
-  for(let i=0; i<arguments.length; i++){
-    const v = arguments[i];
-    if(v === null || v === undefined || v === "") continue;
-    const n = __dashNum(v);
-    if(Number.isFinite(n)) return n;
-  }
-  return 0;
-}
-
-function __dashParseMaybeJson(v){
-  if(!v) return v;
-  if(typeof v === "object") return v;
-  if(typeof v === "string"){
-    const t = v.trim();
-    if(!t) return null;
-    if((t.startsWith("{") && t.endsWith("}")) || (t.startsWith("[") && t.endsWith("]"))){
-      try{ return JSON.parse(t); }catch(_e){}
-    }
-  }
-  return v;
-}
-
-function __dashFirstObject(){
-  for(let i=0; i<arguments.length; i++){
-    const o = __dashParseMaybeJson(arguments[i]);
-    if(o && typeof o === "object" && !Array.isArray(o)) return o;
-  }
-  return null;
-}
-
-function __dashDanioVal(d, field){
-  d = (d && typeof d === "object") ? d : {};
-  if(field === "usuariosAfectados") return __dashNumAny(d.usuariosAfectados, d.usuarios_afectados, d.usuarios, d.ua, d.UA);
-  if(field === "serviciosAfectados") return __dashNumAny(d.serviciosAfectados, d.servicios_afectados, d.servicios, d.sa, d.SA);
-  if(field === "usuariosPorServicios") return __dashNumAny(d.usuariosPorServicios, d.usuarios_por_servicios, d.usuariosServicios, d.uas, d.ups, d.UPS, d.UAS);
-  if(field === "usuariosFallecidos") return __dashNumAny(d.usuariosFallecidos, d.usuarios_fallecidos, d.fallecidos, d.uf, d.UF);
-  if(field === "moduloAfectado") return __dashNumAny(d.moduloAfectado, d.modulo_afectado, d.modulosAfectados, d.ma, d.MA);
-  return 0;
-}
-
-function __dashNormProgramaKey(k){
-  return String(k || "")
-    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
-    .toUpperCase()
-    .replace(/Ñ/g, "N")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function __dashPickProgramaDanio(dm, prog){
-  if(!dm || !prog) return null;
-  const keys = Object.keys(dm || {});
-  const wanted = [
-    __dashNormProgramaKey(prog.key),
-    __dashNormProgramaKey(prog.label)
-  ];
-  const found = keys.find(k => wanted.includes(__dashNormProgramaKey(k)));
-  return found ? (dm[found] || null) : null;
-}
-
 function __dashTotalesMidis(daniosMIDIS){
-  let usuarios=0, servicios=0, ups=0, fallecidos=0;
-  daniosMIDIS = __dashParseMaybeJson(daniosMIDIS);
-  if(!daniosMIDIS || typeof daniosMIDIS !== "object") return {usuarios, servicios, ups, fallecidos};
+  let usuarios=0, servicios=0, fallecidos=0;
+  if(!daniosMIDIS) return {usuarios, servicios, fallecidos};
 
   Object.keys(daniosMIDIS).forEach(k=>{
     const d = daniosMIDIS[k] || {};
-    usuarios += __dashDanioVal(d, "usuariosAfectados");
-    servicios += __dashDanioVal(d, "serviciosAfectados");
-    ups += __dashDanioVal(d, "usuariosPorServicios");
-    fallecidos += __dashDanioVal(d, "usuariosFallecidos");
+    usuarios += Number(d.usuariosAfectados || 0);
+    servicios += Number(d.serviciosAfectados || 0);
+    fallecidos += Number(d.usuariosFallecidos || 0);
   });
-  return {usuarios, servicios, ups, fallecidos};
+  return {usuarios, servicios, fallecidos};
 }
 
 function __dashProgramaTieneAfectacion(d){
   if(!d) return false;
-  return (__dashDanioVal(d, "usuariosAfectados") > 0) ||
-         (__dashDanioVal(d, "serviciosAfectados") > 0) ||
-         (__dashDanioVal(d, "usuariosPorServicios") > 0) ||
-         (__dashDanioVal(d, "usuariosFallecidos") > 0) ||
-         (__dashDanioVal(d, "moduloAfectado") > 0);
+  return (Number(d.usuariosAfectados||0) > 0) ||
+         (Number(d.serviciosAfectados||0) > 0) ||
+         (Number(d.usuariosPorServicios||0) > 0) ||
+         (Number(d.usuariosFallecidos||0) > 0) ||
+         (Number(d.moduloAfectado||0) > 0);
 }
 
 function __dashAfectaMidis(e){
-  const dm = __dashCurrentDaniosMidis(e);
-  if(!dm || typeof dm !== "object") return false;
-  return Object.keys(dm).some(k => __dashProgramaTieneAfectacion(dm[k]));
+  if(!e || !e.daniosMIDIS) return false;
+  return Object.keys(e.daniosMIDIS).some(k => __dashProgramaTieneAfectacion(e.daniosMIDIS[k]));
 }
 
 function __dashInRange(d, desde, hasta){
@@ -8662,420 +8304,17 @@ function __dashInitIfNeeded(){
   if(!dashChartAfectProg) dashChartAfectProg = mkBar(document.getElementById("dashChartAfectProg"), "N° emergencias");
 }
 
-// ======= FIX v226: Mapa Dashboard - todos los estados, coordenadas alternativas y puntos coincidentes visibles =======
-function __dashNormText(v){
-  try{
-    return String(v || "")
-      .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
-      .trim().toUpperCase();
-  }catch(e){ return String(v || "").trim().toUpperCase(); }
-}
-
-function __dashParseCoord(v){
-  if(v === null || v === undefined) return NaN;
-  let s = String(v).trim();
-  if(!s) return NaN;
-  s = s.replace(/,/g, ".");
-  const n = parseFloat(s);
-  return Number.isFinite(n) ? n : NaN;
-}
-
-function __dashCoordInPeru(lat, lon){
-  return Number.isFinite(lat) && Number.isFinite(lon) && lat <= 1 && lat >= -19 && lon <= -68 && lon >= -82;
-}
-
-function __dashUbigeoCoords(e){
-  try{
-    if(typeof ubigeoData === "undefined" || !Array.isArray(ubigeoData)) return null;
-    const dep = __dashNormText(e && e.departamento);
-    const prov = __dashNormText(e && e.provincia);
-    const dist = __dashNormText(e && e.distrito);
-    if(!dep || !prov || !dist) return null;
-
-    const row = ubigeoData.find(r =>
-      __dashNormText(r.departamento) === dep &&
-      __dashNormText(r.provincia) === prov &&
-      __dashNormText(r.distrito) === dist
-    );
-    if(!row) return null;
-    const lat = __dashParseCoord(row.lat || row.latitud || row.latitude);
-    const lon = __dashParseCoord(row.lon || row.longitud || row.longitude || row.lng);
-    return __dashCoordInPeru(lat, lon) ? {lat, lon, source:"ubigeo"} : null;
-  }catch(err){ return null; }
-}
-
-function __dashGetCoords(e){
-  try{
-    const cand = [
-      [e && e.latitud, e && e.longitud],
-      [e && e.lat, e && (e.lon || e.lng)],
-      [e && e.latitude, e && e.longitude],
-      [e && e.latitudRP, e && e.longitudRP],
-      [e && e.payload && e.payload.latitud, e && e.payload && e.payload.longitud],
-      [e && e.ubicacion && e.ubicacion.latitud, e && e.ubicacion && e.ubicacion.longitud]
-    ];
-
-    for(const pair of cand){
-      let lat = __dashParseCoord(pair[0]);
-      let lon = __dashParseCoord(pair[1]);
-      if(__dashCoordInPeru(lat, lon)) return {lat, lon, source:"record"};
-      // Defensa: si vinieron invertidas, las corrige sin tocar el registro.
-      if(__dashCoordInPeru(lon, lat)) return {lat:lon, lon:lat, source:"record_swapped"};
-    }
-
-    // Último recurso: centroide del distrito desde ubigeoData.js. Así Cerradas y En proceso no desaparecen.
-    return __dashUbigeoCoords(e);
-  }catch(err){ return null; }
-}
-
-let __dashMapSelectedDepartamento = "";
-let __dashMapDeptPager = { size: 5, page: 1 };
-
-function __dashMapGetSelectedDepartamento(){
-  try{
-    return __dashNormText(document.getElementById("dashMapDepartamento")?.value || "");
-  }catch(e){ return ""; }
-}
-
-function __dashMapGetSelectedPeligro(){
-  try{
-    return __dashNormText(document.getElementById("dashMapPeligro")?.value || "");
-  }catch(e){ return ""; }
-}
-
-function __dashMapDateOnly(v){
-  try{
-    if(!v) return "";
-    const s = String(v).trim();
-    if(!s) return "";
-    const m = s.match(/^(\d{4}-\d{2}-\d{2})/);
-    if(m) return m[1];
-    const dmy = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
-    if(dmy) return `${dmy[3]}-${String(dmy[2]).padStart(2,"0")}-${String(dmy[1]).padStart(2,"0")}`;
-    const d = new Date(s);
-    if(!isNaN(d.getTime())) return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
-  }catch(e){}
-  return "";
-}
-
-function __dashMapGetFechaInicial(){
-  try{ return String(document.getElementById("dashMapFechaInicial")?.value || "").trim(); }
-  catch(e){ return ""; }
-}
-
-function __dashMapGetFechaFinal(){
-  try{ return String(document.getElementById("dashMapFechaFinal")?.value || "").trim(); }
-  catch(e){ return ""; }
-}
-
-function __dashMapFechaPeligroInRange(e){
-  try{
-    const desde = __dashMapGetFechaInicial();
-    const hasta = __dashMapGetFechaFinal();
-    if(!desde && !hasta) return true;
-    const f = __dashMapDateOnly(e && (e.fechaPeligro || e.fechaDelPeligro || e.fechaEvento || e.fecha));
-    if(!f) return false;
-    if(desde && f < desde) return false;
-    if(hasta && f > hasta) return false;
-    return true;
-  }catch(err){ return true; }
-}
-
-function __dashCurrentDaniosMidis(e){
-  try{
-    const hasAnyValue = (dm)=>{
-      dm = __dashParseMaybeJson(dm);
-      if(!dm || typeof dm !== "object") return false;
-      return Object.keys(dm).some(k=>__dashProgramaTieneAfectacion(dm[k] || {}));
-    };
-
-    // Prioridad operativa: último RC con matriz de daños real; si no existe, RP.
-    // No bloquea el Dashboard: solo lee lo que está disponible en memoria.
-    const rcList = (typeof __getRCList === "function")
-      ? __getRCList(e)
-      : (Array.isArray(e && e.rcReportes) ? e.rcReportes : []);
-
-    if(Array.isArray(rcList) && rcList.length){
-      for(let i = rcList.length - 1; i >= 0; i--){
-        const rc = rcList[i] || {};
-        const dm = __dashFirstObject(
-          rc.daniosMIDIS, rc.dañosMIDIS, rc.danosMIDIS, rc.danios, rc.daniosMidis,
-          rc.daniosMIDISRC, rc.daniosSector, rc.daniosSectorMidis, rc.daniosSectorDesarrollo
-        );
-        if(hasAnyValue(dm)) return dm;
-      }
-    }
-
-    const base = __dashFirstObject(
-      e && e.daniosMIDIS, e && e.dañosMIDIS, e && e.danosMIDIS, e && e.danios, e && e.daniosMidis,
-      e && e.daniosSector, e && e.daniosSectorMidis, e && e.daniosSectorDesarrollo
-    );
-    return (base && typeof base === "object") ? base : {};
-  }catch(err){
-    const fallback = __dashFirstObject(e && e.daniosMIDIS, e && e.dañosMIDIS, e && e.danosMIDIS);
-    return fallback || {};
-  }
-}
-
-
-// FIX v238: Impacto MIDIS necesita payload completo; /sync/list trae resumen liviano.
-// Este proceso NO bloquea mapa ni estadísticas generales: primero pinta el Dashboard y luego
-// rehidrata solo los registros filtrados para recalcular los histogramas MIDIS con data real.
-let __DASH_IMPACTO_DETAIL_RUN_ID = 0;
-let __DASH_IMPACTO_DETAIL_LAST_SIG = "";
-let __DASH_IMPACTO_DETAIL_LAST_AT = 0;
-
-function __dashImpactoDetailSignature(data, groupBy){
-  try{
-    const codes = (Array.isArray(data) ? data : [])
-      .map(e => String(e && e.codigo ? e.codigo : "").trim())
-      .filter(Boolean)
-      .sort();
-    const filters = [
-      document.getElementById("dashTipoFecha")?.value || "",
-      document.getElementById("dashDesde")?.value || "",
-      document.getElementById("dashHasta")?.value || "",
-      document.getElementById("dashSoloMidis")?.checked ? "1" : "0",
-      groupBy || "programa"
-    ].join("|");
-    return filters + "||" + codes.join(",");
-  }catch(_e){
-    return String(Date.now());
-  }
-}
-
-function __dashNeedsImpactoDetail(e, force){
-  try{
-    if(!e || !String(e.codigo || "").trim()) return false;
-    if(typeof __syncIsSummaryOnly === "function" && __syncIsSummaryOnly(e)) return true;
-    if(e.__summaryOnly === true || e.__needsDetail === true) return true;
-    // Al presionar Aplicar, se permite refrescar el detalle para evitar datos MIDIS antiguos.
-    if(force) return true;
-  }catch(_e){}
-  return false;
-}
-
-async function __dashHydrateImpactoMidisAsync(filteredData, groupBy, force){
-  try{
-    if(typeof __ensureFullEmergencia !== "function") return;
-    if(typeof __isApiConfigured === "function" && !__isApiConfigured()) return;
-    if(typeof navigator !== "undefined" && !navigator.onLine) return;
-
-    const src = Array.isArray(filteredData) ? filteredData : [];
-    if(!src.length) return;
-
-    const sig = __dashImpactoDetailSignature(src, groupBy);
-    const now = Date.now();
-    if(!force && sig === __DASH_IMPACTO_DETAIL_LAST_SIG && (now - __DASH_IMPACTO_DETAIL_LAST_AT) < 60000) return;
-    __DASH_IMPACTO_DETAIL_LAST_SIG = sig;
-    __DASH_IMPACTO_DETAIL_LAST_AT = now;
-
-    const seen = new Set();
-    const toLoad = [];
-    src.forEach(e=>{
-      const c = String(e && e.codigo ? e.codigo : "").trim();
-      if(!c || seen.has(c)) return;
-      if(__dashNeedsImpactoDetail(e, !!force)){
-        seen.add(c);
-        toLoad.push(c);
-      }
-    });
-
-    if(!toLoad.length) return;
-
-    const runId = ++__DASH_IMPACTO_DETAIL_RUN_ID;
-    const CONCURRENCY = 5;
-    let pos = 0;
-
-    async function worker(){
-      while(pos < toLoad.length){
-        const code = toLoad[pos++];
-        try{ await __ensureFullEmergencia(code); }catch(_e){}
-        // Cede el hilo para no congelar la pantalla cuando hay varios registros.
-        await new Promise(resolve => setTimeout(resolve, 0));
-      }
-    }
-
-    const workers = [];
-    for(let i=0; i<Math.min(CONCURRENCY, toLoad.length); i++) workers.push(worker());
-    await Promise.all(workers);
-
-    if(runId !== __DASH_IMPACTO_DETAIL_RUN_ID) return;
-
-    // Recalcula SOLO Impacto MIDIS desde la misma colección filtrada del Dashboard,
-    // pero ya con payload completo en memoria. No repinta mapa ni estadísticas generales.
-    const freshData = __dashGetFiltered();
-    const freshGroup = __dashGetImpactoGroupBy();
-    const freshImpacto = (Array.isArray(freshData) ? freshData : []).filter(__dashAfectaMidis);
-    __dashRenderImpacto(freshImpacto, freshGroup);
-    __dashRenderAfectaMidisTable(freshImpacto);
-  }catch(err){
-    console.warn("Impacto MIDIS: no se pudo rehidratar detalle sin bloquear Dashboard", err);
-  }
-}
-
-function __dashMapApplyDepartamentoFilter(data){
-  const dep = __dashMapGetSelectedDepartamento();
-  const peligro = __dashMapGetSelectedPeligro();
-  let out = Array.isArray(data) ? data : [];
-  if(dep) out = out.filter(e => __dashNormText(e && e.departamento) === dep);
-  if(peligro) out = out.filter(e => __dashNormText(e && e.peligro) === peligro);
-  out = out.filter(e => __dashMapFechaPeligroInRange(e));
-  return out;
-}
-
-function __dashMapPopulateDepartamento(data){
-  const sel = document.getElementById("dashMapDepartamento");
-  if(!sel) return;
-  const prev = String(sel.value || "");
-  const deps = Array.from(new Set((Array.isArray(data) ? data : [])
-    .map(e => String((e && e.departamento) || "").trim())
-    .filter(Boolean)))
-    .sort((a,b)=>a.localeCompare(b,"es"));
-  sel.innerHTML = '<option value="">(Todos)</option>' + deps.map(d=>`<option value="${__dashHtmlEscape(d)}">${__dashHtmlEscape(d)}</option>`).join("");
-  if(prev && deps.some(d => __dashNormText(d) === __dashNormText(prev))){
-    sel.value = deps.find(d => __dashNormText(d) === __dashNormText(prev)) || "";
-  }else{
-    sel.value = "";
-  }
-}
-
-function __dashMapPopulatePeligro(data){
-  const sel = document.getElementById("dashMapPeligro");
-  if(!sel) return;
-  const prev = String(sel.value || "");
-  const dep = __dashMapGetSelectedDepartamento();
-  const base = (Array.isArray(data) ? data : []).filter(e => !dep || __dashNormText(e && e.departamento) === dep);
-  const peligros = Array.from(new Set(base
-    .map(e => String((e && e.peligro) || "").trim())
-    .filter(Boolean)))
-    .sort((a,b)=>a.localeCompare(b,"es"));
-  sel.innerHTML = '<option value="">(Todos)</option>' + peligros.map(x=>`<option value="${__dashHtmlEscape(x)}">${__dashHtmlEscape(x)}</option>`).join("");
-  if(prev && peligros.some(x => __dashNormText(x) === __dashNormText(prev))){
-    sel.value = peligros.find(x => __dashNormText(x) === __dashNormText(prev)) || "";
-  }else{
-    sel.value = "";
-  }
-}
-
-function __dashMapGetDeptPageSize(){
-  const n = Number(document.getElementById("dashMapDeptPageSize")?.value || __dashMapDeptPager.size || 5);
-  return [5,10,25,50,100].includes(n) ? n : 5;
-}
-
-function __dashMapRenderDepartamentoResumen(data){
-  const tbody = document.getElementById("dashMapDeptTbody");
-  const hint = document.getElementById("dashMapDeptHint");
-  const pageInfo = document.getElementById("dashMapDeptPageInfo");
-  const btnPrev = document.getElementById("dashMapDeptPrev");
-  const btnNext = document.getElementById("dashMapDeptNext");
-  if(!tbody) return;
-
-  const depRaw = String(document.getElementById("dashMapDepartamento")?.value || "").trim();
-  const list = __dashMapApplyDepartamentoFilter(data).slice().sort((a,b)=>{
-    const pa = String(a?.peligro || "");
-    const pb = String(b?.peligro || "");
-    const da = String(a?.distrito || "");
-    const db = String(b?.distrito || "");
-    return pa.localeCompare(pb,"es") || da.localeCompare(db,"es") || String(a?.codigo||"").localeCompare(String(b?.codigo||""),"es");
-  });
-
-  __dashMapDeptPager.size = __dashMapGetDeptPageSize();
-  const total = list.length;
-  const totalPages = Math.max(1, Math.ceil(total / __dashMapDeptPager.size));
-  __dashMapDeptPager.page = Math.min(Math.max(1, Number(__dashMapDeptPager.page || 1)), totalPages);
-
-  const peligroRaw = String(document.getElementById("dashMapPeligro")?.value || "").trim();
-  const fechaIniRaw = String(document.getElementById("dashMapFechaInicial")?.value || "").trim();
-  const fechaFinRaw = String(document.getElementById("dashMapFechaFinal")?.value || "").trim();
-  if(hint){
-    const depTxt = depRaw ? `Departamento seleccionado: ${depRaw}` : "Todos los departamentos";
-    const peligroTxt = peligroRaw ? `Peligro seleccionado: ${peligroRaw}` : "Todos los peligros";
-    const fechaTxt = (fechaIniRaw || fechaFinRaw) ? `Fecha del peligro: ${fechaIniRaw || "inicio"} a ${fechaFinRaw || "fin"}` : "Todas las fechas del peligro";
-    hint.textContent = `${depTxt}. ${peligroTxt}. ${fechaTxt}. Emergencias mostradas: ${total}.`;
-  }
-
-  if(!total){
-    tbody.innerHTML = '<tr><td colspan="5" class="text-muted small">Sin emergencias para el filtro seleccionado.</td></tr>';
-    if(pageInfo) pageInfo.textContent = "0 a 0 de 0 registros";
-    if(btnPrev) btnPrev.disabled = true;
-    if(btnNext) btnNext.disabled = true;
-    return;
-  }
-
-  const start = (__dashMapDeptPager.page - 1) * __dashMapDeptPager.size;
-  const end = Math.min(start + __dashMapDeptPager.size, total);
-  const pageRows = list.slice(start, end);
-
-  const rows = pageRows.map(e=>{
-    const t = __dashSumDanios(__dashCurrentDaniosMidis(e));
-    return `<tr>
-      <td>${__dashHtmlEscape(e?.codigo || "")}</td>
-      <td>${__dashHtmlEscape(e?.distrito || "")}</td>
-      <td>${__dashHtmlEscape(e?.peligro || "")}</td>
-      <td class="text-end">${Number(t.usuarios || 0)}</td>
-      <td class="text-end">${Number(t.servicios || 0)}</td>
-    </tr>`;
-  }).join("");
-  tbody.innerHTML = rows;
-
-  if(pageInfo) pageInfo.textContent = `${start + 1} a ${end} de ${total} registros`;
-  if(btnPrev) btnPrev.disabled = (__dashMapDeptPager.page <= 1);
-  if(btnNext) btnNext.disabled = (__dashMapDeptPager.page >= totalPages);
-}
-
-function __dashGetStatus(e){
-  // Cerrada: acepta todas las variantes históricas del aplicativo.
-  const cierreEstado = String((e && (e.cierreEstado || e.estadoCierre || e.estado)) || "").trim().toLowerCase();
-  if(e && (e.cerrada === true || cierreEstado === "cerrada" || cierreEstado === "aprobado" || cierreEstado === "cierre aprobado")){
-    return {name:"Cerrada", color:"#198754"};
-  }
-
-  // En proceso: abierta con RC o con avance posterior al RP.
-  const rcList = (e && Array.isArray(e.rcReportes)) ? e.rcReportes : [];
-  if(rcList.length > 0){
-    return {name:"En proceso", color:"#fd7e14"};
-  }
-
-  // Activo = registrado hoy (fechaHora). Si no hay fechaHora, usa fechaPeligro.
-  const hoyYmd = __dashTodayPeruYMD ? __dashTodayPeruYMD() : null;
-  const fr = __dashParseDateOnly(e?.fechaHora) || __dashParseDateOnly(e?.fechaPeligro);
-  const frYmd = fr ? `${fr.getFullYear()}-${String(fr.getMonth()+1).padStart(2,"0")}-${String(fr.getDate()).padStart(2,"0")}` : "";
-  if(hoyYmd && frYmd === hoyYmd) return {name:"Activo", color:"#dc3545"};
-
-  // En proceso = abierta, pero no es del día.
-  return {name:"En proceso", color:"#fd7e14"};
-}
-
 function __dashRenderMap(data){
   if(!dashLayer || !window.L) return;
   dashLayer.clearLayers();
 
-  const shown = [];
-  const coincidentes = new Map();
-
-  (Array.isArray(data) ? data : []).forEach(e=>{
-    const coord = __dashGetCoords(e);
-    if(!coord) return;
+  data.forEach(e=>{
+    const lat = parseFloat(String(e?.latitud ?? "").replace(",", "."));
+    const lon = parseFloat(String(e?.longitud ?? "").replace(",", "."));
+    if(isNaN(lat) || isNaN(lon)) return;
 
     const st = __dashGetStatus(e);
     if(!__dashMapIsVisible(st.name)) return;
-
-    const key = coord.lat.toFixed(5) + "," + coord.lon.toFixed(5);
-    const n = coincidentes.get(key) || 0;
-    coincidentes.set(key, n + 1);
-
-    // Si varios registros tienen exactamente el mismo punto (mismo distrito/centroide),
-    // se dibujan con un desplazamiento mínimo para que no se tapen entre ellos.
-    let lat = coord.lat;
-    let lon = coord.lon;
-    if(n > 0){
-      const angle = (n * 55) * Math.PI / 180;
-      const r = 0.018 + (Math.floor(n / 6) * 0.006);
-      lat = coord.lat + Math.sin(angle) * r;
-      lon = coord.lon + Math.cos(angle) * r;
-    }
-
     const marker = L.circleMarker([lat, lon], {
       radius: 8,
       color: st.color,
@@ -9084,30 +8323,17 @@ function __dashRenderMap(data){
       weight: 2
     });
 
-    const notaCoord = coord.source === "ubigeo"
-      ? "<br><span style='color:#666'>Coordenada referencial por distrito.</span>"
-      : (n > 0 ? "<br><span style='color:#666'>Punto desplazado levemente para evitar superposición.</span>" : "");
-
     marker.bindPopup(`
       <b>${e.codigo||""}</b><br>
       <b>Estado:</b> ${st.name}<br>
       <b>Peligro:</b> ${e.peligro||""}<br>
       <b>Ubicación:</b> ${(e.departamento||"")} / ${(e.provincia||"")} / ${(e.distrito||"")}<br>
       <b>Fecha del peligro:</b> ${e.fechaPeligro||""}<br>
-      <b>Registro:</b> ${e.fechaHora||""}${notaCoord}
+      <b>Registro:</b> ${e.fechaHora||""}
     `);
 
     marker.addTo(dashLayer);
-    shown.push([lat, lon]);
   });
-
-  try{
-    if(shown.length === 1){
-      dashMap.setView(shown[0], 8);
-    }else if(shown.length > 1){
-      dashMap.fitBounds(L.latLngBounds(shown), {padding:[25,25], maxZoom:7});
-    }
-  }catch(e){}
 }
 
 function __dashGetActivasHoyList(){
@@ -9565,25 +8791,22 @@ function __dashSetImpactoLabels(groupBy){
 }
 
 function __dashSumDanios(daniosMIDIS){
-  return __dashTotalesMidis(daniosMIDIS);
+  let usuarios=0, servicios=0, ups=0, fallecidos=0;
+  if(!daniosMIDIS) return {usuarios, servicios, ups, fallecidos};
+
+  Object.keys(daniosMIDIS).forEach(k=>{
+    const d = daniosMIDIS[k] || {};
+    usuarios += Number(d.usuariosAfectados || 0);
+    servicios += Number(d.serviciosAfectados || 0);
+    ups += Number(d.usuariosPorServicios || 0);
+    fallecidos += Number(d.usuariosFallecidos || 0);
+  });
+  return {usuarios, servicios, ups, fallecidos};
 }
 
 function __dashRenderImpacto(data, groupBy){
   groupBy = groupBy || "programa";
   __dashSetImpactoLabels(groupBy);
-
-  // Colección única y filtrada SOLO con emergencias que afectan al MIDIS.
-  // No usa caché ni valores hardcodeados; toma la matriz vigente del último RC y, si no hay, del RP.
-  const seen = new Set();
-  const base = [];
-  (Array.isArray(data) ? data : []).forEach(e=>{
-    if(!e || !__dashAfectaMidis(e)) return;
-    const code = String(e.codigo || "").trim();
-    const key = code || JSON.stringify([e.fechaPeligro||"", e.departamento||"", e.provincia||"", e.distrito||"", e.peligro||""]);
-    if(seen.has(key)) return;
-    seen.add(key);
-    base.push(e);
-  });
 
   let labels = [];
   let u = [];
@@ -9601,16 +8824,16 @@ function __dashRenderImpacto(data, groupBy){
     ups = new Array(labels.length).fill(0);
     f = new Array(labels.length).fill(0);
 
-    base.forEach(e=>{
-      const dm = __dashCurrentDaniosMidis(e);
+    data.forEach(e=>{
+      const dm = e?.daniosMIDIS || {};
       __DASH_PROGRAMAS.forEach((p, i)=>{
-        const d = __dashPickProgramaDanio(dm, p);
+        const d = dm[p.key] || dm[p.label] || null; // por si viene con llave distinta
         if(!d) return;
 
-        const uu = __dashDanioVal(d, "usuariosAfectados");
-        const ss = __dashDanioVal(d, "serviciosAfectados");
-        const uups = __dashDanioVal(d, "usuariosPorServicios");
-        const ff = __dashDanioVal(d, "usuariosFallecidos");
+        const uu = Number(d.usuariosAfectados||0);
+        const ss = Number(d.serviciosAfectados||0);
+        const uups = Number(d.usuariosPorServicios||0);
+        const ff = Number(d.usuariosFallecidos||0);
 
         u[i] += uu;
         s[i] += ss;
@@ -9625,9 +8848,9 @@ function __dashRenderImpacto(data, groupBy){
     });
   } else {
     const map = {};
-    base.forEach(e=>{
+    data.forEach(e=>{
       const k = (groupBy === "evento") ? (e.peligro || "Sin dato") : (e.departamento || "Sin dato");
-      const t = __dashSumDanios(__dashCurrentDaniosMidis(e));
+      const t = __dashSumDanios(e?.daniosMIDIS);
 
       if(!map[k]) map[k] = {usuarios:0, servicios:0, ups:0, fallecidos:0};
       map[k].usuarios += t.usuarios;
@@ -9662,37 +8885,35 @@ function __dashRenderImpacto(data, groupBy){
   if(elTUPS) elTUPS.textContent = String(totalUPS);
   if(elTF) elTF.textContent = String(totalF);
 
-  // Gráficos de Impacto MIDIS: destruir y recrear evita acumulación visual/datasets antiguos.
-  try{
-    if(typeof Chart !== "undefined"){
-      const makeBar = (canvasId, label, dataArr, extraDatasets)=>{
-        const el = document.getElementById(canvasId);
-        if(!el) return null;
-        const datasets = extraDatasets || [{label, data:dataArr}];
-        return new Chart(el, {
-          type:"bar",
-          data:{labels: labels, datasets: datasets},
-          options:{responsive:true}
-        });
-      };
+  // Usuarios (según clasificación)
+  if(dashChartUsuariosProg){
+    dashChartUsuariosProg.data.labels = labels;
+    dashChartUsuariosProg.data.datasets[0].label = "Usuarios afectados";
+    dashChartUsuariosProg.data.datasets[0].data = u;
+    dashChartUsuariosProg.update();
+  }
 
-      if(dashChartUsuariosProg){ try{ dashChartUsuariosProg.destroy(); }catch(_e){} dashChartUsuariosProg = null; }
-      dashChartUsuariosProg = makeBar("dashChartUsuariosProg", "Usuarios afectados", u);
+  // Servicios + Usuarios por servicios (2 datasets)
+  if(dashChartServiciosProg){
+    dashChartServiciosProg.data.labels = labels;
+    dashChartServiciosProg.data.datasets[0].label = "Servicios afectados";
+    dashChartServiciosProg.data.datasets[0].data = s;
 
-      if(dashChartServiciosProg){ try{ dashChartServiciosProg.destroy(); }catch(_e){} dashChartServiciosProg = null; }
-      dashChartServiciosProg = makeBar("dashChartServiciosProg", "Servicios afectados", s, [
-        {label:"Servicios afectados", data:s},
-        {label:"Usuarios por servicios", data:ups}
-      ]);
-
-      if(dashChartAfectProg){ try{ dashChartAfectProg.destroy(); }catch(_e){} dashChartAfectProg = null; }
-      dashChartAfectProg = makeBar("dashChartAfectProg", "Usuarios fallecidos", f);
+    // Asegurar dataset 2
+    if(!dashChartServiciosProg.data.datasets[1]){
+      dashChartServiciosProg.data.datasets.push({label:"Usuarios por servicios", data:[]});
     }
-  }catch(e){
-    // Fallback: si Chart.js no permite recrear, al menos no dejar valores antiguos.
-    if(dashChartUsuariosProg){ dashChartUsuariosProg.data.labels = labels; dashChartUsuariosProg.data.datasets[0].data = u; dashChartUsuariosProg.update(); }
-    if(dashChartServiciosProg){ dashChartServiciosProg.data.labels = labels; dashChartServiciosProg.data.datasets[0].data = s; if(!dashChartServiciosProg.data.datasets[1]) dashChartServiciosProg.data.datasets.push({label:"Usuarios por servicios", data:[]}); dashChartServiciosProg.data.datasets[1].data = ups; dashChartServiciosProg.update(); }
-    if(dashChartAfectProg){ dashChartAfectProg.data.labels = labels; dashChartAfectProg.data.datasets[0].data = f; dashChartAfectProg.update(); }
+    dashChartServiciosProg.data.datasets[1].label = "Usuarios por servicios";
+    dashChartServiciosProg.data.datasets[1].data = ups;
+    dashChartServiciosProg.update();
+  }
+
+  // Fallecidos (según clasificación)
+  if(dashChartAfectProg){
+    dashChartAfectProg.data.labels = labels;
+    dashChartAfectProg.data.datasets[0].label = "Usuarios fallecidos";
+    dashChartAfectProg.data.datasets[0].data = f;
+    dashChartAfectProg.update();
   }
 }
 
@@ -9700,22 +8921,7 @@ function __dashRenderAfectaMidisTable(data){
   const tbody = document.getElementById("dashAfectaMidisTbody");
   if(tbody) tbody.innerHTML = "";
 
-  const seen = new Set();
-  const list = [];
-  (Array.isArray(data) ? data : []).forEach(e=>{
-    if(!e || !__dashAfectaMidis(e)) return;
-    const code = String(e.codigo || "").trim();
-    const key = code || JSON.stringify([e.fechaPeligro||"", e.departamento||"", e.provincia||"", e.distrito||"", e.peligro||""]);
-    if(seen.has(key)) return;
-    seen.add(key);
-    list.push(e);
-  });
-
-  list.sort((a,b)=>{
-    const fa = String(__dashGetFechaSegunTipo(a, document.getElementById("dashTipoFecha")?.value || "evento") || "");
-    const fb = String(__dashGetFechaSegunTipo(b, document.getElementById("dashTipoFecha")?.value || "evento") || "");
-    return fb.localeCompare(fa) || String(b.codigo||"").localeCompare(String(a.codigo||""));
-  });
+  const list = (Array.isArray(data) ? data : []).filter(__dashAfectaMidis);
 
   // Paginación
   __dashPagerMidis.size = __dashReadPageSize("dashAfectaMidisPageSize", __dashPagerMidis.size || 10);
@@ -9724,16 +8930,11 @@ function __dashRenderAfectaMidisTable(data){
 
   if(!tbody) return;
 
-  if(!slice.length){
-    tbody.innerHTML = '<tr><td colspan="10" class="text-muted text-center">Sin emergencias que afecten al MIDIS para el filtro seleccionado.</td></tr>';
-    return;
-  }
-
   slice.forEach(e=>{
     const st = __dashGetStatus(e);
     const badge = `<span class="badge" style="background:${st.color}"> </span>`;
 
-    const t = __dashTotalesMidis(__dashCurrentDaniosMidis(e));
+    const t = __dashTotalesMidis(e.daniosMIDIS);
     tbody.innerHTML += `
       <tr>
         <td>${e.codigo||""}</td>
@@ -9753,75 +8954,20 @@ function __dashRenderAfectaMidisTable(data){
   });
 }
 
-// ======= OPTIMIZACIÓN V219: Dashboard usa la data ya hidratada en memoria =======
-// Evita renderizados repetidos cuando no cambió la data ni los filtros.
-let __DASH_LAST_RENDER_MS = 0;
-let __DASH_LAST_RENDER_SIG = "";
-function __dashBuildRenderSignature(){
-  try{
-    const arr = Array.isArray(emergencias) ? emergencias : [];
-    let maxUpd = "";
-    for(const e of arr){
-      const u = String((e && (e.updatedAt || e.__serverUpdatedAt || e.fechaRegistro || e.fechaHora)) || "");
-      if(u > maxUpd) maxUpd = u;
-    }
-    const ids = ["dashTipoFecha","dashDesde","dashHasta","dashSoloMidis"];
-    const f = ids.map(id=>{
-      const el = document.getElementById(id);
-      if(!el) return "";
-      if(el.type === "checkbox") return el.checked ? "1" : "0";
-      return String(el.value || "");
-    }).join("|");
-    let impacto = "";
-    try{ impacto = __dashGetImpactoGroupBy ? __dashGetImpactoGroupBy() : ""; }catch(_e){}
-    let mapExtra = "";
-    try{ mapExtra = [
-      document.getElementById("dashMapDepartamento")?.value || "",
-      document.getElementById("dashMapPeligro")?.value || "",
-      document.getElementById("dashMapFechaInicial")?.value || "",
-      document.getElementById("dashMapFechaFinal")?.value || ""
-    ].join("|"); }catch(_e){}
-    return [arr.length, maxUpd, f, impacto, JSON.stringify(__dashMapStatusVisible || {}), mapExtra].join("||");
-  }catch(e){
-    return String(Date.now());
-  }
-}
-
-function dashboardRefresh(opts){
-  opts = opts || {};
-  const force = !!opts.force;
-  const sig = __dashBuildRenderSignature();
-  const now = Date.now();
-  // Timer/local refresh: si no cambió nada, no recalcula cada pocos segundos.
-  if(!force && sig === __DASH_LAST_RENDER_SIG && (now - __DASH_LAST_RENDER_MS) < 60000){
-    try{ setTimeout(()=>{ if(dashMap) dashMap.invalidateSize(); }, 150); }catch(_e){}
-    return;
-  }
-  __DASH_LAST_RENDER_SIG = sig;
-  __DASH_LAST_RENDER_MS = now;
-
+function dashboardRefresh(){
   __dashInitIfNeeded();
   const data = __dashGetFiltered();
   __dashLastFiltered = data;
 
 
-  __dashMapPopulateDepartamento(data);
-  __dashMapPopulatePeligro(data);
-  const mapData = __dashMapApplyDepartamentoFilter(data);
-  __dashRenderMap(mapData);
-  __dashMapRenderDepartamentoResumen(data);
+  __dashRenderMap(data);
   __dashRenderActivasHoy();
   __dashRenderHistogramas(data);
 
   const groupBy = __dashGetImpactoGroupBy();
-  // Impacto MIDIS se calcula desde una sola colección filtrada por fecha y condición MIDIS.
-  const dataImpactoMidis = (Array.isArray(data) ? data : []).filter(__dashAfectaMidis);
-  __dashRenderImpacto(dataImpactoMidis, groupBy);
+  __dashRenderImpacto(data, groupBy);
 
-  __dashRenderAfectaMidisTable(dataImpactoMidis);
-
-  // Rehidratación no bloqueante: corrige histogramas MIDIS sin apagar el mapa ni la estadística general.
-  try{ __dashHydrateImpactoMidisAsync(data, groupBy, force); }catch(_e){}
+  __dashRenderAfectaMidisTable(data);
 
   setTimeout(()=>{ if(dashMap) dashMap.invalidateSize(); }, 150);
 }
@@ -9843,49 +8989,17 @@ document.addEventListener("DOMContentLoaded", ()=>{
 
   __dashMapSyncButtons();
 
-  document.getElementById("dashMapDepartamento")?.addEventListener("change", ()=>{
-    __dashMapDeptPager.page = 1;
-    dashboardRefresh({force:true});
-  });
 
-  document.getElementById("dashMapPeligro")?.addEventListener("change", ()=>{
-    __dashMapDeptPager.page = 1;
-    dashboardRefresh({force:true});
-  });
-
-  document.getElementById("dashMapFechaInicial")?.addEventListener("change", ()=>{
-    __dashMapDeptPager.page = 1;
-    dashboardRefresh({force:true});
-  });
-
-  document.getElementById("dashMapFechaFinal")?.addEventListener("change", ()=>{
-    __dashMapDeptPager.page = 1;
-    dashboardRefresh({force:true});
-  });
-
-  document.getElementById("dashMapDeptPageSize")?.addEventListener("change", ()=>{
-    __dashMapDeptPager.size = __dashMapGetDeptPageSize();
-    __dashMapDeptPager.page = 1;
-    __dashMapRenderDepartamentoResumen(__dashLastFiltered || __dashGetFiltered());
-  });
-  document.getElementById("dashMapDeptPrev")?.addEventListener("click", ()=>{
-    __dashMapDeptPager.page = Math.max(1, (__dashMapDeptPager.page || 1) - 1);
-    __dashMapRenderDepartamentoResumen(__dashLastFiltered || __dashGetFiltered());
-  });
-  document.getElementById("dashMapDeptNext")?.addEventListener("click", ()=>{
-    __dashMapDeptPager.page = (__dashMapDeptPager.page || 1) + 1;
-    __dashMapRenderDepartamentoResumen(__dashLastFiltered || __dashGetFiltered());
-  });
 
   if(btnHoy) btnHoy.addEventListener("click", ()=>{
     const hoy = __dashTodayPeruYMD() || new Date().toISOString().slice(0,10);
     document.getElementById("dashDesde").value = hoy;
     document.getElementById("dashHasta").value = hoy;
-    dashboardRefresh({force:true});
+    dashboardRefresh();
   });
 
-  if(btnAplicar) btnAplicar.addEventListener("click", ()=>{ __dashPagerMidis.page = 1; dashboardRefresh({force:true}); });
-  if(soloMidis) soloMidis.addEventListener("change", ()=>{ __dashPagerMidis.page = 1; dashboardRefresh({force:true}); });
+  if(btnAplicar) btnAplicar.addEventListener("click", dashboardRefresh);
+  if(soloMidis) soloMidis.addEventListener("change", dashboardRefresh);
 
   if(btnWordActivas) btnWordActivas.addEventListener("click", __dashExportActivasHoyExcel);
 
@@ -9901,23 +9015,23 @@ document.addEventListener("DOMContentLoaded", ()=>{
 
   // Cambio de clasificación para los 3 gráficos de impacto MIDIS
   document.querySelectorAll('input[name="dashImpactoClasif"]').forEach(el=>{
-    el.addEventListener("change", ()=>dashboardRefresh({force:true}));
+    el.addEventListener("change", dashboardRefresh);
   });
 
-  // Refresco local moderado si la pestaña está activa. No consulta D1; solo usa la data en memoria.
+  // refresco cada 10s si la pestaña está activa
   setInterval(()=>{
     const isActive = document.querySelector('a[href="#dashTab"]')?.classList.contains("active");
     if(isActive) dashboardRefresh();
-  }, 60000);
+  }, 10000);
 
   // refresco al entrar al dashboard
   document.querySelector('a[href="#dashTab"]')?.addEventListener("shown.bs.tab", ()=>{
-    dashboardRefresh({force:true});
+    dashboardRefresh();
   });
 
   // refresco al cambiar evento/región (pills)
-  document.getElementById("dashPillEvento")?.addEventListener("shown.bs.tab", ()=>dashboardRefresh({force:true}));
-  document.getElementById("dashPillRegion")?.addEventListener("shown.bs.tab", ()=>dashboardRefresh({force:true}));
+  document.getElementById("dashPillEvento")?.addEventListener("shown.bs.tab", dashboardRefresh);
+  document.getElementById("dashPillRegion")?.addEventListener("shown.bs.tab", dashboardRefresh);
 });
 </script>
 
@@ -9980,18 +9094,13 @@ const __SYNC_KEYS = {
 // === SYNC helpers: payload limpio y hash consistente con el servidor ===
 function __syncCleanPayload(obj){
   const x = JSON.parse(JSON.stringify(obj || {}));
-  // Campos locales (UI/sync/resumen) que NO deben ir al servidor ni al hash
+  // Campos locales (UI) que NO deben ir al servidor ni al hash
   delete x.estado_sync;
   delete x.sync_denied_at;
   delete x.sync_denied_reason;
   delete x.__serverUpdatedAt;
   delete x.__serverHash;
   delete x.__serverCreatedAt;
-  delete x.__summaryOnly;
-  delete x.__needsDetail;
-  delete x.__needsExcelDetail;
-  delete x.__detailLoading;
-  delete x.__detailPromise;
   return x;
 }
 async function __syncHash(obj){
@@ -10041,7 +9150,7 @@ function __restoreCodigoSnapshot(codigo, snapshot){
     emergencias = arr;
     __saveEmergencias();
     try{ cargarTablaEmergencias(); }catch(_e){}
-    try{ dashboardRefresh({force:true}); }catch(_e){}
+    try{ dashboardRefresh(); }catch(_e){}
     try{ __calcPending(); }catch(_e){}
   }catch(e){}
 }
@@ -10076,7 +9185,7 @@ async function __syncCommitCodigo(codigo, snapshot, opts){
       return { ok:false, conflict:hasConflict, denied:hasDenied, message: cfg.failurePrefix + (hasConflict ? ' (conflicto).' : ' (rechazo).') };
     }
 
-    try{ await __syncPullAuto({ force:true }); }catch(_e){}
+    try{ await __syncPullAuto(); }catch(_e){}
     return { ok:true, message: cfg.successMessage, acked: push && push.acked ? push.acked : [] };
   }catch(e){
     __restoreCodigoSnapshot(code, snapshot);
@@ -10086,185 +9195,6 @@ async function __syncCommitCodigo(codigo, snapshot, opts){
   }
 }
 
-
-
-// FIX v242: aprobación RP atómica contra D1 usando el hash oficial del servidor.
-function __syncUpdateLocalFromPayload(code, payload, hash, updatedAt){
-  try{
-    const codigo = String(code || '').trim();
-    if(!codigo || !payload) return null;
-    const arr = Array.isArray(emergencias) ? emergencias : __loadEmergencias();
-    const cleanPayload = JSON.parse(JSON.stringify(payload || {}));
-    try{ cleanPayload.estado_sync = 'Sincronizado'; }catch(_e){}
-    try{ cleanPayload.__serverHash = String(hash || ''); }catch(_e){}
-    try{ cleanPayload.__serverUpdatedAt = String(updatedAt || ''); }catch(_e){}
-    try{ cleanPayload.__summaryOnly = false; delete cleanPayload.__needsDetail; delete cleanPayload.__needsExcelDetail; }catch(_e){}
-    const idx = arr.findIndex(e => String(e && e.codigo ? e.codigo : '').trim() === codigo);
-    if(idx >= 0) arr[idx] = cleanPayload;
-    else arr.push(cleanPayload);
-    emergencias = arr;
-    const map = __getHashMap();
-    if(hash) map[codigo] = String(hash); else delete map[codigo];
-    __setHashMap(map);
-    __saveEmergencias();
-    try{
-      if(emergenciaSeleccionada && String(emergenciaSeleccionada.codigo || '').trim() === codigo){
-        emergenciaSeleccionada = cleanPayload;
-      }
-    }catch(_e){}
-    return cleanPayload;
-  }catch(e){ return null; }
-}
-
-function __syncAppendCodigoIssue(kind, code, items, reasonFallback, localPayload, serverPayload){
-  try{
-    const codigo = String(code || '').trim();
-    const list = Array.isArray(items) ? items : [];
-    const normalized = list.length ? list.map(it=>{
-      if(typeof it === 'string') return { codigo, reason: reasonFallback || kind };
-      return Object.assign({}, it || {}, { codigo: String((it && (it.codigo || it.code || it.id)) || codigo).trim() || codigo });
-    }) : [{ codigo, reason: reasonFallback || kind }];
-    const addStages = normalized.map(it=>{
-      const out = Object.assign({}, it || {});
-      try{ out.local_stage = out.local_stage || (typeof __segStage === 'function' ? __segStage(localPayload || {}) : ''); }catch(_e){}
-      try{ out.server_stage = out.server_stage || (typeof __segStage === 'function' ? __segStage(serverPayload || {}) : ''); }catch(_e){}
-      try{ if(serverPayload) out.server_payload = serverPayload; }catch(_e){}
-      return out;
-    });
-    const entry = { at: __nowIso(), conflicts: [], denied: [], errors: [] };
-    if(kind === 'conflicts' || kind === 'conflict') entry.conflicts = addStages;
-    else if(kind === 'denied') entry.denied = addStages;
-    else entry.errors = addStages;
-    if(typeof __syncConfAppend === 'function') __syncConfAppend(entry);
-    try{ if(typeof __renderSyncConflictsTable === 'function') __renderSyncConflictsTable(); }catch(_e){}
-  }catch(e){}
-}
-
-function __applyRPAprobacionToPayload(payload){
-  const em = JSON.parse(JSON.stringify(payload || {}));
-  em.rpAprobEstado = 'Aprobado';
-  em.rpAprobadoPor = (typeof __getApproverName === 'function') ? __getApproverName() : __getCurrentUserName();
-  em.rpAprobadoPorEmail = currentUser ? currentUser.email : null;
-  em.rpAprobadoEn = __nowIso();
-  em.rpObs = null;
-  em.aprobadoPor = em.rpAprobadoPor;
-  em.aprobadoPorEmail = em.rpAprobadoPorEmail;
-  try{ __histPush(em, 'RP_APROBADO', null); }catch(_e){}
-  try{ __touch(em); }catch(_e){
-    em.updatedAt = __nowIso();
-    if(currentUser) em.updatedByEmail = currentUser.email;
-  }
-  return em;
-}
-
-async function __syncPushCodigoAtomic(code, payload, baseHash, createdAt){
-  const codigo = String(code || '').trim();
-  if(!codigo) throw new Error('codigo_invalido');
-  const token = __tokenGet();
-  const clean = __syncCleanPayload(payload || {});
-  const h = await __sha256(JSON.stringify(clean));
-  const now = __nowIso();
-  const rec = {
-    codigo: codigo,
-    payload: clean,
-    hash: h,
-    if_match: String(baseHash || ''),
-    created_at: createdAt || payload.createdAt || payload.fechaRegistro || now,
-    updated_at: now,
-    device_id: __getDeviceId()
-  };
-  const out = await __api('/sync/push', { method:'POST', token: token, body:{ records:[rec] } });
-  if(out.res && out.res.status === 401) throw new Error('unauthorized');
-  if(!out.res || !out.res.ok){
-    const err = out.data && out.data.error ? out.data.error : 'push_failed';
-    throw new Error(err);
-  }
-  const acked = out.data && Array.isArray(out.data.acked) ? out.data.acked : [];
-  const conflicts = out.data && Array.isArray(out.data.conflicts) ? out.data.conflicts : [];
-  const denied = out.data && Array.isArray(out.data.denied) ? out.data.denied : [];
-  return { ok: acked.includes(codigo), acked, conflicts, denied, hash:h, updated_at: now, payload: clean };
-}
-
-async function __aprobarRPServidorAtomico(codigo, opts){
-  const cfg = Object.assign({ localOverride:null, source:'form' }, opts || {});
-  const code = String(codigo || '').trim();
-  if(!code) return { ok:false, message:'Código inválido.' };
-
-  if(!(__isApiConfigured && __isApiConfigured()) || !navigator.onLine){
-    return { ok:false, pending:true, message:'No hay conexión con D1. El RP no fue aprobado en servidor.' };
-  }
-
-  let serverRec = null;
-  let serverPayload = null;
-  let serverHash = '';
-  try{
-    serverRec = await __syncFetchDetail(code);
-    if(!serverRec || !serverRec.payload) throw new Error('detail_empty');
-    serverPayload = JSON.parse(JSON.stringify(serverRec.payload || {}));
-    serverHash = String(serverRec.hash || '');
-    __syncUpdateLocalFromPayload(code, serverPayload, serverHash, serverRec.updated_at || '');
-  }catch(e){
-    const msg = (e && e.message) ? e.message : String(e);
-    __syncAppendCodigoIssue('errors', code, [{ codigo:code, reason:'detail_failed', message:msg }], 'detail_failed', null, null);
-    return { ok:false, message:'No se pudo leer la versión vigente del servidor (' + msg + ').' };
-  }
-
-  if(String(serverPayload.rpAprobEstado || '') === 'Aprobado'){
-    const fresh = __syncUpdateLocalFromPayload(code, serverPayload, serverHash, serverRec.updated_at || '');
-    return { ok:true, already:true, payload:fresh, message:'El RP ya figura aprobado en servidor.' };
-  }
-
-  if(String(serverPayload.rpAprobEstado || '') !== 'Pendiente'){
-    const fresh = __syncUpdateLocalFromPayload(code, serverPayload, serverHash, serverRec.updated_at || '');
-    return { ok:false, payload:fresh, message:'El RP no está Por aprobar en servidor. Se cargó la versión vigente.' };
-  }
-
-  let baseForApproval = JSON.parse(JSON.stringify(serverPayload));
-  if(cfg.localOverride){
-    const localClean = __syncCleanPayload(cfg.localOverride);
-    baseForApproval = Object.assign({}, baseForApproval, localClean, {
-      codigo: code,
-      createdAt: baseForApproval.createdAt || localClean.createdAt,
-      createdByEmail: baseForApproval.createdByEmail || localClean.createdByEmail,
-      ownerEmail: baseForApproval.ownerEmail || localClean.ownerEmail,
-      rpAprobEstado: 'Pendiente',
-      rpEnviadoPor: baseForApproval.rpEnviadoPor || localClean.rpEnviadoPor,
-      rpEnviadoPorEmail: baseForApproval.rpEnviadoPorEmail || localClean.rpEnviadoPorEmail,
-      rpEnviadoEn: baseForApproval.rpEnviadoEn || localClean.rpEnviadoEn
-    });
-  }
-
-  const approvedPayload = __applyRPAprobacionToPayload(baseForApproval);
-
-  try{
-    const push = await __syncPushCodigoAtomic(code, approvedPayload, serverHash, serverRec.created_at || serverPayload.createdAt || serverPayload.fechaRegistro || '');
-    if(push.ok){
-      const saved = __syncUpdateLocalFromPayload(code, push.payload, push.hash, push.updated_at);
-      try{ await __syncPullAuto({ force:true }); }catch(_e){}
-      try{ cargarTablaEmergencias(); }catch(_e){}
-      try{ dashboardRefresh({force:true}); }catch(_e){}
-      try{ __calcPending(); }catch(_e){}
-      try{ __renderAprobaciones(); }catch(_e){}
-      return { ok:true, payload:saved, message:'RP aprobado y confirmado en servidor.' };
-    }
-
-    const hasConflict = __syncListHasCodigo(push.conflicts, code);
-    const hasDenied = __syncListHasCodigo(push.denied, code);
-    if(hasConflict) __syncAppendCodigoIssue('conflicts', code, push.conflicts, 'both_modified', approvedPayload, serverPayload);
-    if(hasDenied) __syncAppendCodigoIssue('denied', code, push.denied, 'denied', approvedPayload, serverPayload);
-    const fresh = __syncUpdateLocalFromPayload(code, serverPayload, serverHash, serverRec.updated_at || '');
-    try{ cargarTablaEmergencias(); }catch(_e){}
-    try{ __renderAprobaciones(); }catch(_e){}
-    return { ok:false, conflict:hasConflict, denied:hasDenied, payload:fresh, message:'No se pudo confirmar la aprobación del RP en servidor' + (hasConflict ? ' (conflicto).' : (hasDenied ? ' (rechazo).' : '.')) };
-  }catch(e){
-    const msg = (e && e.message) ? e.message : String(e);
-    __syncAppendCodigoIssue('errors', code, [{ codigo:code, reason:msg }], msg, approvedPayload, serverPayload);
-    const fresh = __syncUpdateLocalFromPayload(code, serverPayload, serverHash, serverRec.updated_at || '');
-    try{ cargarTablaEmergencias(); }catch(_e){}
-    try{ __renderAprobaciones(); }catch(_e){}
-    return { ok:false, error:msg, payload:fresh, message:'No se pudo confirmar la aprobación del RP en servidor (' + msg + ').' };
-  }
-}
 
 function __isApiConfigured(){
   const u = (__API_CFG && __API_CFG.baseUrl) ? String(__API_CFG.baseUrl).trim() : "";
@@ -10321,7 +9251,7 @@ function __syncResetIncrementalCursorForFullPull(){
 function __syncRefreshViewsAfterHydrate(){
   try{ __recalcularCorrelativos(); }catch(e){}
   try{ cargarTablaEmergencias(); }catch(e){}
-  try{ dashboardRefresh && dashboardRefresh({force:true}); }catch(e){}
+  try{ dashboardRefresh && dashboardRefresh(); }catch(e){}
   try{ __renderAprobaciones && __renderAprobaciones(); }catch(e){}
   try{ __calcPending && __calcPending(); }catch(e){}
 }
@@ -10580,55 +9510,26 @@ async function __calcPending(){
     const map = __getHashMap();
     const arr = Array.isArray(emergencias) ? emergencias : __loadEmergencias();
     let pending = 0;
-
     for(const e of arr){
       const codigo = String(e && e.codigo ? e.codigo : "").trim();
       if(!codigo) continue;
+        if(String(e && e.estado_sync ? e.estado_sync : "") === "Rechazado") continue;
 
-      const syncState = String(e && e.estado_sync ? e.estado_sync : "");
-
-      // Los rechazados se muestran en su propio badge rojo; no deben inflar pendientes.
-      if(syncState === "Rechazado") continue;
-
-      // CORRECCIÓN v224:
-      // Los registros resumen que vienen de /sync/list NO contienen payload completo.
-      // Su hash local nunca debe compararse contra el hash del servidor, porque eso
-      // hacía que casi todo el universo local aparezca como "Pendientes".
-      if(typeof __syncIsSummaryOnly === "function" && __syncIsSummaryOnly(e)){
-        continue;
+    // Registrador: solo empujar sus propios registros y solo si están en Borrador/Observado
+    try{
+      const role = currentUser ? currentUser.role : "";
+      if(role === __ROLES.REG){
+        const me = String(currentUser && currentUser.email ? currentUser.email : "").trim().toLowerCase();
+        const owner = String(__segRegistrar(e) || "").trim().toLowerCase();
+        const stage = __segStage(e);
+        if(owner && me && owner !== me) continue;
+        if(!(stage === "Borrador" || stage === "Observado")) continue;
       }
-      if(e && (e.__summaryOnly === true || e.__needsDetail === true)){
-        continue;
-      }
-
-      // Registrador: solo considerar sus propios registros y solo en etapas editables.
-      try{
-        const role = currentUser ? currentUser.role : "";
-        if(role === __ROLES.REG){
-          const me = String(currentUser && currentUser.email ? currentUser.email : "").trim().toLowerCase();
-          const owner = String(__segRegistrar(e) || "").trim().toLowerCase();
-          const stage = __segStage(e);
-          if(owner && me && owner !== me) continue;
-          if(!(stage === "Borrador" || stage === "Observado")) continue;
-        }
-      }catch(_e){}
-
-      // Si una acción dejó el registro explícitamente pendiente, contarlo.
-      if(syncState === "Pendiente"){
-        pending++;
-        continue;
-      }
-
-      // Para registros completos, mantener la validación por hash como respaldo.
-      // Si el servidor todavía no tiene hash base, no se marca como pendiente por conteo visual.
-      try{
-        const base = (map[codigo] || e.__serverHash || "");
-        if(!base) continue;
-        const h = await __syncHash(e);
-        if(base !== h) pending++;
-      }catch(_e){}
+    }catch(_e){}
+      const h = await __syncHash(e);
+      const base = (map[codigo] || e.__serverHash || "");
+      if(base && base !== h) pending++;
     }
-
     __updateSyncUI(pending);
     return pending;
   }catch(e){
@@ -10636,6 +9537,7 @@ async function __calcPending(){
     return 0;
   }
 }
+
 // ---- AUTH local fallback (si el Worker falla) ----
 async function __loginLocalFallback(rawEmail, password){
   try{
@@ -11084,9 +9986,6 @@ async function __syncPush(){
     const codigo = String(e && e.codigo ? e.codigo : '').trim();
     if(!codigo) continue;
     if(String(e && e.estado_sync ? e.estado_sync : "") === "Rechazado") continue;
-    // OPTIMIZACIÓN LIST/DETAIL: no subir registros resumen.
-    // Los registros __summaryOnly vienen de /sync/list y no contienen el payload completo.
-    if(e && e.__summaryOnly === true) continue;
 
     const payload = __syncCleanPayload(e);
     const h = await __sha256(JSON.stringify(payload));
@@ -11229,255 +10128,43 @@ async function __syncPush(){
   return { ok:true, acked: allAcked, conflicts: allConf, denied: allDen };
 }
 
-
-// ===== OPTIMIZACIÓN LIST/DETAIL: resumen liviano + detalle bajo demanda =====
-function __syncSummaryToLocalRecord(r, previous){
-  const prev = (previous && typeof previous === "object") ? previous : {};
-  const codigo = String((r && r.codigo) || (prev && prev.codigo) || "").trim();
-  const rcTotal = Number((r && (r.rc_total ?? r.rcTotal)) || 0) || 0;
-  const closedFlag = !!(r && (r.cerrada === true || r.closed === true));
-  const cierreEstado = String((r && (r.cierre_estado || r.cierreEstado || "")) || "").trim();
-  const rpEstado = String((r && (r.rp_estado || r.rpEstado || "")) || "").trim();
-
-  const out = Object.assign({}, prev, {
-    codigo,
-    peligro: String((r && (r.peligro || r.tipo_peligro || r.evento)) || prev.peligro || "").trim(),
-    departamento: String((r && (r.departamento || r.region)) || prev.departamento || "").trim(),
-    provincia: String((r && r.provincia) || prev.provincia || "").trim(),
-    distrito: String((r && r.distrito) || prev.distrito || "").trim(),
-    fechaPeligro: String((r && (r.fecha_peligro || r.fechaPeligro || r.fecha_evento)) || prev.fechaPeligro || "").trim(),
-    fechaHora: String((r && (r.fecha_hora || r.fechaHora || r.fecha_registro)) || prev.fechaHora || "").trim(),
-    createdAt: String((r && r.created_at) || prev.createdAt || "").trim(),
-    updatedAt: String((r && r.updated_at) || prev.updatedAt || "").trim(),
-    createdByEmail: String((r && r.created_by) || prev.createdByEmail || "").trim(),
-    updatedByEmail: String((r && r.updated_by) || prev.updatedByEmail || "").trim(),
-    ownerEmail: String((r && r.created_by) || prev.ownerEmail || "").trim(),
-    rpAprobEstado: rpEstado || prev.rpAprobEstado || "Borrador",
-    cierreEstado: cierreEstado || prev.cierreEstado || null,
-    cerrada: closedFlag || cierreEstado.toLowerCase() === "aprobado" || cierreEstado.toLowerCase() === "cerrada" || !!prev.cerrada,
-    __summaryOnly: true,
-    __needsDetail: true,
-    __serverHash: String((r && (r.hash || r.payload_hash)) || prev.__serverHash || ""),
-    __serverUpdatedAt: String((r && r.updated_at) || prev.__serverUpdatedAt || "")
-  });
-
-  // Para que la Lista pueda saber si existe RC sin traer payload completo.
-  if(rcTotal > 0){
-    out.rcReportes = Array.from({length: rcTotal}, (_, i)=>({ __summaryOnly:true, numeroReporteRC: i + 1 }));
-  }else if(!Array.isArray(out.rcReportes) || (Array.isArray(out.rcReportes) && out.rcReportes.every(x => x && x.__summaryOnly))){
-    out.rcReportes = [];
-  }
-  return out;
-}
-
-function __syncIsSummaryOnly(em){
-  return !!(em && (em.__summaryOnly === true || em.__needsDetail === true));
-}
-
-async function __syncFetchDetail(codigo){
-  const code = String(codigo || "").trim();
-  if(!code) throw new Error("codigo_invalido");
-  if(!__isApiConfigured()) throw new Error('server_not_configured');
-  if(!navigator.onLine) throw new Error('offline');
-  const token = __tokenGet();
-  const out = await __api('/sync/detail?codigo=' + encodeURIComponent(code), { method:'GET', token: token });
-  if(out.res && out.res.status === 401) throw new Error('unauthorized');
-  if(out.res && out.res.status === 404) throw new Error('not_found');
-  if(!out.res || !out.res.ok){
-    const err = out.data && out.data.error ? out.data.error : 'detail_failed';
-    throw new Error(err);
-  }
-  return out.data && out.data.record ? out.data.record : null;
-}
-
-async function __ensureFullEmergencia(objOrCodigo){
-  const code = String((typeof objOrCodigo === 'string') ? objOrCodigo : (objOrCodigo && objOrCodigo.codigo) || '').trim();
-  if(!code) return objOrCodigo || null;
-  let arr = Array.isArray(emergencias) ? emergencias : __loadEmergencias();
-  let idx = arr.findIndex(e => String(e && e.codigo ? e.codigo : '').trim() === code);
-  let cur = idx >= 0 ? arr[idx] : (typeof objOrCodigo === 'object' ? objOrCodigo : null);
-  if(cur && !__syncIsSummaryOnly(cur) && cur.codigo) return cur;
-  const rec = await __syncFetchDetail(code);
-  if(!rec || !rec.payload) return cur;
-  const payload = JSON.parse(JSON.stringify(rec.payload || {}));
-  try{ payload.estado_sync = 'Sincronizado'; }catch(_e){}
-  try{ payload.__serverHash = String(rec.hash || ''); }catch(_e){}
-  try{ payload.__serverUpdatedAt = String(rec.updated_at || ''); }catch(_e){}
-  try{ payload.__summaryOnly = false; delete payload.__needsDetail; }catch(_e){}
-  if(idx >= 0) arr[idx] = payload;
-  else { arr.push(payload); idx = arr.length - 1; }
-  emergencias = arr;
-  const map = __getHashMap();
-  if(rec.hash) map[code] = String(rec.hash);
-  __setHashMap(map);
-  __saveEmergencias();
-  try{ if(emergenciaSeleccionada && String(emergenciaSeleccionada.codigo||'').trim() === code) emergenciaSeleccionada = payload; }catch(_e){}
-  return payload;
-}
-
-// FIX v239: para aprobar RP no basta con la copia resumida/local.
-// Esta función fuerza detalle vigente del servidor cuando hay conexión y conserva hash/updatedAt.
-async function __forceServerFullEmergencia(objOrCodigo, opts){
-  const cfg = Object.assign({ required:false }, opts || {});
-  const code = String((typeof objOrCodigo === 'string') ? objOrCodigo : (objOrCodigo && objOrCodigo.codigo) || '').trim();
-  if(!code) return objOrCodigo || null;
-
-  if(__isApiConfigured && __isApiConfigured() && navigator.onLine){
-    try{
-      const rec = await __syncFetchDetail(code);
-      if(rec && rec.payload){
-        let arr = Array.isArray(emergencias) ? emergencias : __loadEmergencias();
-        const payload = JSON.parse(JSON.stringify(rec.payload || {}));
-        try{ payload.estado_sync = 'Sincronizado'; }catch(_e){}
-        try{ payload.__serverHash = String(rec.hash || ''); }catch(_e){}
-        try{ payload.__serverUpdatedAt = String(rec.updated_at || ''); }catch(_e){}
-        try{ payload.__summaryOnly = false; delete payload.__needsDetail; }catch(_e){}
-
-        const idx = arr.findIndex(e => String(e && e.codigo ? e.codigo : '').trim() === code);
-        if(idx >= 0) arr[idx] = payload;
-        else arr.push(payload);
-        emergencias = arr;
-
-        const map = __getHashMap();
-        if(rec.hash) map[code] = String(rec.hash);
-        else delete map[code];
-        __setHashMap(map);
-        __saveEmergencias();
-
-        try{
-          if(emergenciaSeleccionada && String(emergenciaSeleccionada.codigo||'').trim() === code){
-            emergenciaSeleccionada = payload;
-          }
-        }catch(_e){}
-        return payload;
-      }
-    }catch(e){
-      if(cfg.required) throw e;
-      console.warn("No se pudo traer detalle vigente del servidor para", code, e);
-    }
-  }
-
-  return await __ensureFullEmergencia(objOrCodigo);
-}
-
-async function __withFreshFullEmergencia(objOrCodigo, cb){
-  try{
-    const full = await __forceServerFullEmergencia(objOrCodigo);
-    if(!full){ alert('No se pudo cargar el detalle vigente del registro.'); return; }
-    return await cb(full);
-  }catch(e){
-    alert('No se pudo cargar el detalle vigente desde D1: ' + ((e && e.message) ? e.message : e));
-  }
-}
-
-function __syncRPAdminApproveButtonState(obj){
-  try{
-    const btn = document.getElementById("btnGuardarAprobarRPAdmin");
-    if(!btn) return;
-    const isAdm = (__isAdmin && __isAdmin());
-    btn.classList.toggle("d-none", !isAdm);
-
-    const st = String((obj && obj.rpAprobEstado) || "Borrador").trim();
-    const closed = !!(obj && obj.cerrada);
-    const canApprove = !!(isAdm && !closed && st !== "Aprobado");
-
-    btn.disabled = !canApprove;
-    btn.title = canApprove
-      ? "Grabar cambios y aprobar RP con la versión vigente del servidor."
-      : (st === "Aprobado" ? "RP ya aprobado." : (closed ? "Emergencia cerrada." : "No disponible."));
-  }catch(e){}
-}
-
-async function __withFullEmergencia(objOrCodigo, cb){
-  try{
-    const full = await __ensureFullEmergencia(objOrCodigo);
-    if(!full){ alert('No se pudo cargar el detalle del registro.'); return; }
-    return await cb(full);
-  }catch(e){
-    alert('No se pudo cargar el detalle desde D1: ' + ((e && e.message) ? e.message : e));
-  }
-}
-
-// ===== SYNC LOCK / POLLING OPTIMIZADO v223 =====
-// Evita ráfagas de /sync/list cuando se disparan varios eventos juntos
-// (pageshow, visibilitychange, pestaña Lista, botón Sincronizar, timers).
-window.__SYNC_RUNNING__ = false;
-window.__SYNC_RUNNING_PROMISE__ = null;
-window.__SYNC_PULL_PROMISE__ = null;
-window.__SYNC_LAST_EMPTY_KEY__ = window.__SYNC_LAST_EMPTY_KEY__ || "";
-window.__SYNC_LAST_EMPTY_AT__ = window.__SYNC_LAST_EMPTY_AT__ || 0;
-window.__SYNC_PULL_DEDUP_MS__ = window.__SYNC_PULL_DEDUP_MS__ || 90000;
-window.__SYNC_AUTO_MIN_GAP_MS = window.__SYNC_AUTO_MIN_GAP_MS || 120000;
-
-function __syncCanSkipRecentEmptyPull(key){
-  try{
-    const k = String(key || "");
-    if(!k) return false;
-    const lastK = String(window.__SYNC_LAST_EMPTY_KEY__ || "");
-    const lastAt = Number(window.__SYNC_LAST_EMPTY_AT__ || 0) || 0;
-    return !!(lastK && lastK === k && lastAt && (Date.now() - lastAt) < window.__SYNC_PULL_DEDUP_MS__);
-  }catch(e){ return false; }
-}
-
-function __syncMarkEmptyPull(key){
-  try{
-    window.__SYNC_LAST_EMPTY_KEY__ = String(key || "");
-    window.__SYNC_LAST_EMPTY_AT__ = Date.now();
-  }catch(e){}
-}
-
-function __syncMarkNonEmptyPull(){
-  try{
-    window.__SYNC_LAST_EMPTY_KEY__ = "";
-    window.__SYNC_LAST_EMPTY_AT__ = 0;
-  }catch(e){}
-}
-
 async function __syncPull(since){
-  const __pullKey = String(since || __getLastPull() || __syncEpoch());
-
-  // Si hay un pull en curso, todos esperan el mismo resultado.
-  // Esto evita 5-10 llamadas iguales a /sync/list por recarga/pestaña/eventos.
-  if(window.__SYNC_PULL_PROMISE__){
-    return await window.__SYNC_PULL_PROMISE__;
-  }
-
-  // Si hace pocos segundos ya consultamos el mismo cursor y vino vacío, no repetir.
-  if(__syncCanSkipRecentEmptyPull(__pullKey)){
-    return { ok:true, records:[], newSince: __pullKey, skipped:'recent_empty_pull' };
-  }
-
-  window.__SYNC_PULL_PROMISE__ = (async function(){
-
   if(!__isApiConfigured()) throw new Error('server_not_configured');
   if(!navigator.onLine) throw new Error('offline');
 
-  const token = __tokenGet();
+  const token = __tokenGet(); // opcional
+
   const limit = 5000;
   let s = since || __getLastPull();
   let pulledAll = [];
   let guard = 0;
 
   while(guard < 25){
-    // OPTIMIZACIÓN: usar /sync/list, que NO devuelve payload completo.
-    const out = await __api('/sync/list?since=' + encodeURIComponent(s) + '&limit=' + limit, { method:'GET', token: token });
+    const out = await __api('/sync/pull?since=' + encodeURIComponent(s) + '&limit=' + limit, { method:'GET', token: token });
     if(out.res && out.res.status === 401) throw new Error('unauthorized');
     if(!out.res || !out.res.ok){
-      const err = out.data && out.data.error ? out.data.error : 'list_failed';
+      const err = out.data && out.data.error ? out.data.error : 'pull_failed';
       throw new Error(err);
     }
 
     const pulled = out.data && Array.isArray(out.data.records) ? out.data.records : [];
     if(pulled.length === 0) break;
+
     pulledAll = pulledAll.concat(pulled);
 
+    // calcular maxUpdated de este lote
     let maxUpdatedBatch = s;
     for(const r of pulled){
       const upd = String(r && r.updated_at ? r.updated_at : "");
       if(upd && upd > maxUpdatedBatch) maxUpdatedBatch = upd;
     }
-    if(pulled.length < limit){ s = maxUpdatedBatch; break; }
+
+    // si vino menos del límite, ya terminamos
+    if(pulled.length < limit) { s = maxUpdatedBatch; break; }
+
+    // si no avanzó since, cortar para evitar bucle
     if(maxUpdatedBatch === s) break;
+
     s = maxUpdatedBatch;
     guard++;
   }
@@ -11501,45 +10188,61 @@ async function __syncPull(since){
   for(const r of pulled){
     const codigo = String(r && r.codigo ? r.codigo : '').trim();
     if(!codigo) continue;
-    const serverHash = String(r.hash || r.payload_hash || '');
+
+    const serverPayload = r.payload;
+    const serverDeleted = !!(serverPayload && (serverPayload._deleted === true || serverPayload.deleted === true));
+    if(serverDeleted){
+      try{ __addTombstone(codigo); }catch(_e){}
+    }
+    const serverHash = String(r.hash || '');
     const serverUpdated = String(r.updated_at || s);
     if(serverUpdated > maxUpdated) maxUpdated = serverUpdated;
 
     const i = idx[codigo];
     if(i !== undefined){
       const lastSynced = map[codigo] || "";
-      let localHash = "";
-      let localDirty = false;
-      try{
-        if(!__syncIsSummaryOnly(local[i])){
-          localHash = await __syncHash(local[i]);
-          localDirty = !!(lastSynced && localHash !== lastSynced);
-        }
-      }catch(_e){ localDirty = false; }
-
+      const localHash = await __syncHash(local[i]);
+      const localDirty = (lastSynced && localHash !== lastSynced);
+      // Si local tiene cambios y el servidor también cambió: conflicto, pero auto-resolvemos si el usuario NO puede editar ese estado
+      // o si el servidor ya consolidó una eliminación/tombstone.
       if(localDirty && lastSynced && serverHash && serverHash !== lastSynced){
+        try{
+          const role = currentUser ? currentUser.role : "";
+          const isAdmin = (role === __ROLES.ADMIN);
+          const st = __segStage(serverPayload);
+          const editableReg = (role === __ROLES.REG) && (st === "Borrador" || st === "Observado");
+          const preferServer = !!(serverPayload && (serverPayload._deleted === true || serverPayload.deleted === true));
+          if(preferServer || (!isAdmin && !editableReg)){
+            try{ serverPayload.estado_sync = 'Sincronizado'; }catch(_e){}
+            try{ serverPayload.__serverHash = serverHash; serverPayload.__serverUpdatedAt = serverUpdated; }catch(_e){}
+            local[i] = serverPayload;
+            if(serverHash) map[codigo] = serverHash;
+            continue;
+          }
+        }catch(_e){}
         conflicts.push({
           codigo: codigo,
           reason: 'both_modified',
           server_updated_at: serverUpdated,
           server_hash: serverHash,
+          server_stage: (typeof __segStage === 'function') ? __segStage(serverPayload) : '',
           local_stage: (typeof __segStage === 'function') ? __segStage(local[i]) : ''
         });
         continue;
       }
 
+      // Si local está "dirty" pero el servidor no cambió desde la última base, NO pisar lo local
       if(localDirty && lastSynced && serverHash === lastSynced){
         continue;
       }
 
-      // Si el hash es igual y ya tenemos payload completo, conservarlo.
-      if(serverHash && lastSynced === serverHash && !__syncIsSummaryOnly(local[i])){
-        try{ local[i].__serverUpdatedAt = serverUpdated; local[i].__serverHash = serverHash; }catch(_e){}
-      }else{
-        local[i] = __syncSummaryToLocalRecord(r, local[i]);
-      }
+      try{ serverPayload.estado_sync = 'Sincronizado'; }catch(_e){}
+      try{ serverPayload.__serverHash = serverHash; serverPayload.__serverUpdatedAt = serverUpdated; }catch(_e){}
+      local[i] = serverPayload;
     }else{
-      local.push(__syncSummaryToLocalRecord(r, null));
+      try{ serverPayload.estado_sync = 'Sincronizado'; }catch(_e){}
+      try{ serverPayload.__serverHash = serverHash; serverPayload.__serverUpdatedAt = serverUpdated; }catch(_e){}
+      local.push(serverPayload);
       idx[codigo] = local.length - 1;
     }
 
@@ -11549,7 +10252,7 @@ async function __syncPull(since){
   emergencias = local;
   __saveEmergencias();
   __setHashMap(map);
-  __setLastPull(maxUpdated || s);
+  __setLastPull(s);
 
   if(conflicts.length){
     let old = [];
@@ -11561,20 +10264,7 @@ async function __syncPull(since){
   try{ __recalcularCorrelativos(); }catch(e){}
   try{ cargarTablaEmergencias(); }catch(e){}
 
-  return { ok:true, records: pulled, newSince: maxUpdated, conflicts: conflicts, mode:'list' };
-
-  })();
-
-  try{
-    const __res = await window.__SYNC_PULL_PROMISE__;
-    try{
-      if(__res && Array.isArray(__res.records) && __res.records.length === 0) __syncMarkEmptyPull(__pullKey);
-      else __syncMarkNonEmptyPull();
-    }catch(_e){}
-    return __res;
-  }finally{
-    window.__SYNC_PULL_PROMISE__ = null;
-  }
+  return { ok:true, records: pulled, newSince: maxUpdated, conflicts: conflicts };
 }
 
 async function __syncAll(){
@@ -11677,27 +10367,6 @@ async function __syncAll(){
 }
 
 async function __syncPullAuto(opts){
-  opts = opts || {};
-  const force = !!opts.force;
-
-  // Candado global visible en consola: window.__SYNC_RUNNING__
-  if(window.__SYNC_RUNNING__){
-    return await (window.__SYNC_RUNNING_PROMISE__ || Promise.resolve({ ok:true, skipped:'sync_running' }));
-  }
-
-  // Polling optimizado: salvo force, no hacer autopull si ya se hizo uno reciente.
-  const now0 = Date.now();
-  const last0 = Number(window.__PULL_AUTO_LAST || 0) || 0;
-  const gap0 = Number(window.__SYNC_AUTO_MIN_GAP_MS || 120000) || 120000;
-  if(!force && last0 && (now0 - last0) < gap0){
-    try{ await __calcPending(); }catch(_e){}
-    return { ok:true, skipped:'cooldown' };
-  }
-
-  window.__SYNC_RUNNING__ = true;
-  window.__PULL_AUTO_LAST = now0;
-  window.__SYNC_RUNNING_PROMISE__ = (async function(){
-
   try{
     opts = opts || {};
     const force = !!opts.force;
@@ -11706,7 +10375,7 @@ async function __syncPullAuto(opts){
     if(!currentUser && !__tokenGet()){ __updateSyncUI(0); return; }
 
     // Auto-pull guard (anti-bucle / anti-ráfaga). El arranque inicial puede saltarse esta barrera.
-    window.__PULL_AUTO_MIN_GAP_MS = window.__PULL_AUTO_MIN_GAP_MS || 60000; // 60s: reduce lecturas repetidas a D1
+    window.__PULL_AUTO_MIN_GAP_MS = window.__PULL_AUTO_MIN_GAP_MS || 20000; // 20s
     const now = Date.now();
     const last = window.__PULL_AUTO_LAST || 0;
     if(window.__PULL_AUTO_INFLIGHT) return;
@@ -11750,16 +10419,6 @@ async function __syncPullAuto(opts){
   }catch(e){
     __updateSyncUI(0);
   } finally {
-    window.__PULL_AUTO_INFLIGHT = false;
-  }
-
-  })();
-
-  try{
-    return await window.__SYNC_RUNNING_PROMISE__;
-  }finally{
-    window.__SYNC_RUNNING__ = false;
-    window.__SYNC_RUNNING_PROMISE__ = null;
     window.__PULL_AUTO_INFLIGHT = false;
   }
 }
@@ -12666,22 +11325,22 @@ function __excelParseElab(em){
   }catch(e){ return null; }
 }
 
-async function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO, peligrosSeleccionados){
+function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO, peligrosSeleccionados){
   try{
     if(!window.XLSX){
       alert("No se pudo cargar la librería de Excel (XLSX). Verifique su conexión a internet.");
-      return false;
+      return;
     }
 
     const desde = String(desdeISO || "").trim();
     const hasta = String(hastaISO || "").trim();
     if(!/^\d{4}-\d{2}-\d{2}$/.test(desde) || !/^\d{4}-\d{2}-\d{2}$/.test(hasta)){
       alert("Seleccione un rango de fechas válido.");
-      return false;
+      return;
     }
     if(hasta < desde){
       alert("La fecha final no puede ser menor que la fecha inicial.");
-      return false;
+      return;
     }
 
     const peligrosFiltro = (Array.isArray(peligrosSeleccionados) ? peligrosSeleccionados : [])
@@ -12692,201 +11351,6 @@ async function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO, peligrosS
     const etiquetaPeligros = filtrarPorPeligro ? peligrosFiltro.join(", ") : "Todos los peligros";
 
     const __ACCION_PRELIMINAR_BASE = "El COE MIDIS solicita al equipo territorial realizar el monitoreo de la emergencia a fin de determinar si existe afectación a usuarios o servicios de los programas nacionales. El COE MIDIS mantiene el seguimiento continuo del evento a través de los Espacios de Monitoreo y Seguimiento Sectorial (EMSS), a fin de consolidar información estratégica para la toma de decisiones y acciones sectoriales de respuesta.";
-
-    // FIX v234: la Lista usa resúmenes de /sync/list. Para exportar campos largos
-    // (Hechos, daños y acciones) se debe usar payload completo. Si el rango es amplio,
-    // se evita consultar /sync/detail registro por registro y se usa un snapshot completo.
-    const __firstExcelText = (...vals)=>{
-      for(const v of vals){
-        if(v === null || v === undefined) continue;
-        if(Array.isArray(v) || (typeof v === "object")) continue;
-        const s = String(v).trim();
-        if(s) return s;
-      }
-      return "";
-    };
-
-    const __excelParseMaybeJson = (v)=>{
-      if(typeof v === "string"){
-        const s = v.trim();
-        if(!s) return v;
-        if((s.startsWith("{") && s.endsWith("}")) || (s.startsWith("[") && s.endsWith("]"))){
-          try{ return JSON.parse(s); }catch(_e){ return v; }
-        }
-      }
-      return v;
-    };
-
-    const __coalesceExcelObject = (...vals)=>{
-      for(let v of vals){
-        v = __excelParseMaybeJson(v);
-        if(v && typeof v === "object" && !Array.isArray(v)) return v;
-      }
-      return null;
-    };
-
-    const __excelArray = (v)=>{
-      v = __excelParseMaybeJson(v);
-      return Array.isArray(v) ? v : [];
-    };
-
-    const __lastExcelRC = (em)=>{
-      try{
-        const rcs = __excelArray(em && (em.rcReportes ?? em.rcReportesJson ?? em.rcReportesJSON));
-        for(let i=rcs.length-1; i>=0; i--){
-          const rc = rcs[i];
-          if(rc && typeof rc === "object" && rc.__summaryOnly !== true) return rc;
-        }
-        return null;
-      }catch(_e){ return null; }
-    };
-
-    const __needsExcelDetail = (em)=>{
-      try{
-        if(!em) return false;
-        if(typeof __syncIsSummaryOnly === "function" && __syncIsSummaryOnly(em)) return true;
-        const lastRC = __lastExcelRC(em);
-        const hasRp = !!(
-          __firstExcelText(em.hechos, em.hecho, em.descripcionHechos, em.detalleHechos, em.descripcion) ||
-          __firstExcelText(em.daniosOtros, em.dañosOtros, em.danosOtros, em.daniosOtrosSectores, em.danosOtrosSectores, em.afectacionOtrosSectores) ||
-          __coalesceExcelObject(em.daniosMIDIS, em.dañosMIDIS, em.danosMIDIS, em.daniosSector, em.daniosSectorMidis, em.daniosSectorDesarrollo) ||
-          em.accionesPreliminar || em.accionesPreliminares || em.accionesRP || em.accionesPreliminarRP || em.accionesSectorPreliminar
-        );
-        const hasRc = !!(lastRC && (
-          lastRC.daniosMIDIS || lastRC.dañosMIDIS || lastRC.danosMIDIS ||
-          lastRC.acciones || lastRC.accionesRC || lastRC.accionesComplementario || lastRC.accionesComplementarias || lastRC.accionesComp
-        ));
-        return !(hasRp || hasRc);
-      }catch(e){ return false; }
-    };
-
-    const __excelSleep = (ms)=>new Promise(resolve=>setTimeout(resolve, ms));
-
-    const __excelWithTimeout = (promise, ms, label)=>{
-      let timer = null;
-      return Promise.race([
-        promise,
-        new Promise((_, reject)=>{
-          timer = setTimeout(()=>reject(new Error(label || "timeout")), ms);
-        })
-      ]).finally(()=>{ try{ clearTimeout(timer); }catch(_e){} });
-    };
-
-    const __excelCanApi = ()=>{
-      try{ return !!(__isApiConfigured && __isApiConfigured() && navigator.onLine && (!currentUser || currentUser.role !== __ROLES.CONS || __tokenGet)); }catch(_e){ return false; }
-    };
-
-    const __excelFetchSnapshotMap = async ()=>{
-      const map = new Map();
-      if(!__excelCanApi() || typeof __api !== "function") return map;
-      const token = (typeof __tokenGet === "function") ? __tokenGet() : null;
-      const limit = 5000;
-      let since = "1970-01-01T00:00:00.000Z";
-      let guard = 0;
-      while(guard < 8){
-        const out = await __excelWithTimeout(
-          __api("/sync/pull?since=" + encodeURIComponent(since) + "&limit=" + limit, { method:"GET", token: token }),
-          25000,
-          "timeout_snapshot_excel"
-        );
-        if(out.res && out.res.status === 401) throw new Error("unauthorized");
-        if(!out.res || !out.res.ok) throw new Error((out.data && out.data.error) ? out.data.error : "pull_failed");
-        const recs = (out.data && Array.isArray(out.data.records)) ? out.data.records : [];
-        if(recs.length === 0) break;
-        let maxUpdated = since;
-        for(const r of recs){
-          const code = String(r && r.codigo ? r.codigo : "").trim();
-          const payload = r && r.payload ? JSON.parse(JSON.stringify(r.payload)) : null;
-          if(code && payload){
-            try{ payload.__serverHash = String(r.hash || r.payload_hash || ""); }catch(_e){}
-            try{ payload.__serverUpdatedAt = String(r.updated_at || ""); }catch(_e){}
-            try{ payload.__serverCreatedAt = String(r.created_at || ""); }catch(_e){}
-            try{ payload.__summaryOnly = false; delete payload.__needsDetail; }catch(_e){}
-            const prev = map.get(code);
-            if(!prev || String(payload.__serverUpdatedAt || "") >= String(prev.__serverUpdatedAt || "")) map.set(code, payload);
-          }
-          const upd = String(r && r.updated_at ? r.updated_at : "");
-          if(upd && upd > maxUpdated) maxUpdated = upd;
-        }
-        if(recs.length < limit) break;
-        if(maxUpdated === since) break;
-        since = maxUpdated;
-        guard++;
-        await __excelSleep(0);
-      }
-      return map;
-    };
-
-    const __replaceLocalWithFull = (code, full)=>{
-      try{
-        if(!code || !full) return;
-        const arrLocal = Array.isArray(emergencias) ? emergencias : [];
-        const idxLocal = arrLocal.findIndex(x=>String(x && x.codigo ? x.codigo : "").trim() === code);
-        if(idxLocal >= 0) arrLocal[idxLocal] = full;
-        if(typeof __saveEmergencias === "function") __saveEmergencias();
-      }catch(_e){}
-    };
-
-    const __hydrateExcelItems = async (selected)=>{
-      const arr = Array.isArray(selected) ? selected : [];
-      const needed = [];
-      arr.forEach((em, i)=>{ if(em && em.codigo && __needsExcelDetail(em)) needed.push(i); });
-      if(!needed.length) return 0;
-
-      let fullCount = 0;
-
-      // Rangos amplios: una sola consulta con payload completo evita N llamadas lentas a /sync/detail.
-      if(needed.length >= 25){
-        try{
-          const snap = await __excelFetchSnapshotMap();
-          if(snap && snap.size){
-            needed.forEach(i=>{
-              const code = String(arr[i]?.codigo || "").trim();
-              const full = snap.get(code);
-              if(full){ arr[i] = full; __replaceLocalWithFull(code, full); fullCount++; }
-            });
-          }
-        }catch(_e){
-          console.warn("Export Excel Lista: snapshot completo no disponible; se usará detalle por registro.", _e);
-        }
-      }
-
-      const pending = needed.filter(i=>__needsExcelDetail(arr[i]));
-      const detailTimeoutMs = 8500;
-      const concurrency = 6;
-      let cursor = 0;
-
-      const worker = async ()=>{
-        while(cursor < pending.length){
-          const i = pending[cursor++];
-          const em = arr[i];
-          const code = String(em && em.codigo ? em.codigo : "").trim();
-          if(!code) continue;
-          try{
-            let full = null;
-            const cached = window.__EXCEL_DETAIL_CACHE__ && window.__EXCEL_DETAIL_CACHE__[code];
-            if(cached && cached.hash && cached.hash === String(em.__serverHash || "") && cached.payload){
-              full = cached.payload;
-            }else if(typeof __ensureFullEmergencia === "function"){
-              full = await __excelWithTimeout(__ensureFullEmergencia(code), detailTimeoutMs, "timeout_detail_" + code);
-            }
-            if(full){
-              arr[i] = full;
-              fullCount++;
-              try{
-                window.__EXCEL_DETAIL_CACHE__ = window.__EXCEL_DETAIL_CACHE__ || {};
-                window.__EXCEL_DETAIL_CACHE__[code] = { hash:String(full.__serverHash || em.__serverHash || ""), payload:full };
-              }catch(_e){}
-            }
-          }catch(_e){
-            console.warn("Export Excel Lista: no se pudo hidratar detalle", code, _e);
-          }
-          if(cursor % 10 === 0) await __excelSleep(0);
-        }
-      };
-      await Promise.all(Array.from({length: Math.min(concurrency, pending.length)}, ()=>worker()));
-      return fullCount;
-    };
 
     const __fmtAcciones = (a)=>{
       let arr = a;
@@ -12924,34 +11388,26 @@ async function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO, peligrosS
       }).filter(Boolean).join("\n");
     };
 
-    const __numExcel = (...vals)=>{
-      for(const v of vals){
-        if(v === null || v === undefined || v === "") continue;
-        const n = Number(String(v).replace(",", "."));
-        if(!isNaN(n)) return n;
-      }
-      return 0;
-    };
-
     const __fmtDaniosMIDIS = (src)=>{
-      let o = __excelParseMaybeJson(src);
-      if(!o || typeof o !== "object" || Array.isArray(o)) return { text:"", totals:{ua:0,sa:0,ups:0,uf:0,ma:0} };
-      const baseProgs = (Array.isArray(programas) && programas.length) ? programas : [];
-      const dynamicProgs = Object.keys(o || {});
-      const progs = Array.from(new Set(baseProgs.concat(dynamicProgs))).filter(Boolean);
+      let o = src;
+      if(typeof o === "string"){
+        try{ o = JSON.parse(o); }catch(_e){}
+      }
+      if(!o || typeof o !== "object") return { text:"", totals:{ua:0,sa:0,ups:0,uf:0,ma:0} };
+      const progs = (Array.isArray(programas) && programas.length) ? programas : Object.keys(o);
       const lines = [];
       const totals = {ua:0,sa:0,ups:0,uf:0,ma:0};
-      const objKeys = Object.keys(o || {});
       progs.forEach(p=>{
         const name = String(p||"").trim();
         if(!name) return;
-        const key = objKeys.find(k=>String(k||"").trim().toLowerCase() === name.toLowerCase()) || name;
-        const d = (o && o[key] && typeof o[key] === "object") ? o[key] : {};
-        const ua  = __numExcel(d.usuariosAfectados, d.usuarios_afectados, d.ua, d.UA);
-        const sa  = __numExcel(d.serviciosAfectados, d.servicios_afectados, d.sa, d.SA);
-        const ups = __numExcel(d.usuariosPorServicios, d.usuarios_por_servicios, d.uas, d.ups, d.UPS, d.UAS);
-        const uf  = __numExcel(d.usuariosFallecidos, d.fallecidos, d.uf, d.UF);
-        const ma  = __numExcel(d.moduloAfectado, d.modulo_afectado, d.ma, d.MA);
+        const keyUp = name.toUpperCase();
+        const keyLo = name.toLowerCase();
+        const d = (o && (o[name] || o[keyUp] || o[keyLo])) ? (o[name] || o[keyUp] || o[keyLo]) : {};
+        const ua  = Number(d?.usuariosAfectados || 0);
+        const sa  = Number(d?.serviciosAfectados || 0);
+        const ups = Number(d?.usuariosPorServicios || 0);
+        const uf  = Number(d?.usuariosFallecidos || 0);
+        const ma  = Number(d?.moduloAfectado || 0);
         totals.ua += ua; totals.sa += sa; totals.ups += ups; totals.uf += uf; totals.ma += ma;
         if((ua + sa + ups + uf + ma) <= 0) return;
         lines.push(`${name}: UA=${ua}, SA=${sa}, UPS=${ups}, UF=${uf}, MA=${ma}`);
@@ -12960,33 +11416,20 @@ async function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO, peligrosS
     };
 
     const __fmtAccionesComplementario = (em)=>{
-      const rc = __lastExcelRC(em);
-      if(!rc) return "";
-      let a = (typeof __dashGetAccionesComplementarioFromRC==="function")
-        ? __dashGetAccionesComplementarioFromRC(rc)
-        : (rc && (rc.acciones ?? rc.accionesRC ?? rc.accionesComplementario ?? rc.accionesComplementarias ?? rc.accionesComp ?? rc.accionesSectorComplementario));
-      return __fmtAcciones(a);
-    };
-
-    const __getExcelDaniosMIDIS = (em)=>{
-      const rc = __lastExcelRC(em);
-      if(rc){
-        const rcDanios = __coalesceExcelObject(rc.daniosMIDIS, rc.dañosMIDIS, rc.danosMIDIS, rc.daniosSector, rc.daniosSectorMidis, rc.daniosSectorDesarrollo);
-        if(rcDanios) return rcDanios;
+      let rcs = em?.rcReportes;
+      if(typeof rcs === "string"){
+        try{ rcs = JSON.parse(rcs); }catch(_e){}
       }
-      return __coalesceExcelObject(em.daniosMIDIS, em.dañosMIDIS, em.danosMIDIS, em.daniosSector, em.daniosSectorMidis, em.daniosSectorDesarrollo);
-    };
-
-    const __getExcelDaniosOtros = (em)=>{
-      const rc = __lastExcelRC(em);
-      return __firstExcelText(
-        rc && (rc.daniosOtros ?? rc.dañosOtros ?? rc.danosOtros ?? rc.daniosOtrosSectores ?? rc.danosOtrosSectores ?? rc.afectacionOtrosSectores),
-        em.daniosOtros, em.dañosOtros, em.danosOtros, em.daniosOtrosSectores, em.danosOtrosSectores, em.afectacionOtrosSectores
-      );
-    };
-
-    const __getExcelHechos = (em)=>{
-      return __firstExcelText(em.hechos, em.hecho, em.descripcionHechos, em.detalleHechos, em.descripcion, em.resumenHechos);
+      if(!Array.isArray(rcs) || !rcs.length) return "";
+      const all = [];
+      rcs.forEach(rc=>{
+        let a = (typeof __dashGetAccionesComplementarioFromRC==="function")
+          ? __dashGetAccionesComplementarioFromRC(rc)
+          : (rc && (rc.acciones ?? rc.accionesRC ?? rc.accionesComplementario ?? rc.accionesComplementarias ?? rc.accionesComp));
+        const t = __fmtAcciones(a);
+        if(String(t||"").trim()) all.push(String(t).trim());
+      });
+      return all.join("\n");
     };
 
     const __getElabDateOnly = (em)=>{
@@ -13009,11 +11452,15 @@ async function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO, peligrosS
     };
 
     const __getDanioPrograma = (src, programa)=>{
-      let o = __excelParseMaybeJson(src);
-      if(!o || typeof o !== "object" || Array.isArray(o)) return {};
+      let o = src;
+      if(typeof o === "string"){
+        try{ o = JSON.parse(o); }catch(_e){}
+      }
+      if(!o || typeof o !== "object") return {};
       const name = String(programa||"").trim();
-      const key = Object.keys(o).find(k=>String(k||"").trim().toLowerCase() === name.toLowerCase()) || name;
-      return (o[key] && typeof o[key] === "object") ? o[key] : {};
+      const keyUp = name.toUpperCase();
+      const keyLo = name.toLowerCase();
+      return (o[name] || o[keyUp] || o[keyLo] || {});
     };
 
     const programaMap = new Map();
@@ -13030,11 +11477,11 @@ async function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO, peligrosS
         if(!programaMap.has(name)) programaMap.set(name, { programa:name, ua:0, sa:0, ups:0, uf:0, ma:0 });
         const d = __getDanioPrograma(src, name);
         const agg = programaMap.get(name);
-        agg.ua  += __numExcel(d?.usuariosAfectados, d?.usuarios_afectados, d?.ua, d?.UA);
-        agg.sa  += __numExcel(d?.serviciosAfectados, d?.servicios_afectados, d?.sa, d?.SA);
-        agg.ups += __numExcel(d?.usuariosPorServicios, d?.usuarios_por_servicios, d?.uas, d?.ups, d?.UPS, d?.UAS);
-        agg.uf  += __numExcel(d?.usuariosFallecidos, d?.fallecidos, d?.uf, d?.UF);
-        agg.ma  += __numExcel(d?.moduloAfectado, d?.modulo_afectado, d?.ma, d?.MA);
+        agg.ua  += Number(d?.usuariosAfectados || 0);
+        agg.sa  += Number(d?.serviciosAfectados || 0);
+        agg.ups += Number(d?.usuariosPorServicios || 0);
+        agg.uf  += Number(d?.usuariosFallecidos || 0);
+        agg.ma  += Number(d?.moduloAfectado || 0);
       });
     };
 
@@ -13042,7 +11489,6 @@ async function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO, peligrosS
     const resumenMap = new Map();
     const globalTotals = { emergencias:0, departamentos:new Set(), ua:0, sa:0, ups:0, uf:0, ma:0 };
 
-    let selectedEmergencias = [];
     (Array.isArray(emergencias) ? emergencias : []).forEach(em=>{
       try{
         if(typeof __isDeleted === "function" && __isDeleted(em)) return;
@@ -13052,33 +11498,12 @@ async function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO, peligrosS
         if(!elabDate) return;
         if(elabDate < desde || elabDate > hasta) return;
         if(filtrarPorPeligro && !peligrosSet.has(String(em.peligro||"").trim().toLowerCase())) return;
-        selectedEmergencias.push(em);
-      }catch(_e){}
-    });
 
-    if(selectedEmergencias.length === 0){
-      alert("No se encontraron emergencias para exportar con el rango de fechas y peligro seleccionado.\n\nVerifique la fecha inicial, fecha final y el filtro de peligros.");
-      return false;
-    }
-
-    await __hydrateExcelItems(selectedEmergencias);
-
-    selectedEmergencias.forEach(em=>{
-      try{
-        if(typeof __isDeleted === "function" && __isDeleted(em)) return;
-        if(__isSeguimientoRecord(em)) return;
-
-        const elabDate = __getElabDateOnly(em);
-        if(!elabDate) return;
-        if(elabDate < desde || elabDate > hasta) return;
-        if(filtrarPorPeligro && !peligrosSet.has(String(em.peligro||"").trim().toLowerCase())) return;
-
-        const danosOtros = __getExcelDaniosOtros(em);
-        const danosObj = __getExcelDaniosMIDIS(em);
-        const danosInfo  = __fmtDaniosMIDIS(danosObj);
+        const danosOtros = String(em.daniosOtros || "");
+        const danosInfo  = __fmtDaniosMIDIS(em.daniosMIDIS);
         const danosMIDIS = danosInfo.text;
-        __addDaniosPorPrograma(danosObj);
-        const accPre     = __fmtAccionesPreliminar(em.accionesPreliminar ?? em.accionesPreliminares ?? em.accionesRP ?? em.accionesPreliminarRP ?? em.accionesSectorPreliminar ?? em.accionesSector);
+        __addDaniosPorPrograma(em.daniosMIDIS);
+        const accPre     = __fmtAccionesPreliminar(em.accionesPreliminar);
         const accComp    = __fmtAccionesComplementario(em);
 
         const row = [
@@ -13088,7 +11513,7 @@ async function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO, peligrosS
           String(em.departamento||""),
           String(em.provincia||""),
           String(em.distrito||""),
-          __getExcelHechos(em),
+          String(em.hechos||""),
           danosOtros,
           danosMIDIS,
           accPre,
@@ -13126,8 +11551,8 @@ async function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO, peligrosS
     });
 
     if(items.length === 0){
-      alert("No se encontraron emergencias para exportar con el rango de fechas y peligro seleccionado.\n\nVerifique la fecha inicial, fecha final y el filtro de peligros.");
-      return false;
+      alert("No se encontraron emergencias en ese rango y peligro seleccionado (según la fecha de elaboración).\n\nVerifique la fecha inicial, fecha final y el filtro de peligros.");
+      return;
     }
 
     items.sort((a,b)=>{
@@ -13235,11 +11660,9 @@ async function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO, peligrosS
 
     const fname = `Lista_Emergencias_${desde.replace(/-/g,"")}_${hasta.replace(/-/g,"")}.xlsx`;
     XLSX.writeFile(wb, fname);
-    return true;
   }catch(e){
     console.error(e);
-    alert("Ocurrió un error al exportar a Excel: " + (e && e.message ? e.message : e));
-    return false;
+    alert("Ocurrió un error al exportar a Excel.");
   }
 }
 
@@ -13251,7 +11674,7 @@ document.addEventListener('DOMContentLoaded', async function(){
 
   window.addEventListener('online', function(){ __setNetBadge(); __calcPending(); try{ setTimeout(function(){ __syncPullAuto(); }, 300); }catch(_e){} });
   window.addEventListener('offline', function(){ __setNetBadge(); __updateSyncUI(0); });
-  window.addEventListener('pageshow', function(ev){ try{ if(ev && ev.persisted) setTimeout(function(){ __syncPullAuto(); }, 300); }catch(_e){} });
+  window.addEventListener('pageshow', function(){ try{ setTimeout(function(){ __syncPullAuto(); }, 300); }catch(_e){} });
   document.addEventListener('visibilitychange', function(){
     try{
       if(!document.hidden) setTimeout(function(){ __syncPullAuto(); }, 300);
@@ -13299,7 +11722,7 @@ document.addEventListener('DOMContentLoaded', async function(){
           __LIST_SORT.dir = -1;
           __listUpdateSortUI();
           (async ()=>{
-            try{ if(!window.__SYNC_RUNNING__) await __syncPullAuto(); }catch(_e){}
+            try{ await __syncPullAuto(); }catch(_e){}
             try{ cargarTablaEmergencias(); }catch(_e){}
           })();
         }catch(_e){}
@@ -13313,8 +11736,8 @@ try{
   if(!window.__LISTA_AUTOPULL_TIMER){
     window.__LISTA_AUTOPULL_TIMER = setInterval(()=>{
       const isActive = document.querySelector('a[href="#listaTab"]')?.classList.contains("active");
-      if(isActive && !window.__SYNC_RUNNING__) __syncPullAuto();
-    }, 180000);
+      if(isActive) __syncPullAuto();
+    }, 15000);
   }
 }catch(e){}
 
@@ -13356,7 +11779,7 @@ try{
       }
 
       if(btnDo){
-        btnDo.addEventListener("click", async ()=>{
+        btnDo.addEventListener("click", ()=>{
           const d = (iDesde && iDesde.value) ? iDesde.value : "";
           const h = (iHasta && iHasta.value) ? iHasta.value : "";
           if(!d || !h){
@@ -13368,19 +11791,8 @@ try{
             alert("Seleccione al menos un peligro o marque Todos los peligros.");
             return;
           }
-          const oldTxt = btnDo.textContent;
-          try{
-            btnDo.disabled = true;
-            btnDo.textContent = "Exportando...";
-            const ok = await __exportExcelListaEmergenciasByElab(d, h, peligros);
-            if(ok) try{ modal.hide(); }catch(_e){}
-          }catch(err){
-            console.error(err);
-            alert("No se pudo exportar a Excel." + (err && err.message ? "\n" + err.message : ""));
-          }finally{
-            btnDo.disabled = false;
-            btnDo.textContent = oldTxt || "Exportar";
-          }
+          __exportExcelListaEmergenciasByElab(d, h, peligros);
+          try{ modal.hide(); }catch(_e){}
         });
       }
     }
