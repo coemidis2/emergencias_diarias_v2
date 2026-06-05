@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <!-- BUILD: 2026-02-20 autopull-cooldown-v206-fix-sync-v3 -->
-<script>window.__BUILD_ID='2026-02-20 autopull-cooldown-v206-fix-sync-v3-sync-lock-v224-badgefix';console.log('BUILD',window.__BUILD_ID);</script>
+<script>window.__BUILD_ID='2026-02-20 autopull-cooldown-v206-fix-sync-v3-sync-lock-v232-dashmap-fecha-peligro';console.log('BUILD',window.__BUILD_ID);</script>
 
 <!-- build: VER_PRINT_RC_ALWAYS_VISIBLE v4 2026-01-11 -->
 <meta charset="UTF-8" />
@@ -18,7 +18,7 @@ body { background: #f5f5f5; }
 .card { margin-top: 1rem; }
 .table td input { width: 100%; }
 .hidden { display: none; }
-/* ======= VERSION 226 02/06/2026 - sync lock + polling optimized + badge pendientes corregido======= */
+/* ======= VERSION 232 02/06/2026 - dashmap filtros fecha peligro ======= */
 /* ======= VER (Listado de Emergencias): Formato de visualización/impresión ======= */
 .ver-report-wrap{ font-family: Calibri, Arial, sans-serif; font-size: 11pt; color:#111; }
 .ver-report-title{ font-family: Calibri, Arial, sans-serif; font-size:15pt; font-weight:700; color:#1F4E79; margin:0 0 6px 0; }
@@ -841,6 +841,69 @@ body { background: #f5f5f5; }
         <span class="badge me-2" style="background:#dc3545"> </span> Activo
         <span class="badge mx-2" style="background:#fd7e14"> </span> En proceso
         <span class="badge mx-2" style="background:#198754"> </span> Cerrada
+      </div>
+
+      <!-- Resumen dinámico por Departamento (solo Mapa de Emergencias) -->
+      <div class="border rounded p-2 mt-2" id="dashMapDeptBox">
+        <div class="row g-2 align-items-end mb-2">
+          <div class="col-md-4">
+            <label class="form-label mb-1">Departamento</label>
+            <select id="dashMapDepartamento" class="form-control form-control-sm">
+              <option value="">(Todos)</option>
+            </select>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label mb-1">Peligro</label>
+            <select id="dashMapPeligro" class="form-control form-control-sm">
+              <option value="">(Todos)</option>
+            </select>
+          </div>
+          <div class="col-md-2">
+            <label class="form-label mb-1">Fecha inicial</label>
+            <input type="date" id="dashMapFechaInicial" class="form-control form-control-sm">
+          </div>
+          <div class="col-md-2">
+            <label class="form-label mb-1">Fecha Final</label>
+            <input type="date" id="dashMapFechaFinal" class="form-control form-control-sm">
+          </div>
+          <div class="col-md-12">
+            <div class="small text-muted" id="dashMapDeptHint">Seleccione un departamento, peligro y/o rango de fecha del peligro para acercar el mapa y ver el resumen.</div>
+          </div>
+        </div>
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+          <div class="d-flex align-items-center gap-2">
+            <span class="small text-muted">Mostrar</span>
+            <select id="dashMapDeptPageSize" class="form-select form-select-sm" style="width:auto;">
+              <option value="5" selected>5</option>
+              <option value="10">10</option>
+              <option value="25">25</option>
+              <option value="50">50</option>
+              <option value="100">100</option>
+            </select>
+            <span class="small text-muted">registros</span>
+          </div>
+          <div class="btn-group btn-group-sm" role="group" aria-label="Paginación resumen departamento">
+            <button id="dashMapDeptPrev" type="button" class="btn btn-outline-secondary">Anterior</button>
+            <button id="dashMapDeptNext" type="button" class="btn btn-outline-secondary">Siguiente</button>
+          </div>
+        </div>
+        <div id="dashMapDeptPageInfo" class="small text-muted mb-1">0 a 0 de 0 registros</div>
+        <div class="table-responsive">
+          <table class="table table-sm table-bordered align-middle mb-0">
+            <thead>
+              <tr>
+                <th>Código</th>
+                <th>Distrito</th>
+                <th>Peligro</th>
+                <th class="text-end">Total usuarios afectados</th>
+                <th class="text-end">Total servicios afectados</th>
+              </tr>
+            </thead>
+            <tbody id="dashMapDeptTbody">
+              <tr><td colspan="5" class="text-muted small">Sin datos para mostrar.</td></tr>
+            </tbody>
+          </table>
+        </div>
       </div>
       </div>
 
@@ -8433,17 +8496,300 @@ function __dashInitIfNeeded(){
   if(!dashChartAfectProg) dashChartAfectProg = mkBar(document.getElementById("dashChartAfectProg"), "N° emergencias");
 }
 
+// ======= FIX v226: Mapa Dashboard - todos los estados, coordenadas alternativas y puntos coincidentes visibles =======
+function __dashNormText(v){
+  try{
+    return String(v || "")
+      .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+      .trim().toUpperCase();
+  }catch(e){ return String(v || "").trim().toUpperCase(); }
+}
+
+function __dashParseCoord(v){
+  if(v === null || v === undefined) return NaN;
+  let s = String(v).trim();
+  if(!s) return NaN;
+  s = s.replace(/,/g, ".");
+  const n = parseFloat(s);
+  return Number.isFinite(n) ? n : NaN;
+}
+
+function __dashCoordInPeru(lat, lon){
+  return Number.isFinite(lat) && Number.isFinite(lon) && lat <= 1 && lat >= -19 && lon <= -68 && lon >= -82;
+}
+
+function __dashUbigeoCoords(e){
+  try{
+    if(typeof ubigeoData === "undefined" || !Array.isArray(ubigeoData)) return null;
+    const dep = __dashNormText(e && e.departamento);
+    const prov = __dashNormText(e && e.provincia);
+    const dist = __dashNormText(e && e.distrito);
+    if(!dep || !prov || !dist) return null;
+
+    const row = ubigeoData.find(r =>
+      __dashNormText(r.departamento) === dep &&
+      __dashNormText(r.provincia) === prov &&
+      __dashNormText(r.distrito) === dist
+    );
+    if(!row) return null;
+    const lat = __dashParseCoord(row.lat || row.latitud || row.latitude);
+    const lon = __dashParseCoord(row.lon || row.longitud || row.longitude || row.lng);
+    return __dashCoordInPeru(lat, lon) ? {lat, lon, source:"ubigeo"} : null;
+  }catch(err){ return null; }
+}
+
+function __dashGetCoords(e){
+  try{
+    const cand = [
+      [e && e.latitud, e && e.longitud],
+      [e && e.lat, e && (e.lon || e.lng)],
+      [e && e.latitude, e && e.longitude],
+      [e && e.latitudRP, e && e.longitudRP],
+      [e && e.payload && e.payload.latitud, e && e.payload && e.payload.longitud],
+      [e && e.ubicacion && e.ubicacion.latitud, e && e.ubicacion && e.ubicacion.longitud]
+    ];
+
+    for(const pair of cand){
+      let lat = __dashParseCoord(pair[0]);
+      let lon = __dashParseCoord(pair[1]);
+      if(__dashCoordInPeru(lat, lon)) return {lat, lon, source:"record"};
+      // Defensa: si vinieron invertidas, las corrige sin tocar el registro.
+      if(__dashCoordInPeru(lon, lat)) return {lat:lon, lon:lat, source:"record_swapped"};
+    }
+
+    // Último recurso: centroide del distrito desde ubigeoData.js. Así Cerradas y En proceso no desaparecen.
+    return __dashUbigeoCoords(e);
+  }catch(err){ return null; }
+}
+
+let __dashMapSelectedDepartamento = "";
+let __dashMapDeptPager = { size: 5, page: 1 };
+
+function __dashMapGetSelectedDepartamento(){
+  try{
+    return __dashNormText(document.getElementById("dashMapDepartamento")?.value || "");
+  }catch(e){ return ""; }
+}
+
+function __dashMapGetSelectedPeligro(){
+  try{
+    return __dashNormText(document.getElementById("dashMapPeligro")?.value || "");
+  }catch(e){ return ""; }
+}
+
+function __dashMapDateOnly(v){
+  try{
+    if(!v) return "";
+    const s = String(v).trim();
+    if(!s) return "";
+    const m = s.match(/^(\d{4}-\d{2}-\d{2})/);
+    if(m) return m[1];
+    const dmy = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+    if(dmy) return `${dmy[3]}-${String(dmy[2]).padStart(2,"0")}-${String(dmy[1]).padStart(2,"0")}`;
+    const d = new Date(s);
+    if(!isNaN(d.getTime())) return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+  }catch(e){}
+  return "";
+}
+
+function __dashMapGetFechaInicial(){
+  try{ return String(document.getElementById("dashMapFechaInicial")?.value || "").trim(); }
+  catch(e){ return ""; }
+}
+
+function __dashMapGetFechaFinal(){
+  try{ return String(document.getElementById("dashMapFechaFinal")?.value || "").trim(); }
+  catch(e){ return ""; }
+}
+
+function __dashMapFechaPeligroInRange(e){
+  try{
+    const desde = __dashMapGetFechaInicial();
+    const hasta = __dashMapGetFechaFinal();
+    if(!desde && !hasta) return true;
+    const f = __dashMapDateOnly(e && (e.fechaPeligro || e.fechaDelPeligro || e.fechaEvento || e.fecha));
+    if(!f) return false;
+    if(desde && f < desde) return false;
+    if(hasta && f > hasta) return false;
+    return true;
+  }catch(err){ return true; }
+}
+
+function __dashCurrentDaniosMidis(e){
+  try{
+    const rcList = (typeof __getRCList === "function") ? __getRCList(e) : [];
+    if(Array.isArray(rcList) && rcList.length){
+      for(let i = rcList.length - 1; i >= 0; i--){
+        const rc = rcList[i];
+        if(rc && rc.daniosMIDIS && typeof rc.daniosMIDIS === "object") return rc.daniosMIDIS;
+      }
+    }
+    return (e && e.daniosMIDIS && typeof e.daniosMIDIS === "object") ? e.daniosMIDIS : {};
+  }catch(err){ return (e && e.daniosMIDIS) ? e.daniosMIDIS : {}; }
+}
+
+function __dashMapApplyDepartamentoFilter(data){
+  const dep = __dashMapGetSelectedDepartamento();
+  const peligro = __dashMapGetSelectedPeligro();
+  let out = Array.isArray(data) ? data : [];
+  if(dep) out = out.filter(e => __dashNormText(e && e.departamento) === dep);
+  if(peligro) out = out.filter(e => __dashNormText(e && e.peligro) === peligro);
+  out = out.filter(e => __dashMapFechaPeligroInRange(e));
+  return out;
+}
+
+function __dashMapPopulateDepartamento(data){
+  const sel = document.getElementById("dashMapDepartamento");
+  if(!sel) return;
+  const prev = String(sel.value || "");
+  const deps = Array.from(new Set((Array.isArray(data) ? data : [])
+    .map(e => String((e && e.departamento) || "").trim())
+    .filter(Boolean)))
+    .sort((a,b)=>a.localeCompare(b,"es"));
+  sel.innerHTML = '<option value="">(Todos)</option>' + deps.map(d=>`<option value="${__dashHtmlEscape(d)}">${__dashHtmlEscape(d)}</option>`).join("");
+  if(prev && deps.some(d => __dashNormText(d) === __dashNormText(prev))){
+    sel.value = deps.find(d => __dashNormText(d) === __dashNormText(prev)) || "";
+  }else{
+    sel.value = "";
+  }
+}
+
+function __dashMapPopulatePeligro(data){
+  const sel = document.getElementById("dashMapPeligro");
+  if(!sel) return;
+  const prev = String(sel.value || "");
+  const dep = __dashMapGetSelectedDepartamento();
+  const base = (Array.isArray(data) ? data : []).filter(e => !dep || __dashNormText(e && e.departamento) === dep);
+  const peligros = Array.from(new Set(base
+    .map(e => String((e && e.peligro) || "").trim())
+    .filter(Boolean)))
+    .sort((a,b)=>a.localeCompare(b,"es"));
+  sel.innerHTML = '<option value="">(Todos)</option>' + peligros.map(x=>`<option value="${__dashHtmlEscape(x)}">${__dashHtmlEscape(x)}</option>`).join("");
+  if(prev && peligros.some(x => __dashNormText(x) === __dashNormText(prev))){
+    sel.value = peligros.find(x => __dashNormText(x) === __dashNormText(prev)) || "";
+  }else{
+    sel.value = "";
+  }
+}
+
+function __dashMapGetDeptPageSize(){
+  const n = Number(document.getElementById("dashMapDeptPageSize")?.value || __dashMapDeptPager.size || 5);
+  return [5,10,25,50,100].includes(n) ? n : 5;
+}
+
+function __dashMapRenderDepartamentoResumen(data){
+  const tbody = document.getElementById("dashMapDeptTbody");
+  const hint = document.getElementById("dashMapDeptHint");
+  const pageInfo = document.getElementById("dashMapDeptPageInfo");
+  const btnPrev = document.getElementById("dashMapDeptPrev");
+  const btnNext = document.getElementById("dashMapDeptNext");
+  if(!tbody) return;
+
+  const depRaw = String(document.getElementById("dashMapDepartamento")?.value || "").trim();
+  const list = __dashMapApplyDepartamentoFilter(data).slice().sort((a,b)=>{
+    const pa = String(a?.peligro || "");
+    const pb = String(b?.peligro || "");
+    const da = String(a?.distrito || "");
+    const db = String(b?.distrito || "");
+    return pa.localeCompare(pb,"es") || da.localeCompare(db,"es") || String(a?.codigo||"").localeCompare(String(b?.codigo||""),"es");
+  });
+
+  __dashMapDeptPager.size = __dashMapGetDeptPageSize();
+  const total = list.length;
+  const totalPages = Math.max(1, Math.ceil(total / __dashMapDeptPager.size));
+  __dashMapDeptPager.page = Math.min(Math.max(1, Number(__dashMapDeptPager.page || 1)), totalPages);
+
+  const peligroRaw = String(document.getElementById("dashMapPeligro")?.value || "").trim();
+  const fechaIniRaw = String(document.getElementById("dashMapFechaInicial")?.value || "").trim();
+  const fechaFinRaw = String(document.getElementById("dashMapFechaFinal")?.value || "").trim();
+  if(hint){
+    const depTxt = depRaw ? `Departamento seleccionado: ${depRaw}` : "Todos los departamentos";
+    const peligroTxt = peligroRaw ? `Peligro seleccionado: ${peligroRaw}` : "Todos los peligros";
+    const fechaTxt = (fechaIniRaw || fechaFinRaw) ? `Fecha del peligro: ${fechaIniRaw || "inicio"} a ${fechaFinRaw || "fin"}` : "Todas las fechas del peligro";
+    hint.textContent = `${depTxt}. ${peligroTxt}. ${fechaTxt}. Emergencias mostradas: ${total}.`;
+  }
+
+  if(!total){
+    tbody.innerHTML = '<tr><td colspan="5" class="text-muted small">Sin emergencias para el filtro seleccionado.</td></tr>';
+    if(pageInfo) pageInfo.textContent = "0 a 0 de 0 registros";
+    if(btnPrev) btnPrev.disabled = true;
+    if(btnNext) btnNext.disabled = true;
+    return;
+  }
+
+  const start = (__dashMapDeptPager.page - 1) * __dashMapDeptPager.size;
+  const end = Math.min(start + __dashMapDeptPager.size, total);
+  const pageRows = list.slice(start, end);
+
+  const rows = pageRows.map(e=>{
+    const t = __dashSumDanios(__dashCurrentDaniosMidis(e));
+    return `<tr>
+      <td>${__dashHtmlEscape(e?.codigo || "")}</td>
+      <td>${__dashHtmlEscape(e?.distrito || "")}</td>
+      <td>${__dashHtmlEscape(e?.peligro || "")}</td>
+      <td class="text-end">${Number(t.usuarios || 0)}</td>
+      <td class="text-end">${Number(t.servicios || 0)}</td>
+    </tr>`;
+  }).join("");
+  tbody.innerHTML = rows;
+
+  if(pageInfo) pageInfo.textContent = `${start + 1} a ${end} de ${total} registros`;
+  if(btnPrev) btnPrev.disabled = (__dashMapDeptPager.page <= 1);
+  if(btnNext) btnNext.disabled = (__dashMapDeptPager.page >= totalPages);
+}
+
+function __dashGetStatus(e){
+  // Cerrada: acepta todas las variantes históricas del aplicativo.
+  const cierreEstado = String((e && (e.cierreEstado || e.estadoCierre || e.estado)) || "").trim().toLowerCase();
+  if(e && (e.cerrada === true || cierreEstado === "cerrada" || cierreEstado === "aprobado" || cierreEstado === "cierre aprobado")){
+    return {name:"Cerrada", color:"#198754"};
+  }
+
+  // En proceso: abierta con RC o con avance posterior al RP.
+  const rcList = (e && Array.isArray(e.rcReportes)) ? e.rcReportes : [];
+  if(rcList.length > 0){
+    return {name:"En proceso", color:"#fd7e14"};
+  }
+
+  // Activo = registrado hoy (fechaHora). Si no hay fechaHora, usa fechaPeligro.
+  const hoyYmd = __dashTodayPeruYMD ? __dashTodayPeruYMD() : null;
+  const fr = __dashParseDateOnly(e?.fechaHora) || __dashParseDateOnly(e?.fechaPeligro);
+  const frYmd = fr ? `${fr.getFullYear()}-${String(fr.getMonth()+1).padStart(2,"0")}-${String(fr.getDate()).padStart(2,"0")}` : "";
+  if(hoyYmd && frYmd === hoyYmd) return {name:"Activo", color:"#dc3545"};
+
+  // En proceso = abierta, pero no es del día.
+  return {name:"En proceso", color:"#fd7e14"};
+}
+
 function __dashRenderMap(data){
   if(!dashLayer || !window.L) return;
   dashLayer.clearLayers();
 
-  data.forEach(e=>{
-    const lat = parseFloat(String(e?.latitud ?? "").replace(",", "."));
-    const lon = parseFloat(String(e?.longitud ?? "").replace(",", "."));
-    if(isNaN(lat) || isNaN(lon)) return;
+  const shown = [];
+  const coincidentes = new Map();
+
+  (Array.isArray(data) ? data : []).forEach(e=>{
+    const coord = __dashGetCoords(e);
+    if(!coord) return;
 
     const st = __dashGetStatus(e);
     if(!__dashMapIsVisible(st.name)) return;
+
+    const key = coord.lat.toFixed(5) + "," + coord.lon.toFixed(5);
+    const n = coincidentes.get(key) || 0;
+    coincidentes.set(key, n + 1);
+
+    // Si varios registros tienen exactamente el mismo punto (mismo distrito/centroide),
+    // se dibujan con un desplazamiento mínimo para que no se tapen entre ellos.
+    let lat = coord.lat;
+    let lon = coord.lon;
+    if(n > 0){
+      const angle = (n * 55) * Math.PI / 180;
+      const r = 0.018 + (Math.floor(n / 6) * 0.006);
+      lat = coord.lat + Math.sin(angle) * r;
+      lon = coord.lon + Math.cos(angle) * r;
+    }
+
     const marker = L.circleMarker([lat, lon], {
       radius: 8,
       color: st.color,
@@ -8452,17 +8798,30 @@ function __dashRenderMap(data){
       weight: 2
     });
 
+    const notaCoord = coord.source === "ubigeo"
+      ? "<br><span style='color:#666'>Coordenada referencial por distrito.</span>"
+      : (n > 0 ? "<br><span style='color:#666'>Punto desplazado levemente para evitar superposición.</span>" : "");
+
     marker.bindPopup(`
       <b>${e.codigo||""}</b><br>
       <b>Estado:</b> ${st.name}<br>
       <b>Peligro:</b> ${e.peligro||""}<br>
       <b>Ubicación:</b> ${(e.departamento||"")} / ${(e.provincia||"")} / ${(e.distrito||"")}<br>
       <b>Fecha del peligro:</b> ${e.fechaPeligro||""}<br>
-      <b>Registro:</b> ${e.fechaHora||""}
+      <b>Registro:</b> ${e.fechaHora||""}${notaCoord}
     `);
 
     marker.addTo(dashLayer);
+    shown.push([lat, lon]);
   });
+
+  try{
+    if(shown.length === 1){
+      dashMap.setView(shown[0], 8);
+    }else if(shown.length > 1){
+      dashMap.fitBounds(L.latLngBounds(shown), {padding:[25,25], maxZoom:7});
+    }
+  }catch(e){}
 }
 
 function __dashGetActivasHoyList(){
@@ -9104,7 +9463,14 @@ function __dashBuildRenderSignature(){
     }).join("|");
     let impacto = "";
     try{ impacto = __dashGetImpactoGroupBy ? __dashGetImpactoGroupBy() : ""; }catch(_e){}
-    return [arr.length, maxUpd, f, impacto, Array.from(__dashMapStatusEnabled || []).sort().join(",")].join("||");
+    let mapExtra = "";
+    try{ mapExtra = [
+      document.getElementById("dashMapDepartamento")?.value || "",
+      document.getElementById("dashMapPeligro")?.value || "",
+      document.getElementById("dashMapFechaInicial")?.value || "",
+      document.getElementById("dashMapFechaFinal")?.value || ""
+    ].join("|"); }catch(_e){}
+    return [arr.length, maxUpd, f, impacto, Array.from(__dashMapStatusEnabled || []).sort().join(","), mapExtra].join("||");
   }catch(e){
     return String(Date.now());
   }
@@ -9128,7 +9494,11 @@ function dashboardRefresh(opts){
   __dashLastFiltered = data;
 
 
-  __dashRenderMap(data);
+  __dashMapPopulateDepartamento(data);
+  __dashMapPopulatePeligro(data);
+  const mapData = __dashMapApplyDepartamentoFilter(data);
+  __dashRenderMap(mapData);
+  __dashMapRenderDepartamentoResumen(data);
   __dashRenderActivasHoy();
   __dashRenderHistogramas(data);
 
@@ -9157,7 +9527,39 @@ document.addEventListener("DOMContentLoaded", ()=>{
 
   __dashMapSyncButtons();
 
+  document.getElementById("dashMapDepartamento")?.addEventListener("change", ()=>{
+    __dashMapDeptPager.page = 1;
+    dashboardRefresh({force:true});
+  });
 
+  document.getElementById("dashMapPeligro")?.addEventListener("change", ()=>{
+    __dashMapDeptPager.page = 1;
+    dashboardRefresh({force:true});
+  });
+
+  document.getElementById("dashMapFechaInicial")?.addEventListener("change", ()=>{
+    __dashMapDeptPager.page = 1;
+    dashboardRefresh({force:true});
+  });
+
+  document.getElementById("dashMapFechaFinal")?.addEventListener("change", ()=>{
+    __dashMapDeptPager.page = 1;
+    dashboardRefresh({force:true});
+  });
+
+  document.getElementById("dashMapDeptPageSize")?.addEventListener("change", ()=>{
+    __dashMapDeptPager.size = __dashMapGetDeptPageSize();
+    __dashMapDeptPager.page = 1;
+    __dashMapRenderDepartamentoResumen(__dashLastFiltered || __dashGetFiltered());
+  });
+  document.getElementById("dashMapDeptPrev")?.addEventListener("click", ()=>{
+    __dashMapDeptPager.page = Math.max(1, (__dashMapDeptPager.page || 1) - 1);
+    __dashMapRenderDepartamentoResumen(__dashLastFiltered || __dashGetFiltered());
+  });
+  document.getElementById("dashMapDeptNext")?.addEventListener("click", ()=>{
+    __dashMapDeptPager.page = (__dashMapDeptPager.page || 1) + 1;
+    __dashMapRenderDepartamentoResumen(__dashLastFiltered || __dashGetFiltered());
+  });
 
   if(btnHoy) btnHoy.addEventListener("click", ()=>{
     const hoy = __dashTodayPeruYMD() || new Date().toISOString().slice(0,10);
@@ -11691,7 +12093,7 @@ function __excelParseElab(em){
   }catch(e){ return null; }
 }
 
-function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO, peligrosSeleccionados){
+async function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO, peligrosSeleccionados){
   try{
     if(!window.XLSX){
       alert("No se pudo cargar la librería de Excel (XLSX). Verifique su conexión a internet.");
@@ -11717,6 +12119,61 @@ function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO, peligrosSelecci
     const etiquetaPeligros = filtrarPorPeligro ? peligrosFiltro.join(", ") : "Todos los peligros";
 
     const __ACCION_PRELIMINAR_BASE = "El COE MIDIS solicita al equipo territorial realizar el monitoreo de la emergencia a fin de determinar si existe afectación a usuarios o servicios de los programas nacionales. El COE MIDIS mantiene el seguimiento continuo del evento a través de los Espacios de Monitoreo y Seguimiento Sectorial (EMSS), a fin de consolidar información estratégica para la toma de decisiones y acciones sectoriales de respuesta.";
+
+    // FIX v231: en la Lista ahora se trabaja con metadatos (/sync/list) y el payload completo
+    // solo se trae bajo demanda. Para que Excel no salga con columnas vacías, antes de armar
+    // el libro se hidratan los registros filtrados con /sync/detail cuando haga falta.
+    const __firstExcelText = (...vals)=>{
+      for(const v of vals){
+        if(v === null || v === undefined) continue;
+        if(Array.isArray(v) || (typeof v === "object")) continue;
+        const s = String(v).trim();
+        if(s) return s;
+      }
+      return "";
+    };
+
+    const __coalesceExcelObject = (...vals)=>{
+      for(let v of vals){
+        if(typeof v === "string"){
+          try{ v = JSON.parse(v); }catch(_e){}
+        }
+        if(v && typeof v === "object") return v;
+      }
+      return null;
+    };
+
+    const __needsExcelDetail = (em)=>{
+      try{
+        if(!em) return false;
+        if(typeof __syncIsSummaryOnly === "function" && __syncIsSummaryOnly(em)) return true;
+        return !(
+          __firstExcelText(em.hechos, em.hecho, em.descripcionHechos, em.detalleHechos) ||
+          __firstExcelText(em.daniosOtros, em.dañosOtros, em.danosOtros, em.daniosOtrosSectores, em.danosOtrosSectores) ||
+          __coalesceExcelObject(em.daniosMIDIS, em.dañosMIDIS, em.danosMIDIS, em.daniosSector, em.daniosSectorMidis, em.daniosSectorDesarrollo) ||
+          em.accionesPreliminar || em.accionesRP || em.accionesPreliminares || em.acciones ||
+          (Array.isArray(em.rcReportes) && em.rcReportes.some(rc => rc && !rc.__summaryOnly && (rc.acciones || rc.accionesRC || rc.accionesComplementario || rc.accionesComplementarias || rc.accionesComp || rc.daniosMIDIS)))
+        );
+      }catch(e){ return false; }
+    };
+
+    const __hydrateExcelItems = async (selected)=>{
+      const arr = Array.isArray(selected) ? selected : [];
+      let fullCount = 0;
+      for(let i=0; i<arr.length; i++){
+        const em = arr[i];
+        if(!em || !em.codigo || !__needsExcelDetail(em)) continue;
+        try{
+          if(typeof __ensureFullEmergencia === "function"){
+            const full = await __ensureFullEmergencia(em.codigo);
+            if(full){ arr[i] = full; fullCount++; }
+          }
+        }catch(_e){
+          // Si un detalle falla, no se detiene toda la exportación; se exporta lo disponible.
+        }
+      }
+      return fullCount;
+    };
 
     const __fmtAcciones = (a)=>{
       let arr = a;
@@ -11855,6 +12312,7 @@ function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO, peligrosSelecci
     const resumenMap = new Map();
     const globalTotals = { emergencias:0, departamentos:new Set(), ua:0, sa:0, ups:0, uf:0, ma:0 };
 
+    let selectedEmergencias = [];
     (Array.isArray(emergencias) ? emergencias : []).forEach(em=>{
       try{
         if(typeof __isDeleted === "function" && __isDeleted(em)) return;
@@ -11864,12 +12322,33 @@ function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO, peligrosSelecci
         if(!elabDate) return;
         if(elabDate < desde || elabDate > hasta) return;
         if(filtrarPorPeligro && !peligrosSet.has(String(em.peligro||"").trim().toLowerCase())) return;
+        selectedEmergencias.push(em);
+      }catch(_e){}
+    });
 
-        const danosOtros = String(em.daniosOtros || "");
-        const danosInfo  = __fmtDaniosMIDIS(em.daniosMIDIS);
+    if(selectedEmergencias.length === 0){
+      alert("No se encontraron emergencias en ese rango y peligro seleccionado (según la fecha de elaboración).\n\nVerifique la fecha inicial, fecha final y el filtro de peligros.");
+      return;
+    }
+
+    await __hydrateExcelItems(selectedEmergencias);
+
+    selectedEmergencias.forEach(em=>{
+      try{
+        if(typeof __isDeleted === "function" && __isDeleted(em)) return;
+        if(__isSeguimientoRecord(em)) return;
+
+        const elabDate = __getElabDateOnly(em);
+        if(!elabDate) return;
+        if(elabDate < desde || elabDate > hasta) return;
+        if(filtrarPorPeligro && !peligrosSet.has(String(em.peligro||"").trim().toLowerCase())) return;
+
+        const danosOtros = __firstExcelText(em.daniosOtros, em.dañosOtros, em.danosOtros, em.daniosOtrosSectores, em.danosOtrosSectores, em.afectacionOtrosSectores);
+        const danosObj = __coalesceExcelObject(em.daniosMIDIS, em.dañosMIDIS, em.danosMIDIS, em.daniosSector, em.daniosSectorMidis, em.daniosSectorDesarrollo);
+        const danosInfo  = __fmtDaniosMIDIS(danosObj);
         const danosMIDIS = danosInfo.text;
-        __addDaniosPorPrograma(em.daniosMIDIS);
-        const accPre     = __fmtAccionesPreliminar(em.accionesPreliminar);
+        __addDaniosPorPrograma(danosObj);
+        const accPre     = __fmtAccionesPreliminar(em.accionesPreliminar ?? em.accionesPreliminares ?? em.accionesRP ?? em.accionesPreliminarRP ?? em.accionesSectorPreliminar);
         const accComp    = __fmtAccionesComplementario(em);
 
         const row = [
@@ -11879,7 +12358,7 @@ function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO, peligrosSelecci
           String(em.departamento||""),
           String(em.provincia||""),
           String(em.distrito||""),
-          String(em.hechos||""),
+          __firstExcelText(em.hechos, em.hecho, em.descripcionHechos, em.detalleHechos, em.descripcion),
           danosOtros,
           danosMIDIS,
           accPre,
@@ -12145,7 +12624,7 @@ try{
       }
 
       if(btnDo){
-        btnDo.addEventListener("click", ()=>{
+        btnDo.addEventListener("click", async ()=>{
           const d = (iDesde && iDesde.value) ? iDesde.value : "";
           const h = (iHasta && iHasta.value) ? iHasta.value : "";
           if(!d || !h){
@@ -12157,8 +12636,16 @@ try{
             alert("Seleccione al menos un peligro o marque Todos los peligros.");
             return;
           }
-          __exportExcelListaEmergenciasByElab(d, h, peligros);
-          try{ modal.hide(); }catch(_e){}
+          const oldTxt = btnDo.textContent;
+          try{
+            btnDo.disabled = true;
+            btnDo.textContent = "Exportando...";
+            await __exportExcelListaEmergenciasByElab(d, h, peligros);
+            try{ modal.hide(); }catch(_e){}
+          }finally{
+            btnDo.disabled = false;
+            btnDo.textContent = oldTxt || "Exportar";
+          }
         });
       }
     }
