@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <!-- BUILD: 2026-02-20 autopull-cooldown-v206-fix-sync-v3 -->
-<script>window.__BUILD_ID='2026-02-20 autopull-cooldown-v206-fix-sync-v3-sync-lock-v234-full-detail-loading';console.log('BUILD',window.__BUILD_ID);</script>
+<script>window.__BUILD_ID='2026-02-20 autopull-cooldown-v206-fix-sync-v3-sync-lock-v233-dashmap-ojito';console.log('BUILD',window.__BUILD_ID);</script>
 
 <!-- build: VER_PRINT_RC_ALWAYS_VISIBLE v4 2026-01-11 -->
 <meta charset="UTF-8" />
@@ -18,7 +18,7 @@ body { background: #f5f5f5; }
 .card { margin-top: 1rem; }
 .table td input { width: 100%; }
 .hidden { display: none; }
-/* ======= VERSION 234 03/06/2026 - detalle completo bajo demanda con aviso de carga ======= */
+/* ======= VERSION 233 02/06/2026 - dashmap resumen ojito RP/RC ======= */
 /* ======= VER (Listado de Emergencias): Formato de visualización/impresión ======= */
 .ver-report-wrap{ font-family: Calibri, Arial, sans-serif; font-size: 11pt; color:#111; }
 .ver-report-title{ font-family: Calibri, Arial, sans-serif; font-size:15pt; font-weight:700; color:#1F4E79; margin:0 0 6px 0; }
@@ -7015,7 +7015,7 @@ function cargarTablaEmergencias() {
     // Handlers de botones según disponibilidad
     const btnVer = tr.querySelector(".btnVer");
     if (btnVer && !btnVer.disabled && btnVer.style.display !== "none") {
-      btnVer.onclick = () => __withFullEmergencia(e, (full)=>{ verEmergencia(full); if(__getRCList(full).length>0) __scrollVerToLastRC(); }, {loadingModal:true});
+      btnVer.onclick = () => __withFullEmergencia(e, (full)=>{ verEmergencia(full); if(__getRCList(full).length>0) __scrollVerToLastRC(); });
     }
 
     const btnRP = tr.querySelector(".btnRP");
@@ -8745,7 +8745,7 @@ function __dashMapRenderDepartamentoResumen(data){
           __withFullEmergencia(local || code, (full)=>{
             verEmergencia(full);
             try{ if(typeof __getRCList === "function" && __getRCList(full).length > 0 && typeof __scrollVerToLastRC === "function") __scrollVerToLastRC(); }catch(_e){}
-          }, {loadingModal:true});
+          });
         }else if(local && typeof verEmergencia === "function"){
           verEmergencia(local);
           try{ if(typeof __getRCList === "function" && __getRCList(local).length > 0 && typeof __scrollVerToLastRC === "function") __scrollVerToLastRC(); }catch(_e){}
@@ -10797,82 +10797,6 @@ function __syncIsSummaryOnly(em){
   return !!(em && (em.__summaryOnly === true || em.__needsDetail === true));
 }
 
-function __hasOwnField(obj, field){
-  try{ return !!(obj && Object.prototype.hasOwnProperty.call(obj, field)); }catch(e){ return false; }
-}
-
-function __detailFieldValue(em){
-  for(let i=1;i<arguments.length;i++){
-    const k = arguments[i];
-    try{
-      const v = em ? em[k] : null;
-      if(v === null || v === undefined) continue;
-      const s = String(v).trim();
-      if(s !== "") return s;
-    }catch(e){}
-  }
-  return "";
-}
-
-function __hasAnyAccionPreliminar(em){
-  try{
-    if(!em) return false;
-    if(Array.isArray(em.accionesPreliminar)) return true;
-    if(Array.isArray(em.accionesRP)) return true;
-    if(Array.isArray(em.accionesRPTabla)) return true;
-    if(__hasOwnField(em, "accionesPreliminar")) return true;
-    if(__hasOwnField(em, "accionesRP")) return true;
-  }catch(e){}
-  return false;
-}
-
-function __hasAnyDaniosOtros(em){
-  try{
-    return __hasOwnField(em, "daniosOtros") || __hasOwnField(em, "daniosOtrosSectores") || __hasOwnField(em, "daniosOtrosRP");
-  }catch(e){ return false; }
-}
-
-function __isFullEmergenciaSufficient(em){
-  try{
-    if(!em || !em.codigo) return false;
-    if(__syncIsSummaryOnly(em)) return false;
-    if(em.__detailHydratedAt) return true;
-
-    const hasGlobal = !!__detailFieldValue(em, "numeroGlobal", "numeroReporte", "numGlobalRP", "numeroGlobalRP", "nroGlobal", "nGlobal");
-    const hasFecha = !!__detailFieldValue(em, "fechaHora", "fechaRegistro", "createdAt", "updatedAt");
-    const hasHechos = !!__detailFieldValue(em, "hechos", "descripcionHechos");
-    const hasElaborado = !!__detailFieldValue(em, "elaboradoPor", "rpEnviadoPor", "createdBy", "createdByEmail", "ownerEmail");
-    const hasDaniosOtros = __hasAnyDaniosOtros(em);
-    const hasAcciones = __hasAnyAccionPreliminar(em);
-
-    return !!(hasGlobal && hasFecha && hasHechos && hasElaborado && hasDaniosOtros && hasAcciones);
-  }catch(e){ return false; }
-}
-
-function __showDetailLoadingModal(){
-  try{
-    const cont = document.getElementById("contenidoVerEmergencia");
-    if(cont){
-      cont.innerHTML = '<div class="alert alert-info mb-0"><strong>Cargando detalle completo...</strong><br><span class="small">Consultando la información completa del registro en D1.</span></div>';
-    }
-    const modalEl = document.getElementById("modalVerEmergencia");
-    if(modalEl && window.bootstrap){
-      bootstrap.Modal.getOrCreateInstance(modalEl).show();
-    }
-  }catch(e){}
-}
-
-function __prependPartialDetailNotice(){
-  try{
-    const cont = document.getElementById("contenidoVerEmergencia");
-    if(!cont) return;
-    const div = document.createElement("div");
-    div.className = "alert alert-warning py-2 small";
-    div.innerHTML = "<strong>Detalle parcial pendiente de sincronización.</strong> Se muestra la copia local disponible; cuando haya conexión o termine la sincronización se cargará el detalle completo.";
-    cont.prepend(div);
-  }catch(e){}
-}
-
 async function __syncFetchDetail(codigo){
   const code = String(codigo || "").trim();
   if(!code) throw new Error("codigo_invalido");
@@ -10895,20 +10819,14 @@ async function __ensureFullEmergencia(objOrCodigo){
   let arr = Array.isArray(emergencias) ? emergencias : __loadEmergencias();
   let idx = arr.findIndex(e => String(e && e.codigo ? e.codigo : '').trim() === code);
   let cur = idx >= 0 ? arr[idx] : (typeof objOrCodigo === 'object' ? objOrCodigo : null);
-
-  // V234: no confiar en una copia local aparentemente completa si le faltan campos clave del RP.
-  // Si falta N° Global, fecha, hechos, elaborado por, daños en otros sectores o acciones preliminares,
-  // se trae el detalle real desde D1 mediante /sync/detail.
-  if(cur && __isFullEmergenciaSufficient(cur)) return cur;
-
+  if(cur && !__syncIsSummaryOnly(cur) && cur.codigo) return cur;
   const rec = await __syncFetchDetail(code);
   if(!rec || !rec.payload) return cur;
   const payload = JSON.parse(JSON.stringify(rec.payload || {}));
   try{ payload.estado_sync = 'Sincronizado'; }catch(_e){}
   try{ payload.__serverHash = String(rec.hash || ''); }catch(_e){}
   try{ payload.__serverUpdatedAt = String(rec.updated_at || ''); }catch(_e){}
-  try{ payload.__detailHydratedAt = __nowIso(); }catch(_e){}
-  try{ payload.__summaryOnly = false; delete payload.__needsDetail; delete payload.__detailPartialNotice; }catch(_e){}
+  try{ payload.__summaryOnly = false; delete payload.__needsDetail; }catch(_e){}
   if(idx >= 0) arr[idx] = payload;
   else { arr.push(payload); idx = arr.length - 1; }
   emergencias = arr;
@@ -10920,27 +10838,12 @@ async function __ensureFullEmergencia(objOrCodigo){
   return payload;
 }
 
-async function __withFullEmergencia(objOrCodigo, cb, opts){
-  const options = opts || {};
-  const code = String((typeof objOrCodigo === 'string') ? objOrCodigo : (objOrCodigo && objOrCodigo.codigo) || '').trim();
-  let local = null;
+async function __withFullEmergencia(objOrCodigo, cb){
   try{
-    const arr = Array.isArray(emergencias) ? emergencias : __loadEmergencias();
-    local = arr.find(e => String(e && e.codigo ? e.codigo : '').trim() === code) || (typeof objOrCodigo === 'object' ? objOrCodigo : null);
-  }catch(_e){}
-
-  try{
-    if(options.loadingModal && (!local || !__isFullEmergenciaSufficient(local))){
-      __showDetailLoadingModal();
-    }
     const full = await __ensureFullEmergencia(objOrCodigo);
     if(!full){ alert('No se pudo cargar el detalle del registro.'); return; }
     return await cb(full);
   }catch(e){
-    if(options.loadingModal && local){
-      try{ await cb(local); __prependPartialDetailNotice(); }catch(_e){}
-      return;
-    }
     alert('No se pudo cargar el detalle desde D1: ' + ((e && e.message) ? e.message : e));
   }
 }
