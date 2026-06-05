@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <!-- BUILD: 2026-02-20 autopull-cooldown-v206-fix-sync-v3 -->
-<script>window.__BUILD_ID='2026-02-20 autopull-cooldown-v206-fix-sync-v3-sync-lock-v237-dashboard-impacto-midis-safe';console.log('BUILD',window.__BUILD_ID);</script>
+<script>window.__BUILD_ID='2026-02-20 autopull-cooldown-v206-fix-sync-v3-sync-lock-v238-dashboard-impacto-midis-async-detail';console.log('BUILD',window.__BUILD_ID);</script>
 
 <!-- build: VER_PRINT_RC_ALWAYS_VISIBLE v4 2026-01-11 -->
 <meta charset="UTF-8" />
@@ -18,7 +18,7 @@ body { background: #f5f5f5; }
 .card { margin-top: 1rem; }
 .table td input { width: 100%; }
 .hidden { display: none; }
-/* ======= VERSION 237 05/06/2026 - fix seguro Dashboard Impacto MIDIS ======= */
+/* ======= VERSION 238 05/06/2026 - fix async Dashboard Impacto MIDIS ======= */
 /* ======= VER (Listado de Emergencias): Formato de visualización/impresión ======= */
 .ver-report-wrap{ font-family: Calibri, Arial, sans-serif; font-size: 11pt; color:#111; }
 .ver-report-title{ font-family: Calibri, Arial, sans-serif; font-size:15pt; font-weight:700; color:#1F4E79; margin:0 0 6px 0; }
@@ -8721,6 +8721,103 @@ function __dashCurrentDaniosMidis(e){
   }
 }
 
+
+// FIX v238: Impacto MIDIS necesita payload completo; /sync/list trae resumen liviano.
+// Este proceso NO bloquea mapa ni estadísticas generales: primero pinta el Dashboard y luego
+// rehidrata solo los registros filtrados para recalcular los histogramas MIDIS con data real.
+let __DASH_IMPACTO_DETAIL_RUN_ID = 0;
+let __DASH_IMPACTO_DETAIL_LAST_SIG = "";
+let __DASH_IMPACTO_DETAIL_LAST_AT = 0;
+
+function __dashImpactoDetailSignature(data, groupBy){
+  try{
+    const codes = (Array.isArray(data) ? data : [])
+      .map(e => String(e && e.codigo ? e.codigo : "").trim())
+      .filter(Boolean)
+      .sort();
+    const filters = [
+      document.getElementById("dashTipoFecha")?.value || "",
+      document.getElementById("dashDesde")?.value || "",
+      document.getElementById("dashHasta")?.value || "",
+      document.getElementById("dashSoloMidis")?.checked ? "1" : "0",
+      groupBy || "programa"
+    ].join("|");
+    return filters + "||" + codes.join(",");
+  }catch(_e){
+    return String(Date.now());
+  }
+}
+
+function __dashNeedsImpactoDetail(e, force){
+  try{
+    if(!e || !String(e.codigo || "").trim()) return false;
+    if(typeof __syncIsSummaryOnly === "function" && __syncIsSummaryOnly(e)) return true;
+    if(e.__summaryOnly === true || e.__needsDetail === true) return true;
+    // Al presionar Aplicar, se permite refrescar el detalle para evitar datos MIDIS antiguos.
+    if(force) return true;
+  }catch(_e){}
+  return false;
+}
+
+async function __dashHydrateImpactoMidisAsync(filteredData, groupBy, force){
+  try{
+    if(typeof __ensureFullEmergencia !== "function") return;
+    if(typeof __isApiConfigured === "function" && !__isApiConfigured()) return;
+    if(typeof navigator !== "undefined" && !navigator.onLine) return;
+
+    const src = Array.isArray(filteredData) ? filteredData : [];
+    if(!src.length) return;
+
+    const sig = __dashImpactoDetailSignature(src, groupBy);
+    const now = Date.now();
+    if(!force && sig === __DASH_IMPACTO_DETAIL_LAST_SIG && (now - __DASH_IMPACTO_DETAIL_LAST_AT) < 60000) return;
+    __DASH_IMPACTO_DETAIL_LAST_SIG = sig;
+    __DASH_IMPACTO_DETAIL_LAST_AT = now;
+
+    const seen = new Set();
+    const toLoad = [];
+    src.forEach(e=>{
+      const c = String(e && e.codigo ? e.codigo : "").trim();
+      if(!c || seen.has(c)) return;
+      if(__dashNeedsImpactoDetail(e, !!force)){
+        seen.add(c);
+        toLoad.push(c);
+      }
+    });
+
+    if(!toLoad.length) return;
+
+    const runId = ++__DASH_IMPACTO_DETAIL_RUN_ID;
+    const CONCURRENCY = 5;
+    let pos = 0;
+
+    async function worker(){
+      while(pos < toLoad.length){
+        const code = toLoad[pos++];
+        try{ await __ensureFullEmergencia(code); }catch(_e){}
+        // Cede el hilo para no congelar la pantalla cuando hay varios registros.
+        await new Promise(resolve => setTimeout(resolve, 0));
+      }
+    }
+
+    const workers = [];
+    for(let i=0; i<Math.min(CONCURRENCY, toLoad.length); i++) workers.push(worker());
+    await Promise.all(workers);
+
+    if(runId !== __DASH_IMPACTO_DETAIL_RUN_ID) return;
+
+    // Recalcula SOLO Impacto MIDIS desde la misma colección filtrada del Dashboard,
+    // pero ya con payload completo en memoria. No repinta mapa ni estadísticas generales.
+    const freshData = __dashGetFiltered();
+    const freshGroup = __dashGetImpactoGroupBy();
+    const freshImpacto = (Array.isArray(freshData) ? freshData : []).filter(__dashAfectaMidis);
+    __dashRenderImpacto(freshImpacto, freshGroup);
+    __dashRenderAfectaMidisTable(freshImpacto);
+  }catch(err){
+    console.warn("Impacto MIDIS: no se pudo rehidratar detalle sin bloquear Dashboard", err);
+  }
+}
+
 function __dashMapApplyDepartamentoFilter(data){
   const dep = __dashMapGetSelectedDepartamento();
   const peligro = __dashMapGetSelectedPeligro();
@@ -9626,6 +9723,9 @@ function dashboardRefresh(opts){
   __dashRenderImpacto(dataImpactoMidis, groupBy);
 
   __dashRenderAfectaMidisTable(dataImpactoMidis);
+
+  // Rehidratación no bloqueante: corrige histogramas MIDIS sin apagar el mapa ni la estadística general.
+  try{ __dashHydrateImpactoMidisAsync(data, groupBy, force); }catch(_e){}
 
   setTimeout(()=>{ if(dashMap) dashMap.invalidateSize(); }, 150);
 }
