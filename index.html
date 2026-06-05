@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <!-- BUILD: 2026-02-20 autopull-cooldown-v206-fix-sync-v3 -->
-<script>window.__BUILD_ID='2026-02-20 autopull-cooldown-v206-fix-sync-v3';console.log('BUILD',window.__BUILD_ID);</script>
+<script>window.__BUILD_ID='2026-02-20 autopull-cooldown-v206-fix-sync-v3-sync-lock-v224-badgefix';console.log('BUILD',window.__BUILD_ID);</script>
 
 <!-- build: VER_PRINT_RC_ALWAYS_VISIBLE v4 2026-01-11 -->
 <meta charset="UTF-8" />
@@ -18,7 +18,7 @@ body { background: #f5f5f5; }
 .card { margin-top: 1rem; }
 .table td input { width: 100%; }
 .hidden { display: none; }
-/* ======= VERSION 221 29/05/2026 14:40 hrs - sync startup fix + throttling sync/dashboard======= */
+/* ======= VERSION 226 02/06/2026 - sync lock + polling optimized + badge pendientes corregido======= */
 /* ======= VER (Listado de Emergencias): Formato de visualización/impresión ======= */
 .ver-report-wrap{ font-family: Calibri, Arial, sans-serif; font-size: 11pt; color:#111; }
 .ver-report-title{ font-family: Calibri, Arial, sans-serif; font-size:15pt; font-weight:700; color:#1F4E79; margin:0 0 6px 0; }
@@ -270,7 +270,7 @@ body { background: #f5f5f5; }
 
 </style>
 
- <script src="./patch_cf_sync.js?v=20260529_listdetail"></script>
+ <script src="./patch_cf_sync.js?v=20260527_syncfix"></script>
 <script>
   window.__API_CFG = window.__API_CFG || {};
   // Fallback: si no existe patch_cf_sync.js o no define baseUrl, usa este valor
@@ -2776,6 +2776,106 @@ function __lastRCAprobEstado(em){
   }catch(e){ return null; }
 }
 
+
+// ======= FIX v225: normalización segura de pendientes RP y coordenadas manuales =======
+function __firstNonEmpty(){
+  for(let i=0;i<arguments.length;i++){
+    const v = arguments[i];
+    if(v === null || v === undefined) continue;
+    const s = String(v).trim();
+    if(s !== "") return s;
+  }
+  return "";
+}
+
+function __rpGlobalValue(em){
+  try{
+    return __firstNonEmpty(
+      em && em.numeroGlobal,
+      em && em.numeroReporte,
+      em && em.numGlobalRP,
+      em && em.numeroGlobalRP,
+      em && em.nroGlobal,
+      em && em.nGlobal
+    );
+  }catch(e){ return ""; }
+}
+
+function __rpEnviadoPorValue(em){
+  try{
+    return __firstNonEmpty(
+      em && em.rpEnviadoPor,
+      em && em.elaboradoPor,
+      em && em.createdBy,
+      em && em.createdByEmail,
+      em && em.ownerEmail,
+      currentUser && currentUser.fullName,
+      currentUser && currentUser.email
+    );
+  }catch(e){ return ""; }
+}
+
+function __rpEnviadoEnValue(em){
+  try{
+    return __firstNonEmpty(
+      em && em.rpEnviadoEn,
+      em && em.updatedAt,
+      em && em.fechaHora,
+      em && em.fechaRegistro,
+      em && em.createdAt
+    );
+  }catch(e){ return ""; }
+}
+
+function __ensureRPGlobalNumber(em){
+  try{
+    if(!em) return "";
+    let n = __rpGlobalValue(em);
+    if(!n){
+      const maxN = (typeof numeroReporteGlobal !== "undefined" ? (Number(numeroReporteGlobal) || 0) : 0);
+      const next = maxN + 1;
+      if(typeof numeroReporteGlobal !== "undefined") numeroReporteGlobal = next;
+      n = String(next);
+    }
+    em.numeroGlobal = n;
+    if(!em.numeroReporte) em.numeroReporte = n;
+    if(!em.numGlobalRP) em.numGlobalRP = n;
+    return n;
+  }catch(e){ return ""; }
+}
+
+function __ensureRPPendingFields(em){
+  try{
+    if(!em) return em;
+    if(String(em.rpAprobEstado || "") === "Pendiente"){
+      const n = __ensureRPGlobalNumber(em);
+      em.numeroGlobal = n || em.numeroGlobal || em.numeroReporte || "";
+      if(!em.numeroReporte) em.numeroReporte = em.numeroGlobal;
+      if(!em.rpEnviadoPor) em.rpEnviadoPor = __rpEnviadoPorValue(em);
+      if(!em.rpEnviadoPorEmail && currentUser && currentUser.email) em.rpEnviadoPorEmail = currentUser.email;
+      if(!em.rpEnviadoEn) em.rpEnviadoEn = __rpEnviadoEnValue(em) || __nowIso();
+    }
+    return em;
+  }catch(e){ return em; }
+}
+
+let __rpCoordsManual = false;
+function __markRPManualCoords(){
+  __rpCoordsManual = true;
+}
+function __resetRPManualCoords(){
+  __rpCoordsManual = false;
+}
+function __setRPCoordsFromUbigeo(lat, lon){
+  const latInput = document.getElementById("latitudRP");
+  const lonInput = document.getElementById("longitudRP");
+  if(latInput) latInput.value = __normCoord(lat);
+  if(lonInput) lonInput.value = __normCoord(lon);
+  __resetRPManualCoords();
+  try{ actualizarMarcadorRP(false); }catch(e){}
+}
+
+
 function __rpEstadoEtiqueta(em){
   const rpSt = (em && em.rpAprobEstado) ? String(em.rpAprobEstado) : "Borrador";
   const rcSt = __lastRCAprobEstado(em);
@@ -2924,13 +3024,16 @@ function __collectPendientes(){
   try{
     (Array.isArray(emergencias)?emergencias:[]).forEach(em=>{
       if(typeof __isDeleted === 'function' && __isDeleted(em)) return;
+
       if(em?.rpAprobEstado === "Pendiente"){
+        __ensureRPPendingFields(em);
+        const rpGlobal = __rpGlobalValue(em);
         out.push({
           type:"RP",
           codigo: em.codigo,
-          detail:`RP N° Global ${em.numeroGlobal || ""}`,
-          enviadoPor: em.rpEnviadoPor || em.elaboradoPor || "",
-          enviadoEn: em.rpEnviadoEn || "",
+          detail:`RP N° Global ${rpGlobal || ""}`,
+          enviadoPor: __rpEnviadoPorValue(em),
+          enviadoEn: __rpEnviadoEnValue(em),
           ref:{kind:"rp", codigo: em.codigo}
         });
       }
@@ -2943,8 +3046,8 @@ function __collectPendientes(){
               type:"RC",
               codigo: em.codigo,
               detail:`RC ${idx+1} N° Global ${rc.numeroGlobal || rc.numeroReporteRC || ""}`,
-              enviadoPor: rc.enviadoPor || rc.elaboradoPor || "",
-              enviadoEn: rc.enviadoEn || rc.fechaRegistro || "",
+              enviadoPor: rc.enviadoPor || rc.elaboradoPor || rc.createdBy || em.elaboradoPor || "",
+              enviadoEn: rc.enviadoEn || rc.updatedAt || rc.fechaRegistro || em.updatedAt || em.fechaHora || "",
               ref:{kind:"rc", codigo: em.codigo, idx}
             });
           }
@@ -2957,8 +3060,8 @@ function __collectPendientes(){
           type:"CIERRE",
           codigo: em.codigo,
           detail:"Solicitud de cierre",
-          enviadoPor: em.cierreSolicitadoPor || "",
-          enviadoEn: em.cierreSolicitadoEn || "",
+          enviadoPor: em.cierreSolicitadoPor || em.elaboradoPor || em.createdBy || "",
+          enviadoEn: em.cierreSolicitadoEn || em.updatedAt || em.fechaHora || "",
           ref:{kind:"cierre", codigo: em.codigo}
         });
       }
@@ -3153,8 +3256,10 @@ function __enviarRP(){
     return;
   }
   em.rpAprobEstado = "Pendiente";
-  em.rpEnviadoPor = __getCurrentUserName();
-  em.rpEnviadoEn = __nowIso();
+  __ensureRPGlobalNumber(em);
+  em.rpEnviadoPor = __rpEnviadoPorValue(em) || __getCurrentUserName();
+  em.rpEnviadoPorEmail = currentUser ? currentUser.email : (em.rpEnviadoPorEmail || null);
+  em.rpEnviadoEn = __rpEnviadoEnValue(em) || __nowIso();
   __audit("ENVIAR_RP_APROBACION", "emergencia", em.codigo, null);
   __saveEmergencias();
   cargarTablaEmergencias();
@@ -3558,14 +3663,41 @@ async function __syncFetchServerRecordByCodigo(codigo){
   if(!navigator.onLine) throw new Error("offline");
 
   const token = __tokenGet();
-  const out = await __api('/sync/detail?codigo=' + encodeURIComponent(code), { method:'GET', token: token });
-  if(out.res && out.res.status === 401) throw new Error('unauthorized');
-  if(out.res && out.res.status === 404) return null;
-  if(!out.res || !out.res.ok){
-    const err = out.data && out.data.error ? out.data.error : 'detail_failed';
-    throw new Error(err);
+  const limit = 5000;
+  let since = '1970-01-01T00:00:00.000Z';
+  let guard = 0;
+  let found = null;
+
+  while(guard < 25){
+    const out = await __api('/sync/pull?since=' + encodeURIComponent(since) + '&limit=' + limit, { method:'GET', token: token });
+    if(out.res && out.res.status === 401) throw new Error('unauthorized');
+    if(!out.res || !out.res.ok){
+      const err = out.data && out.data.error ? out.data.error : 'pull_failed';
+      throw new Error(err);
+    }
+
+    const recs = (out.data && Array.isArray(out.data.records)) ? out.data.records : [];
+    if(recs.length === 0) break;
+
+    let maxUpdated = since;
+    for(const r of recs){
+      const upd = String(r && r.updated_at ? r.updated_at : '');
+      if(upd && upd > maxUpdated) maxUpdated = upd;
+      const rc = String(r && r.codigo ? r.codigo : '').trim();
+      if(rc === code){
+        if(!found || String(r && r.updated_at ? r.updated_at : '') >= String(found && found.updated_at ? found.updated_at : '')){
+          found = r;
+        }
+      }
+    }
+
+    if(recs.length < limit) break;
+    if(maxUpdated === since) break;
+    since = maxUpdated;
+    guard++;
   }
-  return out.data && out.data.record ? out.data.record : null;
+
+  return found;
 }
 
 function __syncApplyServerRecord(codigo, rec){
@@ -4138,6 +4270,7 @@ function inicializarUbigeo() {
   // Cambio de Departamento -> Provincias
   depSelect.addEventListener("change", () => {
     const dep = depSelect.value;
+    __resetRPManualCoords();
     provSelect.innerHTML = '<option value="">Seleccione...</option>';
     distSelect.innerHTML = '<option value="">Seleccione...</option>';
     latInput.value = "";
@@ -4159,6 +4292,7 @@ function inicializarUbigeo() {
   provSelect.addEventListener("change", () => {
     const dep  = depSelect.value;
     const prov = provSelect.value;
+    __resetRPManualCoords();
     distSelect.innerHTML = '<option value="">Seleccione...</option>';
     latInput.value = "";
     lonInput.value = "";
@@ -4180,6 +4314,7 @@ function inicializarUbigeo() {
     const dep  = depSelect.value;
     const prov = provSelect.value;
     const dist = distSelect.value;
+    __resetRPManualCoords();
     latInput.value = "";
     lonInput.value = "";
 
@@ -4192,9 +4327,7 @@ function inicializarUbigeo() {
     );
 
     if (row) {
-      latInput.value = row.lat;
-      lonInput.value = row.lon;
-      actualizarMarcadorRP();
+      __setRPCoordsFromUbigeo(row.lat, row.lon);
     }
   });
 }
@@ -4468,7 +4601,8 @@ function __initMapRP(){
       const lonEl = document.getElementById("longitudRP");
       if(latEl) latEl.value = lat;
       if(lonEl) lonEl.value = lon;
-      actualizarMarcadorRP();
+      __markRPManualCoords();
+      actualizarMarcadorRP(true);
     });
 
     return true;
@@ -4479,23 +4613,31 @@ function __initMapRP(){
   }
 }
 
-function actualizarMarcadorRP() {
+function actualizarMarcadorRP(manual=false) {
   if(!__initMapRP()) return;
 
   const latEl = document.getElementById("latitudRP");
   const lonEl = document.getElementById("longitudRP");
-  let lat = parseFloat(latEl?.value);
-  let lon = parseFloat(lonEl?.value);
+  let lat = parseFloat(__normCoord(latEl?.value));
+  let lon = parseFloat(__normCoord(lonEl?.value));
 
   if (!isNaN(lat) && !isNaN(lon)) {
+    if(manual) __markRPManualCoords();
     if (markerRP) mapRP.removeLayer(markerRP);
-    markerRP = L.marker([lat, lon]).addTo(mapRP);
+    markerRP = L.marker([lat, lon], { draggable: true }).addTo(mapRP);
+    markerRP.on("dragend", function(ev){
+      const ll = ev.target.getLatLng();
+      if(latEl) latEl.value = ll.lat.toFixed(6);
+      if(lonEl) lonEl.value = ll.lng.toFixed(6);
+      __markRPManualCoords();
+      try{ mapRP.setView([ll.lat, ll.lng], mapRP.getZoom() || 14); }catch(e){}
+    });
     mapRP.setView([lat, lon], 14);
   }
 }
 
-document.getElementById("latitudRP")?.addEventListener("change", actualizarMarcadorRP);
-document.getElementById("longitudRP")?.addEventListener("change", actualizarMarcadorRP);
+document.getElementById("latitudRP")?.addEventListener("change", ()=>{ __markRPManualCoords(); actualizarMarcadorRP(true); });
+document.getElementById("longitudRP")?.addEventListener("change", ()=>{ __markRPManualCoords(); actualizarMarcadorRP(true); });
 
 // Inicializar el mapa cuando se entra a la pestaña RP (evita tamaños 0)
 document.addEventListener("DOMContentLoaded", ()=>{
@@ -4581,6 +4723,7 @@ document.getElementById("btnNuevoRP").onclick = () => {
 
   accionesRPTemp = [];
   cargarAccionesRP();
+  try{ __resetRPManualCoords(); }catch(e){}
   if (markerRP && mapRP) {
     try { mapRP.removeLayer(markerRP); } catch(e) {}
     markerRP = null;
@@ -4957,14 +5100,23 @@ function __saveRP(opts){
   base.elaboradoPor = elaborado;
   base.aprobadoPor  = (String(aprobadoUI||"" ).trim() !== "") ? aprobadoUI : ((existing && (existing.aprobadoPor || existing.rpAprobadoPor)) ? (existing.aprobadoPor || existing.rpAprobadoPor) : "");
 
+  // Garantizar N° Global visible y trazabilidad mínima en RP pendiente
+  if(submit || String(base.rpAprobEstado || "") === "Pendiente"){
+    __ensureRPGlobalNumber(base);
+    if(!base.rpEnviadoPor) base.rpEnviadoPor = __rpEnviadoPorValue(base);
+    if(!base.rpEnviadoPorEmail && currentUser && currentUser.email) base.rpEnviadoPorEmail = currentUser.email;
+    if(!base.rpEnviadoEn) base.rpEnviadoEn = __rpEnviadoEnValue(base) || __nowIso();
+  }
+
   // Enviar a aprobación en la misma acción (Registrador)
   if(submit){
     // Si estaba Observado, se vuelve a enviar como Pendiente
     if(base.rpAprobEstado !== "Pendiente"){
       base.rpAprobEstado = "Pendiente";
-      base.rpEnviadoPor  = __getCurrentUserName();
-      base.rpEnviadoPorEmail = currentUser ? currentUser.email : null;
-      base.rpEnviadoEn   = __nowIso();
+      __ensureRPGlobalNumber(base);
+      base.rpEnviadoPor  = __rpEnviadoPorValue(base) || __getCurrentUserName();
+      base.rpEnviadoPorEmail = currentUser ? currentUser.email : (base.rpEnviadoPorEmail || null);
+      base.rpEnviadoEn   = __rpEnviadoEnValue(base) || __nowIso();
       base.rpObs         = null;
       __audit("GUARDAR_Y_ENVIAR_RP", "emergencia", base.codigo, null);
       __histPush(base, "RP_ENVIADO_APROBACION", null);
@@ -5042,8 +5194,10 @@ document.getElementById("btnGuardarAprobarRPAdmin")?.addEventListener("click", a
 
   if(em.rpAprobEstado !== "Pendiente" && em.rpAprobEstado !== "Aprobado"){
     em.rpAprobEstado = "Pendiente";
-    em.rpEnviadoPor  = __getCurrentUserName();
-    em.rpEnviadoEn   = __nowIso();
+    __ensureRPGlobalNumber(em);
+    em.rpEnviadoPor  = __rpEnviadoPorValue(em) || __getCurrentUserName();
+    em.rpEnviadoPorEmail = currentUser ? currentUser.email : (em.rpEnviadoPorEmail || null);
+    em.rpEnviadoEn   = __rpEnviadoEnValue(em) || __nowIso();
     __audit("ENVIAR_RP_APROBACION", "emergencia", em.codigo, null);
   }
 
@@ -6475,8 +6629,10 @@ async function __cerrarEmergenciasSeleccionadas(){
   let ok = 0, fail = 0;
   const errores = [];
 
-  for(const em of abiertos){
+  for(let em of abiertos){
     const code = String(em && em.codigo ? em.codigo : "").trim();
+    try{ em = await __ensureFullEmergencia(code); }catch(_e){}
+    if(!em){ fail++; errores.push(`${code}: no se pudo cargar detalle.`); continue; }
     const snapshot = JSON.parse(JSON.stringify(em));
     try{
       const sinAfectacionMidis = !__dashAfectaMidis(em);
@@ -6795,7 +6951,7 @@ function cargarTablaEmergencias() {
     // Handlers de botones según disponibilidad
     const btnVer = tr.querySelector(".btnVer");
     if (btnVer && !btnVer.disabled && btnVer.style.display !== "none") {
-      btnVer.onclick = () => { verEmergencia(e); if(__getRCList(e).length>0) __scrollVerToLastRC(); };
+      btnVer.onclick = () => __withFullEmergencia(e, (full)=>{ verEmergencia(full); if(__getRCList(full).length>0) __scrollVerToLastRC(); });
     }
 
     const btnRP = tr.querySelector(".btnRP");
@@ -6820,27 +6976,27 @@ function cargarTablaEmergencias() {
         btnRP.title = "Emergencia cerrada: RP bloqueado";
       }
       if (!btnRP.disabled) {
-        btnRP.onclick = () => abrirRP(e);
+        btnRP.onclick = () => __withFullEmergencia(e, (full)=>abrirRP(full));
       }
     }
 
     const btnRC = tr.querySelector(".btnRC");
     if (btnRC && !btnRC.disabled && btnRC.style.display !== "none") {
-      btnRC.onclick = () => abrirRC(e);
+      btnRC.onclick = () => __withFullEmergencia(e, (full)=>abrirRC(full));
     }
 
     // Admin-only: Modificar / Eliminar
     const btnEditRP = tr.querySelector(".btnEditRP");
     if(btnEditRP && __isAdmin && __isAdmin()){
-      btnEditRP.onclick = () => __abrirRPAdminEditarDesdeListado(e);
+      btnEditRP.onclick = () => __withFullEmergencia(e, (full)=>__abrirRPAdminEditarDesdeListado(full));
     }
     const btnEditRC = tr.querySelector(".btnEditRC");
     if(btnEditRC && __isAdmin && __isAdmin()){
-      btnEditRC.onclick = () => __abrirRCAdminEditarDesdeListado(e);
+      btnEditRC.onclick = () => __withFullEmergencia(e, (full)=>__abrirRCAdminEditarDesdeListado(full));
     }
     const btnDel = tr.querySelector(".btnDel");
     if(btnDel && __isAdmin && __isAdmin()){
-      btnDel.onclick = () => __adminDeleteEmergencia(e.codigo);
+      btnDel.onclick = () => __withFullEmergencia(e, (full)=>__adminDeleteEmergencia(full.codigo));
     }
 
     const chkBulk = tr.querySelector('.chk-bulk-close');
@@ -9522,26 +9678,55 @@ async function __calcPending(){
     const map = __getHashMap();
     const arr = Array.isArray(emergencias) ? emergencias : __loadEmergencias();
     let pending = 0;
+
     for(const e of arr){
       const codigo = String(e && e.codigo ? e.codigo : "").trim();
       if(!codigo) continue;
-        if(String(e && e.estado_sync ? e.estado_sync : "") === "Rechazado") continue;
 
-    // Registrador: solo empujar sus propios registros y solo si están en Borrador/Observado
-    try{
-      const role = currentUser ? currentUser.role : "";
-      if(role === __ROLES.REG){
-        const me = String(currentUser && currentUser.email ? currentUser.email : "").trim().toLowerCase();
-        const owner = String(__segRegistrar(e) || "").trim().toLowerCase();
-        const stage = __segStage(e);
-        if(owner && me && owner !== me) continue;
-        if(!(stage === "Borrador" || stage === "Observado")) continue;
+      const syncState = String(e && e.estado_sync ? e.estado_sync : "");
+
+      // Los rechazados se muestran en su propio badge rojo; no deben inflar pendientes.
+      if(syncState === "Rechazado") continue;
+
+      // CORRECCIÓN v224:
+      // Los registros resumen que vienen de /sync/list NO contienen payload completo.
+      // Su hash local nunca debe compararse contra el hash del servidor, porque eso
+      // hacía que casi todo el universo local aparezca como "Pendientes".
+      if(typeof __syncIsSummaryOnly === "function" && __syncIsSummaryOnly(e)){
+        continue;
       }
-    }catch(_e){}
-      const h = await __syncHash(e);
-      const base = (map[codigo] || e.__serverHash || "");
-      if(base && base !== h) pending++;
+      if(e && (e.__summaryOnly === true || e.__needsDetail === true)){
+        continue;
+      }
+
+      // Registrador: solo considerar sus propios registros y solo en etapas editables.
+      try{
+        const role = currentUser ? currentUser.role : "";
+        if(role === __ROLES.REG){
+          const me = String(currentUser && currentUser.email ? currentUser.email : "").trim().toLowerCase();
+          const owner = String(__segRegistrar(e) || "").trim().toLowerCase();
+          const stage = __segStage(e);
+          if(owner && me && owner !== me) continue;
+          if(!(stage === "Borrador" || stage === "Observado")) continue;
+        }
+      }catch(_e){}
+
+      // Si una acción dejó el registro explícitamente pendiente, contarlo.
+      if(syncState === "Pendiente"){
+        pending++;
+        continue;
+      }
+
+      // Para registros completos, mantener la validación por hash como respaldo.
+      // Si el servidor todavía no tiene hash base, no se marca como pendiente por conteo visual.
+      try{
+        const base = (map[codigo] || e.__serverHash || "");
+        if(!base) continue;
+        const h = await __syncHash(e);
+        if(base !== h) pending++;
+      }catch(_e){}
     }
+
     __updateSyncUI(pending);
     return pending;
   }catch(e){
@@ -9549,7 +9734,6 @@ async function __calcPending(){
     return 0;
   }
 }
-
 // ---- AUTH local fallback (si el Worker falla) ----
 async function __loginLocalFallback(rawEmail, password){
   try{
@@ -9998,6 +10182,9 @@ async function __syncPush(){
     const codigo = String(e && e.codigo ? e.codigo : '').trim();
     if(!codigo) continue;
     if(String(e && e.estado_sync ? e.estado_sync : "") === "Rechazado") continue;
+    // OPTIMIZACIÓN LIST/DETAIL: no subir registros resumen.
+    // Los registros __summaryOnly vienen de /sync/list y no contienen el payload completo.
+    if(e && e.__summaryOnly === true) continue;
 
     const payload = __syncCleanPayload(e);
     const h = await __sha256(JSON.stringify(payload));
@@ -10140,121 +10327,186 @@ async function __syncPush(){
   return { ok:true, acked: allAcked, conflicts: allConf, denied: allDen };
 }
 
+
+// ===== OPTIMIZACIÓN LIST/DETAIL: resumen liviano + detalle bajo demanda =====
+function __syncSummaryToLocalRecord(r, previous){
+  const prev = (previous && typeof previous === "object") ? previous : {};
+  const codigo = String((r && r.codigo) || (prev && prev.codigo) || "").trim();
+  const rcTotal = Number((r && (r.rc_total ?? r.rcTotal)) || 0) || 0;
+  const closedFlag = !!(r && (r.cerrada === true || r.closed === true));
+  const cierreEstado = String((r && (r.cierre_estado || r.cierreEstado || "")) || "").trim();
+  const rpEstado = String((r && (r.rp_estado || r.rpEstado || "")) || "").trim();
+
+  const out = Object.assign({}, prev, {
+    codigo,
+    peligro: String((r && (r.peligro || r.tipo_peligro || r.evento)) || prev.peligro || "").trim(),
+    departamento: String((r && (r.departamento || r.region)) || prev.departamento || "").trim(),
+    provincia: String((r && r.provincia) || prev.provincia || "").trim(),
+    distrito: String((r && r.distrito) || prev.distrito || "").trim(),
+    fechaPeligro: String((r && (r.fecha_peligro || r.fechaPeligro || r.fecha_evento)) || prev.fechaPeligro || "").trim(),
+    fechaHora: String((r && (r.fecha_hora || r.fechaHora || r.fecha_registro)) || prev.fechaHora || "").trim(),
+    createdAt: String((r && r.created_at) || prev.createdAt || "").trim(),
+    updatedAt: String((r && r.updated_at) || prev.updatedAt || "").trim(),
+    createdByEmail: String((r && r.created_by) || prev.createdByEmail || "").trim(),
+    updatedByEmail: String((r && r.updated_by) || prev.updatedByEmail || "").trim(),
+    ownerEmail: String((r && r.created_by) || prev.ownerEmail || "").trim(),
+    rpAprobEstado: rpEstado || prev.rpAprobEstado || "Borrador",
+    cierreEstado: cierreEstado || prev.cierreEstado || null,
+    cerrada: closedFlag || cierreEstado.toLowerCase() === "aprobado" || cierreEstado.toLowerCase() === "cerrada" || !!prev.cerrada,
+    __summaryOnly: true,
+    __needsDetail: true,
+    __serverHash: String((r && (r.hash || r.payload_hash)) || prev.__serverHash || ""),
+    __serverUpdatedAt: String((r && r.updated_at) || prev.__serverUpdatedAt || "")
+  });
+
+  // Para que la Lista pueda saber si existe RC sin traer payload completo.
+  if(rcTotal > 0){
+    out.rcReportes = Array.from({length: rcTotal}, (_, i)=>({ __summaryOnly:true, numeroReporteRC: i + 1 }));
+  }else if(!Array.isArray(out.rcReportes) || (Array.isArray(out.rcReportes) && out.rcReportes.every(x => x && x.__summaryOnly))){
+    out.rcReportes = [];
+  }
+  return out;
+}
+
+function __syncIsSummaryOnly(em){
+  return !!(em && (em.__summaryOnly === true || em.__needsDetail === true));
+}
+
+async function __syncFetchDetail(codigo){
+  const code = String(codigo || "").trim();
+  if(!code) throw new Error("codigo_invalido");
+  if(!__isApiConfigured()) throw new Error('server_not_configured');
+  if(!navigator.onLine) throw new Error('offline');
+  const token = __tokenGet();
+  const out = await __api('/sync/detail?codigo=' + encodeURIComponent(code), { method:'GET', token: token });
+  if(out.res && out.res.status === 401) throw new Error('unauthorized');
+  if(out.res && out.res.status === 404) throw new Error('not_found');
+  if(!out.res || !out.res.ok){
+    const err = out.data && out.data.error ? out.data.error : 'detail_failed';
+    throw new Error(err);
+  }
+  return out.data && out.data.record ? out.data.record : null;
+}
+
+async function __ensureFullEmergencia(objOrCodigo){
+  const code = String((typeof objOrCodigo === 'string') ? objOrCodigo : (objOrCodigo && objOrCodigo.codigo) || '').trim();
+  if(!code) return objOrCodigo || null;
+  let arr = Array.isArray(emergencias) ? emergencias : __loadEmergencias();
+  let idx = arr.findIndex(e => String(e && e.codigo ? e.codigo : '').trim() === code);
+  let cur = idx >= 0 ? arr[idx] : (typeof objOrCodigo === 'object' ? objOrCodigo : null);
+  if(cur && !__syncIsSummaryOnly(cur) && cur.codigo) return cur;
+  const rec = await __syncFetchDetail(code);
+  if(!rec || !rec.payload) return cur;
+  const payload = JSON.parse(JSON.stringify(rec.payload || {}));
+  try{ payload.estado_sync = 'Sincronizado'; }catch(_e){}
+  try{ payload.__serverHash = String(rec.hash || ''); }catch(_e){}
+  try{ payload.__serverUpdatedAt = String(rec.updated_at || ''); }catch(_e){}
+  try{ payload.__summaryOnly = false; delete payload.__needsDetail; }catch(_e){}
+  if(idx >= 0) arr[idx] = payload;
+  else { arr.push(payload); idx = arr.length - 1; }
+  emergencias = arr;
+  const map = __getHashMap();
+  if(rec.hash) map[code] = String(rec.hash);
+  __setHashMap(map);
+  __saveEmergencias();
+  try{ if(emergenciaSeleccionada && String(emergenciaSeleccionada.codigo||'').trim() === code) emergenciaSeleccionada = payload; }catch(_e){}
+  return payload;
+}
+
+async function __withFullEmergencia(objOrCodigo, cb){
+  try{
+    const full = await __ensureFullEmergencia(objOrCodigo);
+    if(!full){ alert('No se pudo cargar el detalle del registro.'); return; }
+    return await cb(full);
+  }catch(e){
+    alert('No se pudo cargar el detalle desde D1: ' + ((e && e.message) ? e.message : e));
+  }
+}
+
+// ===== SYNC LOCK / POLLING OPTIMIZADO v223 =====
+// Evita ráfagas de /sync/list cuando se disparan varios eventos juntos
+// (pageshow, visibilitychange, pestaña Lista, botón Sincronizar, timers).
+window.__SYNC_RUNNING__ = false;
+window.__SYNC_RUNNING_PROMISE__ = null;
+window.__SYNC_PULL_PROMISE__ = null;
+window.__SYNC_LAST_EMPTY_KEY__ = window.__SYNC_LAST_EMPTY_KEY__ || "";
+window.__SYNC_LAST_EMPTY_AT__ = window.__SYNC_LAST_EMPTY_AT__ || 0;
+window.__SYNC_PULL_DEDUP_MS__ = window.__SYNC_PULL_DEDUP_MS__ || 90000;
+window.__SYNC_AUTO_MIN_GAP_MS = window.__SYNC_AUTO_MIN_GAP_MS || 120000;
+
+function __syncCanSkipRecentEmptyPull(key){
+  try{
+    const k = String(key || "");
+    if(!k) return false;
+    const lastK = String(window.__SYNC_LAST_EMPTY_KEY__ || "");
+    const lastAt = Number(window.__SYNC_LAST_EMPTY_AT__ || 0) || 0;
+    return !!(lastK && lastK === k && lastAt && (Date.now() - lastAt) < window.__SYNC_PULL_DEDUP_MS__);
+  }catch(e){ return false; }
+}
+
+function __syncMarkEmptyPull(key){
+  try{
+    window.__SYNC_LAST_EMPTY_KEY__ = String(key || "");
+    window.__SYNC_LAST_EMPTY_AT__ = Date.now();
+  }catch(e){}
+}
+
+function __syncMarkNonEmptyPull(){
+  try{
+    window.__SYNC_LAST_EMPTY_KEY__ = "";
+    window.__SYNC_LAST_EMPTY_AT__ = 0;
+  }catch(e){}
+}
+
 async function __syncPull(since){
+  const __pullKey = String(since || __getLastPull() || __syncEpoch());
+
+  // Si hay un pull en curso, todos esperan el mismo resultado.
+  // Esto evita 5-10 llamadas iguales a /sync/list por recarga/pestaña/eventos.
+  if(window.__SYNC_PULL_PROMISE__){
+    return await window.__SYNC_PULL_PROMISE__;
+  }
+
+  // Si hace pocos segundos ya consultamos el mismo cursor y vino vacío, no repetir.
+  if(__syncCanSkipRecentEmptyPull(__pullKey)){
+    return { ok:true, records:[], newSince: __pullKey, skipped:'recent_empty_pull' };
+  }
+
+  window.__SYNC_PULL_PROMISE__ = (async function(){
+
   if(!__isApiConfigured()) throw new Error('server_not_configured');
   if(!navigator.onLine) throw new Error('offline');
 
-  const token = __tokenGet(); // opcional
-
+  const token = __tokenGet();
   const limit = 5000;
   let s = since || __getLastPull();
   let pulledAll = [];
   let guard = 0;
 
-  // Modo optimizado: cuando ya existe data local, primero consulta /sync/list (sin payload_json)
-  // y solo baja /sync/detail para códigos nuevos o con hash cambiado.
-  // Si es arranque limpio / rehidratación completa, mantiene /sync/pull para no romper dashboard/listados.
-  const localBase = Array.isArray(emergencias) ? emergencias : __loadEmergencias();
-  const localCount = Array.isArray(localBase) ? localBase.length : 0;
-  const fullHydration = (localCount === 0 || String(s || '') === __syncEpoch());
-
-  if(fullHydration){
-    while(guard < 25){
-      const out = await __api('/sync/pull?since=' + encodeURIComponent(s) + '&limit=' + limit, { method:'GET', token: token });
-      if(out.res && out.res.status === 401) throw new Error('unauthorized');
-      if(!out.res || !out.res.ok){
-        const err = out.data && out.data.error ? out.data.error : 'pull_failed';
-        throw new Error(err);
-      }
-
-      const pulled = out.data && Array.isArray(out.data.records) ? out.data.records : [];
-      if(pulled.length === 0) break;
-      pulledAll = pulledAll.concat(pulled);
-
-      let maxUpdatedBatch = s;
-      for(const r of pulled){
-        const upd = String(r && r.updated_at ? r.updated_at : "");
-        if(upd && upd > maxUpdatedBatch) maxUpdatedBatch = upd;
-      }
-      if(pulled.length < limit) { s = maxUpdatedBatch; break; }
-      if(maxUpdatedBatch === s) break;
-      s = maxUpdatedBatch;
-      guard++;
+  while(guard < 25){
+    // OPTIMIZACIÓN: usar /sync/list, que NO devuelve payload completo.
+    const out = await __api('/sync/list?since=' + encodeURIComponent(s) + '&limit=' + limit, { method:'GET', token: token });
+    if(out.res && out.res.status === 401) throw new Error('unauthorized');
+    if(!out.res || !out.res.ok){
+      const err = out.data && out.data.error ? out.data.error : 'list_failed';
+      throw new Error(err);
     }
-  }else{
-    const localIdx = {};
-    for(let i=0;i<localBase.length;i++){
-      const c = String(localBase[i] && localBase[i].codigo ? localBase[i].codigo : '').trim();
-      if(c) localIdx[c] = localBase[i];
+
+    const pulled = out.data && Array.isArray(out.data.records) ? out.data.records : [];
+    if(pulled.length === 0) break;
+    pulledAll = pulledAll.concat(pulled);
+
+    let maxUpdatedBatch = s;
+    for(const r of pulled){
+      const upd = String(r && r.updated_at ? r.updated_at : "");
+      if(upd && upd > maxUpdatedBatch) maxUpdatedBatch = upd;
     }
-    const map0 = __getHashMap();
-
-    while(guard < 25){
-      let out = await __api('/sync/list?since=' + encodeURIComponent(s) + '&limit=' + limit, { method:'GET', token: token });
-
-      // Compatibilidad: si el Worker aún no tiene /sync/list, usar /sync/pull tradicional.
-      if(out.res && out.res.status === 404){
-        out = await __api('/sync/pull?since=' + encodeURIComponent(s) + '&limit=' + limit, { method:'GET', token: token });
-        if(out.res && out.res.status === 401) throw new Error('unauthorized');
-        if(!out.res || !out.res.ok){
-          const err = out.data && out.data.error ? out.data.error : 'pull_failed';
-          throw new Error(err);
-        }
-        const pulled = out.data && Array.isArray(out.data.records) ? out.data.records : [];
-        if(pulled.length === 0) break;
-        pulledAll = pulledAll.concat(pulled);
-        let maxUpdatedBatch = s;
-        for(const r of pulled){
-          const upd = String(r && r.updated_at ? r.updated_at : "");
-          if(upd && upd > maxUpdatedBatch) maxUpdatedBatch = upd;
-        }
-        if(pulled.length < limit) { s = maxUpdatedBatch; break; }
-        if(maxUpdatedBatch === s) break;
-        s = maxUpdatedBatch;
-        guard++;
-        continue;
-      }
-
-      if(out.res && out.res.status === 401) throw new Error('unauthorized');
-      if(!out.res || !out.res.ok){
-        const err = out.data && out.data.error ? out.data.error : 'list_failed';
-        throw new Error(err);
-      }
-
-      const metas = out.data && Array.isArray(out.data.records) ? out.data.records : [];
-      if(metas.length === 0) break;
-
-      let maxUpdatedBatch = s;
-      for(const m of metas){
-        const codigo = String(m && m.codigo ? m.codigo : '').trim();
-        const serverHash = String((m && (m.hash || m.payload_hash)) || '');
-        const upd = String(m && m.updated_at ? m.updated_at : '');
-        if(upd && upd > maxUpdatedBatch) maxUpdatedBatch = upd;
-        if(!codigo) continue;
-
-        const localRec = localIdx[codigo] || null;
-        const knownHash = String(map0[codigo] || (localRec && localRec.__serverHash) || '');
-        if(localRec && serverHash && knownHash === serverHash){
-          try{ localRec.__serverHash = serverHash; localRec.__serverUpdatedAt = upd; localRec.estado_sync = 'Sincronizado'; }catch(_e){}
-          continue;
-        }
-
-        const detail = await __api('/sync/detail?codigo=' + encodeURIComponent(codigo), { method:'GET', token: token });
-        if(detail.res && detail.res.status === 401) throw new Error('unauthorized');
-        if(detail.res && detail.res.status === 404) continue;
-        if(!detail.res || !detail.res.ok){
-          const err = detail.data && detail.data.error ? detail.data.error : 'detail_failed';
-          throw new Error(err);
-        }
-        if(detail.data && detail.data.record) pulledAll.push(detail.data.record);
-      }
-
-      if(metas.length < limit) { s = maxUpdatedBatch; break; }
-      if(maxUpdatedBatch === s) break;
-      s = maxUpdatedBatch;
-      guard++;
-    }
+    if(pulled.length < limit){ s = maxUpdatedBatch; break; }
+    if(maxUpdatedBatch === s) break;
+    s = maxUpdatedBatch;
+    guard++;
   }
+
   const pulled = pulledAll;
   if(pulled.length === 0){
     return { ok:true, records: [], newSince: (since || __getLastPull()) };
@@ -10274,61 +10526,45 @@ async function __syncPull(since){
   for(const r of pulled){
     const codigo = String(r && r.codigo ? r.codigo : '').trim();
     if(!codigo) continue;
-
-    const serverPayload = r.payload;
-    const serverDeleted = !!(serverPayload && (serverPayload._deleted === true || serverPayload.deleted === true));
-    if(serverDeleted){
-      try{ __addTombstone(codigo); }catch(_e){}
-    }
-    const serverHash = String(r.hash || '');
+    const serverHash = String(r.hash || r.payload_hash || '');
     const serverUpdated = String(r.updated_at || s);
     if(serverUpdated > maxUpdated) maxUpdated = serverUpdated;
 
     const i = idx[codigo];
     if(i !== undefined){
       const lastSynced = map[codigo] || "";
-      const localHash = await __syncHash(local[i]);
-      const localDirty = (lastSynced && localHash !== lastSynced);
-      // Si local tiene cambios y el servidor también cambió: conflicto, pero auto-resolvemos si el usuario NO puede editar ese estado
-      // o si el servidor ya consolidó una eliminación/tombstone.
+      let localHash = "";
+      let localDirty = false;
+      try{
+        if(!__syncIsSummaryOnly(local[i])){
+          localHash = await __syncHash(local[i]);
+          localDirty = !!(lastSynced && localHash !== lastSynced);
+        }
+      }catch(_e){ localDirty = false; }
+
       if(localDirty && lastSynced && serverHash && serverHash !== lastSynced){
-        try{
-          const role = currentUser ? currentUser.role : "";
-          const isAdmin = (role === __ROLES.ADMIN);
-          const st = __segStage(serverPayload);
-          const editableReg = (role === __ROLES.REG) && (st === "Borrador" || st === "Observado");
-          const preferServer = !!(serverPayload && (serverPayload._deleted === true || serverPayload.deleted === true));
-          if(preferServer || (!isAdmin && !editableReg)){
-            try{ serverPayload.estado_sync = 'Sincronizado'; }catch(_e){}
-            try{ serverPayload.__serverHash = serverHash; serverPayload.__serverUpdatedAt = serverUpdated; }catch(_e){}
-            local[i] = serverPayload;
-            if(serverHash) map[codigo] = serverHash;
-            continue;
-          }
-        }catch(_e){}
         conflicts.push({
           codigo: codigo,
           reason: 'both_modified',
           server_updated_at: serverUpdated,
           server_hash: serverHash,
-          server_stage: (typeof __segStage === 'function') ? __segStage(serverPayload) : '',
           local_stage: (typeof __segStage === 'function') ? __segStage(local[i]) : ''
         });
         continue;
       }
 
-      // Si local está "dirty" pero el servidor no cambió desde la última base, NO pisar lo local
       if(localDirty && lastSynced && serverHash === lastSynced){
         continue;
       }
 
-      try{ serverPayload.estado_sync = 'Sincronizado'; }catch(_e){}
-      try{ serverPayload.__serverHash = serverHash; serverPayload.__serverUpdatedAt = serverUpdated; }catch(_e){}
-      local[i] = serverPayload;
+      // Si el hash es igual y ya tenemos payload completo, conservarlo.
+      if(serverHash && lastSynced === serverHash && !__syncIsSummaryOnly(local[i])){
+        try{ local[i].__serverUpdatedAt = serverUpdated; local[i].__serverHash = serverHash; }catch(_e){}
+      }else{
+        local[i] = __syncSummaryToLocalRecord(r, local[i]);
+      }
     }else{
-      try{ serverPayload.estado_sync = 'Sincronizado'; }catch(_e){}
-      try{ serverPayload.__serverHash = serverHash; serverPayload.__serverUpdatedAt = serverUpdated; }catch(_e){}
-      local.push(serverPayload);
+      local.push(__syncSummaryToLocalRecord(r, null));
       idx[codigo] = local.length - 1;
     }
 
@@ -10338,7 +10574,7 @@ async function __syncPull(since){
   emergencias = local;
   __saveEmergencias();
   __setHashMap(map);
-  __setLastPull(s);
+  __setLastPull(maxUpdated || s);
 
   if(conflicts.length){
     let old = [];
@@ -10350,7 +10586,20 @@ async function __syncPull(since){
   try{ __recalcularCorrelativos(); }catch(e){}
   try{ cargarTablaEmergencias(); }catch(e){}
 
-  return { ok:true, records: pulled, newSince: maxUpdated, conflicts: conflicts };
+  return { ok:true, records: pulled, newSince: maxUpdated, conflicts: conflicts, mode:'list' };
+
+  })();
+
+  try{
+    const __res = await window.__SYNC_PULL_PROMISE__;
+    try{
+      if(__res && Array.isArray(__res.records) && __res.records.length === 0) __syncMarkEmptyPull(__pullKey);
+      else __syncMarkNonEmptyPull();
+    }catch(_e){}
+    return __res;
+  }finally{
+    window.__SYNC_PULL_PROMISE__ = null;
+  }
 }
 
 async function __syncAll(){
@@ -10453,6 +10702,27 @@ async function __syncAll(){
 }
 
 async function __syncPullAuto(opts){
+  opts = opts || {};
+  const force = !!opts.force;
+
+  // Candado global visible en consola: window.__SYNC_RUNNING__
+  if(window.__SYNC_RUNNING__){
+    return await (window.__SYNC_RUNNING_PROMISE__ || Promise.resolve({ ok:true, skipped:'sync_running' }));
+  }
+
+  // Polling optimizado: salvo force, no hacer autopull si ya se hizo uno reciente.
+  const now0 = Date.now();
+  const last0 = Number(window.__PULL_AUTO_LAST || 0) || 0;
+  const gap0 = Number(window.__SYNC_AUTO_MIN_GAP_MS || 120000) || 120000;
+  if(!force && last0 && (now0 - last0) < gap0){
+    try{ await __calcPending(); }catch(_e){}
+    return { ok:true, skipped:'cooldown' };
+  }
+
+  window.__SYNC_RUNNING__ = true;
+  window.__PULL_AUTO_LAST = now0;
+  window.__SYNC_RUNNING_PROMISE__ = (async function(){
+
   try{
     opts = opts || {};
     const force = !!opts.force;
@@ -10505,6 +10775,16 @@ async function __syncPullAuto(opts){
   }catch(e){
     __updateSyncUI(0);
   } finally {
+    window.__PULL_AUTO_INFLIGHT = false;
+  }
+
+  })();
+
+  try{
+    return await window.__SYNC_RUNNING_PROMISE__;
+  }finally{
+    window.__SYNC_RUNNING__ = false;
+    window.__SYNC_RUNNING_PROMISE__ = null;
     window.__PULL_AUTO_INFLIGHT = false;
   }
 }
@@ -11760,7 +12040,7 @@ document.addEventListener('DOMContentLoaded', async function(){
 
   window.addEventListener('online', function(){ __setNetBadge(); __calcPending(); try{ setTimeout(function(){ __syncPullAuto(); }, 300); }catch(_e){} });
   window.addEventListener('offline', function(){ __setNetBadge(); __updateSyncUI(0); });
-  window.addEventListener('pageshow', function(){ try{ setTimeout(function(){ __syncPullAuto(); }, 300); }catch(_e){} });
+  window.addEventListener('pageshow', function(ev){ try{ if(ev && ev.persisted) setTimeout(function(){ __syncPullAuto(); }, 300); }catch(_e){} });
   document.addEventListener('visibilitychange', function(){
     try{
       if(!document.hidden) setTimeout(function(){ __syncPullAuto(); }, 300);
@@ -11808,7 +12088,7 @@ document.addEventListener('DOMContentLoaded', async function(){
           __LIST_SORT.dir = -1;
           __listUpdateSortUI();
           (async ()=>{
-            try{ await __syncPullAuto(); }catch(_e){}
+            try{ if(!window.__SYNC_RUNNING__) await __syncPullAuto(); }catch(_e){}
             try{ cargarTablaEmergencias(); }catch(_e){}
           })();
         }catch(_e){}
@@ -11822,8 +12102,8 @@ try{
   if(!window.__LISTA_AUTOPULL_TIMER){
     window.__LISTA_AUTOPULL_TIMER = setInterval(()=>{
       const isActive = document.querySelector('a[href="#listaTab"]')?.classList.contains("active");
-      if(isActive) __syncPullAuto();
-    }, 60000);
+      if(isActive && !window.__SYNC_RUNNING__) __syncPullAuto();
+    }, 180000);
   }
 }catch(e){}
 
