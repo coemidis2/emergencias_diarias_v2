@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <!-- BUILD: 2026-02-20 autopull-cooldown-v206-fix-sync-v3 -->
-<script>window.__BUILD_ID='2026-02-20 autopull-cooldown-v206-fix-sync-v3-sync-lock-v243-dashboard-impacto-excel-sync';console.log('BUILD',window.__BUILD_ID);</script>
+<script>window.__BUILD_ID='2026-02-20 autopull-cooldown-v206-fix-sync-v3-sync-lock-v224-badgefix';console.log('BUILD',window.__BUILD_ID);</script>
 
 <!-- build: VER_PRINT_RC_ALWAYS_VISIBLE v4 2026-01-11 -->
 <meta charset="UTF-8" />
@@ -18,9 +18,7 @@ body { background: #f5f5f5; }
 .card { margin-top: 1rem; }
 .table td input { width: 100%; }
 .hidden { display: none; }
-/* ======= VERSION 243 05/06/2026 - Estabilidad modal Ver: evita cuelgue por instancias/backdrops duplicados ======= */
-.ver-detail-loading{display:flex;align-items:center;gap:.5rem;}
-/* ======= VERSION 243 05/06/2026 - Detalle emergencia: N° Global saneado ======= */
+/* ======= VERSION 225 02/06/2026 - sync lock + polling optimized + badge pendientes corregido======= */
 /* ======= VER (Listado de Emergencias): Formato de visualización/impresión ======= */
 .ver-report-wrap{ font-family: Calibri, Arial, sans-serif; font-size: 11pt; color:#111; }
 .ver-report-title{ font-family: Calibri, Arial, sans-serif; font-size:15pt; font-weight:700; color:#1F4E79; margin:0 0 6px 0; }
@@ -270,71 +268,6 @@ body { background: #f5f5f5; }
   .modal-xl{ --bs-modal-width: calc(100vw - .75rem); }
 }
 
-
-/* ======= VERSION 238: Dashboard Impacto MIDIS - visualización completa ======= */
-#dashTab #dashChartUsuariosProg,
-#dashTab #dashChartServiciosProg,
-#dashTab #dashChartAfectProg{
-  height:260px !important;
-  max-height:260px !important;
-}
-#dashTab #dashChartAfectProg{
-  margin-bottom:8px;
-}
-#dashTab #dashAfectaMidisTbody td,
-#dashTab #dashAfectaMidisTbody th{
-  vertical-align:middle;
-}
-#dashTab .dash-impact-chart-box{
-  height:280px;
-  min-height:280px;
-  position:relative;
-}
-@media (max-width: 768px){
-  #dashTab #dashChartUsuariosProg,
-  #dashTab #dashChartServiciosProg,
-  #dashTab #dashChartAfectProg{
-    height:220px !important;
-    max-height:220px !important;
-  }
-  #dashTab .dash-impact-chart-box{
-    height:240px;
-    min-height:240px;
-  }
-}
-
-
-
-/* ======= VERSION 240: Dashboard - gráficos y datos MIDIS completos ======= */
-#dashTab #dashChartEvento,
-#dashTab #dashChartRegion{
-  display:block !important;
-  width:100% !important;
-  height:360px !important;
-  max-height:360px !important;
-}
-#dashTab #dashHistEvento,
-#dashTab #dashHistRegion{
-  min-height:420px;
-}
-#dashTab .dash-impact-chart-box canvas{
-  display:block !important;
-  width:100% !important;
-}
-#dashTab .table-responsive{
-  max-width:100%;
-}
-@media (max-width: 768px){
-  #dashTab #dashChartEvento,
-  #dashTab #dashChartRegion{
-    height:300px !important;
-    max-height:300px !important;
-  }
-  #dashTab #dashHistEvento,
-  #dashTab #dashHistRegion{
-    min-height:350px;
-  }
-}
 </style>
 
  <script src="./patch_cf_sync.js?v=20260527_syncfix"></script>
@@ -909,70 +842,6 @@ body { background: #f5f5f5; }
         <span class="badge mx-2" style="background:#fd7e14"> </span> En proceso
         <span class="badge mx-2" style="background:#198754"> </span> Cerrada
       </div>
-
-      <!-- Resumen dinámico por Departamento (solo Mapa de Emergencias) -->
-      <div class="border rounded p-2 mt-2" id="dashMapDeptBox">
-        <div class="row g-2 align-items-end mb-2">
-          <div class="col-md-4">
-            <label class="form-label mb-1">Departamento</label>
-            <select id="dashMapDepartamento" class="form-control form-control-sm">
-              <option value="">(Todos)</option>
-            </select>
-          </div>
-          <div class="col-md-4">
-            <label class="form-label mb-1">Peligro</label>
-            <select id="dashMapPeligro" class="form-control form-control-sm">
-              <option value="">(Todos)</option>
-            </select>
-          </div>
-          <div class="col-md-2">
-            <label class="form-label mb-1">Fecha inicial</label>
-            <input type="date" id="dashMapFechaInicial" class="form-control form-control-sm">
-          </div>
-          <div class="col-md-2">
-            <label class="form-label mb-1">Fecha Final</label>
-            <input type="date" id="dashMapFechaFinal" class="form-control form-control-sm">
-          </div>
-          <div class="col-md-12">
-            <div class="small text-muted" id="dashMapDeptHint">Seleccione un departamento, peligro y/o rango de fecha del peligro para acercar el mapa y ver el resumen.</div>
-          </div>
-        </div>
-        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
-          <div class="d-flex align-items-center gap-2">
-            <span class="small text-muted">Mostrar</span>
-            <select id="dashMapDeptPageSize" class="form-select form-select-sm" style="width:auto;">
-              <option value="5" selected>5</option>
-              <option value="10">10</option>
-              <option value="25">25</option>
-              <option value="50">50</option>
-              <option value="100">100</option>
-            </select>
-            <span class="small text-muted">registros</span>
-          </div>
-          <div class="btn-group btn-group-sm" role="group" aria-label="Paginación resumen departamento">
-            <button id="dashMapDeptPrev" type="button" class="btn btn-outline-secondary">Anterior</button>
-            <button id="dashMapDeptNext" type="button" class="btn btn-outline-secondary">Siguiente</button>
-          </div>
-        </div>
-        <div id="dashMapDeptPageInfo" class="small text-muted mb-1">0 a 0 de 0 registros</div>
-        <div class="table-responsive">
-          <table class="table table-sm table-bordered align-middle mb-0">
-            <thead>
-              <tr>
-                <th>Código</th>
-                <th>Distrito</th>
-                <th>Peligro</th>
-                <th class="text-end">Total usuarios afectados</th>
-                <th class="text-end">Total servicios afectados</th>
-                <th class="text-center" style="width:54px">Ver</th>
-              </tr>
-            </thead>
-            <tbody id="dashMapDeptTbody">
-              <tr><td colspan="6" class="text-muted small">Sin datos para mostrar.</td></tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
       </div>
 
       <!-- ====================== ÁREA 2: EMERGENCIAS DEL DÍA ======================= -->
@@ -1178,18 +1047,18 @@ body { background: #f5f5f5; }
       <div class="row g-3 mb-3">
         <div class="col-md-6">
           <h5 class="text-primary">Usuarios afectados <span class="text-muted small" id="dashLblUsuariosAfectados">(por programa)</span></h5>
-          <div class="dash-impact-chart-box"><canvas id="dashChartUsuariosProg"></canvas></div>
+          <canvas id="dashChartUsuariosProg"></canvas>
         </div>
         <div class="col-md-6">
           <h5 class="text-primary">Servicios afectados y usuarios por servicios <span class="text-muted small" id="dashLblServiciosUsuarios">(por programa)</span></h5>
-          <div class="dash-impact-chart-box"><canvas id="dashChartServiciosProg"></canvas></div>
+          <canvas id="dashChartServiciosProg"></canvas>
         </div>
       </div>
 
       <!-- 4. Histograma de afectación de programas nacionales (N° emergencias) -->
       <div class="mb-3">
         <h5 class="text-primary">Usuarios fallecidos <span class="text-muted small" id="dashLblFallecidos">(por programa)</span></h5>
-        <div class="dash-impact-chart-box"><canvas id="dashChartAfectProg"></canvas></div>
+        <canvas id="dashChartAfectProg"></canvas>
       </div>
 
       <!-- 5. Emergencias que afectan MIDIS -->
@@ -4101,7 +3970,6 @@ function __renderSyncConflictsTable(){
 
 // ===================== INIT AUTH UI =====================
 document.addEventListener("DOMContentLoaded", ()=>{
-  try{ __initVerModalStabilityOnce(); }catch(e){}
   // Bootstrap auth
   __bootstrapAuth();
 
@@ -5385,12 +5253,8 @@ window.__COBERTURA_PROGRAMAS_CACHE = window.__COBERTURA_PROGRAMAS_CACHE || null;
 async function __loadCoberturaProgramas(){
   // Cache en memoria para no hacer múltiples fetch
   if(window.__COBERTURA_PROGRAMAS_CACHE) return window.__COBERTURA_PROGRAMAS_CACHE;
-  const url = 'cobertura_programas.json?v=202605';
-  const controller = new AbortController();
-  const t = setTimeout(()=>controller.abort(), 10000);
-  let res;
-  try{ res = await fetch(url, { cache: 'force-cache', signal: controller.signal }); }
-  finally{ clearTimeout(t); }
+  const url = 'cobertura_programas.json?v=' + Date.now(); // bust cache
+  const res = await fetch(url, { cache: 'no-store' });
   if(!res.ok) throw new Error('No se pudo cargar cobertura_programas.json');
   const data = await res.json();
   // Esperado: { version, labels, rows }
@@ -5494,70 +5358,6 @@ async function __renderCoberturaAnexo(em, containerId){
 }
 
 // ===================== FUNCIÓN VER EMERGENCIA CERRADA =====================
-
-// ======= FIX v237: Modal Ver estable (evita backdrops/instancias duplicadas y doble apertura) =======
-window.__VER_MODAL_OPENING__ = window.__VER_MODAL_OPENING__ || false;
-window.__DETAIL_FETCH_PROMISES__ = window.__DETAIL_FETCH_PROMISES__ || {};
-
-function __getVerModalInstance(){
-  try{
-    const modalEl = document.getElementById("modalVerEmergencia");
-    if(!modalEl || !window.bootstrap) return null;
-    return bootstrap.Modal.getOrCreateInstance(modalEl, { backdrop:true, keyboard:true, focus:true });
-  }catch(e){ return null; }
-}
-
-function __showVerModalSafe(){
-  try{
-    const inst = __getVerModalInstance();
-    if(inst) inst.show();
-  }catch(e){}
-}
-
-function __cleanupVerModalBackdrops(){
-  try{
-    // Bootstrap a veces deja el body bloqueado si se abre el mismo modal mientras otro show/hide está en curso.
-    const modalEl = document.getElementById("modalVerEmergencia");
-    const anyShown = document.querySelector('.modal.show');
-    if(anyShown) return;
-    document.body.classList.remove('modal-open');
-    document.body.style.removeProperty('overflow');
-    document.body.style.removeProperty('padding-right');
-    document.querySelectorAll('.modal-backdrop').forEach(b=>b.remove());
-    if(modalEl) modalEl.removeAttribute('aria-hidden');
-  }catch(e){}
-}
-
-function __initVerModalStabilityOnce(){
-  try{
-    if(window.__VER_MODAL_STABILITY_INIT__) return;
-    window.__VER_MODAL_STABILITY_INIT__ = true;
-    const modalEl = document.getElementById("modalVerEmergencia");
-    if(!modalEl) return;
-    modalEl.addEventListener('hidden.bs.modal', ()=>{
-      window.__VER_MODAL_OPENING__ = false;
-      window.__VER_EMERG_ACTUAL = null;
-      window.__VER_WORD_CTX = null;
-      window.__VER_COBERTURA_PROMISE = null;
-      setTimeout(__cleanupVerModalBackdrops, 80);
-    });
-    modalEl.addEventListener('shown.bs.modal', ()=>{
-      window.__VER_MODAL_OPENING__ = false;
-    });
-  }catch(e){}
-}
-
-function __setVerButtonsBusy(busy){
-  try{
-    const modalEl = document.getElementById("modalVerEmergencia");
-    if(!modalEl) return;
-    modalEl.querySelectorAll('.modal-footer button').forEach(b=>{ b.disabled = !!busy; });
-    if(!busy){
-      const closeBtn = modalEl.querySelector('.modal-footer .btn-secondary');
-      if(closeBtn) closeBtn.disabled = false;
-    }
-  }catch(e){}
-}
 function __getAccionesCompArray(rc){
   if(!rc) return [];
   let a = rc.acciones ?? rc.accionesRC ?? rc.accionesComplementario ?? rc.accionesComplementarias ?? rc.accionesComp;
@@ -5690,7 +5490,7 @@ function __verNrosGlobalesHistorial(e, rcList){
   const parts = [];
   const seen = new Set();
 
-  const rpGlobal = (typeof __numeroGlobalVisible === "function") ? __numeroGlobalVisible(e) : safe(e && (e.numeroGlobal || e.numeroReporte || e.numGlobal || e.nroGlobal));
+  const rpGlobal = safe(e && (e.numeroGlobal || e.numeroReporte || e.numGlobal || e.nroGlobal));
   const rpFecha = __verDateOnly(__verFechaRegistroRP(e));
   const rpTxt = `RP – ${rpGlobal ? `N° Global ${rpGlobal}` : "N° Global"}${rpFecha ? ` | Fecha de registro ${rpFecha}` : ""}`;
   parts.push(rpTxt);
@@ -5753,7 +5553,7 @@ function verEmergencia(e) {
   aprobadoPorTxt = __normalizeAdminName(aprobadoPorTxt);
   if(!String(aprobadoPorTxt||"").trim()) aprobadoPorTxt = __getPrimaryAdminName();
 
-  const nroGlobalWord = (lastRC && (lastRC.numeroGlobal || lastRC.numeroReporteRC)) ? (lastRC.numeroGlobal || lastRC.numeroReporteRC) : ((typeof __numeroGlobalVisible === "function") ? __numeroGlobalVisible(e) : (e.numeroGlobal || ""));
+  const nroGlobalWord = (lastRC && (lastRC.numeroGlobal || lastRC.numeroReporteRC)) ? (lastRC.numeroGlobal || lastRC.numeroReporteRC) : (e.numeroGlobal || "");
   const fechaHoraWord = (lastRC && (lastRC.fechaHoraRC || lastRC.fechaHora || lastRC.fechaRegistro || lastRC.updatedAt)) ? (lastRC.fechaHoraRC || lastRC.fechaHora || lastRC.fechaRegistro || lastRC.updatedAt) : (e.fechaHora || "");
 
   // Contexto para exportar a Word desde VER
@@ -5914,8 +5714,8 @@ try{
   if(menu) menu.innerHTML = "";
 }catch(_e){}
 
-__initVerModalStabilityOnce();
-  __showVerModalSafe();
+const modal = new bootstrap.Modal(document.getElementById("modalVerEmergencia"));
+  modal.show();
 }
 
 
@@ -7151,7 +6951,7 @@ function cargarTablaEmergencias() {
     // Handlers de botones según disponibilidad
     const btnVer = tr.querySelector(".btnVer");
     if (btnVer && !btnVer.disabled && btnVer.style.display !== "none") {
-      btnVer.onclick = () => __withFullEmergencia(e, (full)=>{ verEmergencia(full); if(__getRCList(full).length>0) __scrollVerToLastRC(); }, {loadingModal:true});
+      btnVer.onclick = () => __withFullEmergencia(e, (full)=>{ verEmergencia(full); if(__getRCList(full).length>0) __scrollVerToLastRC(); });
     }
 
     const btnRP = tr.querySelector(".btnRP");
@@ -8601,18 +8401,10 @@ function __dashInitIfNeeded(){
     return;
   }
 
-  const mkBar = (el, label, extraOptions={}) => new Chart(el, {
+  const mkBar = (el, label) => new Chart(el, {
     type:"bar",
     data:{labels:[], datasets:[{label, data:[]}]},
-    options:Object.assign({
-      responsive:true,
-      maintainAspectRatio:false,
-      plugins:{legend:{display:true}},
-      scales:{
-        x:{ticks:{autoSkip:false, maxRotation:45, minRotation:0}},
-        y:{beginAtZero:true, ticks:{precision:0}}
-      }
-    }, extraOptions || {})
+    options:{responsive:true}
   });
 
   if(!dashChartEvento) dashChartEvento = mkBar(document.getElementById("dashChartEvento"), "Emergencias");
@@ -8636,327 +8428,22 @@ function __dashInitIfNeeded(){
         });
       }
     }
-    if(!dashChartUsuariosProg) dashChartUsuariosProg = mkBar(document.getElementById("dashChartUsuariosProg"), "Usuarios afectados", {scales:{x:{ticks:{autoSkip:false, maxRotation:45, minRotation:0}}, y:{beginAtZero:true, ticks:{precision:0}}}});
-  if(!dashChartServiciosProg) dashChartServiciosProg = mkBar(document.getElementById("dashChartServiciosProg"), "Servicios afectados", {scales:{x:{ticks:{autoSkip:false, maxRotation:45, minRotation:0}}, y:{beginAtZero:true, ticks:{precision:0}}}});
-  if(!dashChartAfectProg) dashChartAfectProg = mkBar(document.getElementById("dashChartAfectProg"), "Usuarios fallecidos", {scales:{x:{ticks:{autoSkip:false, maxRotation:45, minRotation:0}}, y:{beginAtZero:true, ticks:{precision:0}}}});
-}
-
-// ======= FIX v226: Mapa Dashboard - todos los estados, coordenadas alternativas y puntos coincidentes visibles =======
-function __dashNormText(v){
-  try{
-    return String(v || "")
-      .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
-      .trim().toUpperCase();
-  }catch(e){ return String(v || "").trim().toUpperCase(); }
-}
-
-function __dashParseCoord(v){
-  if(v === null || v === undefined) return NaN;
-  let s = String(v).trim();
-  if(!s) return NaN;
-  s = s.replace(/,/g, ".");
-  const n = parseFloat(s);
-  return Number.isFinite(n) ? n : NaN;
-}
-
-function __dashCoordInPeru(lat, lon){
-  return Number.isFinite(lat) && Number.isFinite(lon) && lat <= 1 && lat >= -19 && lon <= -68 && lon >= -82;
-}
-
-function __dashUbigeoCoords(e){
-  try{
-    if(typeof ubigeoData === "undefined" || !Array.isArray(ubigeoData)) return null;
-    const dep = __dashNormText(e && e.departamento);
-    const prov = __dashNormText(e && e.provincia);
-    const dist = __dashNormText(e && e.distrito);
-    if(!dep || !prov || !dist) return null;
-
-    const row = ubigeoData.find(r =>
-      __dashNormText(r.departamento) === dep &&
-      __dashNormText(r.provincia) === prov &&
-      __dashNormText(r.distrito) === dist
-    );
-    if(!row) return null;
-    const lat = __dashParseCoord(row.lat || row.latitud || row.latitude);
-    const lon = __dashParseCoord(row.lon || row.longitud || row.longitude || row.lng);
-    return __dashCoordInPeru(lat, lon) ? {lat, lon, source:"ubigeo"} : null;
-  }catch(err){ return null; }
-}
-
-function __dashGetCoords(e){
-  try{
-    const cand = [
-      [e && e.latitud, e && e.longitud],
-      [e && e.lat, e && (e.lon || e.lng)],
-      [e && e.latitude, e && e.longitude],
-      [e && e.latitudRP, e && e.longitudRP],
-      [e && e.payload && e.payload.latitud, e && e.payload && e.payload.longitud],
-      [e && e.ubicacion && e.ubicacion.latitud, e && e.ubicacion && e.ubicacion.longitud]
-    ];
-
-    for(const pair of cand){
-      let lat = __dashParseCoord(pair[0]);
-      let lon = __dashParseCoord(pair[1]);
-      if(__dashCoordInPeru(lat, lon)) return {lat, lon, source:"record"};
-      // Defensa: si vinieron invertidas, las corrige sin tocar el registro.
-      if(__dashCoordInPeru(lon, lat)) return {lat:lon, lon:lat, source:"record_swapped"};
-    }
-
-    // Último recurso: centroide del distrito desde ubigeoData.js. Así Cerradas y En proceso no desaparecen.
-    return __dashUbigeoCoords(e);
-  }catch(err){ return null; }
-}
-
-let __dashMapSelectedDepartamento = "";
-let __dashMapDeptPager = { size: 5, page: 1 };
-
-function __dashMapGetSelectedDepartamento(){
-  try{
-    return __dashNormText(document.getElementById("dashMapDepartamento")?.value || "");
-  }catch(e){ return ""; }
-}
-
-function __dashMapGetSelectedPeligro(){
-  try{
-    return __dashNormText(document.getElementById("dashMapPeligro")?.value || "");
-  }catch(e){ return ""; }
-}
-
-function __dashMapDateOnly(v){
-  try{
-    if(!v) return "";
-    const s = String(v).trim();
-    if(!s) return "";
-    const m = s.match(/^(\d{4}-\d{2}-\d{2})/);
-    if(m) return m[1];
-    const dmy = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
-    if(dmy) return `${dmy[3]}-${String(dmy[2]).padStart(2,"0")}-${String(dmy[1]).padStart(2,"0")}`;
-    const d = new Date(s);
-    if(!isNaN(d.getTime())) return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
-  }catch(e){}
-  return "";
-}
-
-function __dashMapGetFechaInicial(){
-  try{ return String(document.getElementById("dashMapFechaInicial")?.value || "").trim(); }
-  catch(e){ return ""; }
-}
-
-function __dashMapGetFechaFinal(){
-  try{ return String(document.getElementById("dashMapFechaFinal")?.value || "").trim(); }
-  catch(e){ return ""; }
-}
-
-function __dashMapFechaPeligroInRange(e){
-  try{
-    const desde = __dashMapGetFechaInicial();
-    const hasta = __dashMapGetFechaFinal();
-    if(!desde && !hasta) return true;
-    const f = __dashMapDateOnly(e && (e.fechaPeligro || e.fechaDelPeligro || e.fechaEvento || e.fecha));
-    if(!f) return false;
-    if(desde && f < desde) return false;
-    if(hasta && f > hasta) return false;
-    return true;
-  }catch(err){ return true; }
-}
-
-function __dashCurrentDaniosMidis(e){
-  try{
-    const rcList = (typeof __getRCList === "function") ? __getRCList(e) : [];
-    if(Array.isArray(rcList) && rcList.length){
-      for(let i = rcList.length - 1; i >= 0; i--){
-        const rc = rcList[i];
-        if(rc && rc.daniosMIDIS && typeof rc.daniosMIDIS === "object") return rc.daniosMIDIS;
-      }
-    }
-    return (e && e.daniosMIDIS && typeof e.daniosMIDIS === "object") ? e.daniosMIDIS : {};
-  }catch(err){ return (e && e.daniosMIDIS) ? e.daniosMIDIS : {}; }
-}
-
-function __dashMapApplyDepartamentoFilter(data){
-  const dep = __dashMapGetSelectedDepartamento();
-  const peligro = __dashMapGetSelectedPeligro();
-  let out = Array.isArray(data) ? data : [];
-  if(dep) out = out.filter(e => __dashNormText(e && e.departamento) === dep);
-  if(peligro) out = out.filter(e => __dashNormText(e && e.peligro) === peligro);
-  out = out.filter(e => __dashMapFechaPeligroInRange(e));
-  return out;
-}
-
-function __dashMapPopulateDepartamento(data){
-  const sel = document.getElementById("dashMapDepartamento");
-  if(!sel) return;
-  const prev = String(sel.value || "");
-  const deps = Array.from(new Set((Array.isArray(data) ? data : [])
-    .map(e => String((e && e.departamento) || "").trim())
-    .filter(Boolean)))
-    .sort((a,b)=>a.localeCompare(b,"es"));
-  sel.innerHTML = '<option value="">(Todos)</option>' + deps.map(d=>`<option value="${__dashHtmlEscape(d)}">${__dashHtmlEscape(d)}</option>`).join("");
-  if(prev && deps.some(d => __dashNormText(d) === __dashNormText(prev))){
-    sel.value = deps.find(d => __dashNormText(d) === __dashNormText(prev)) || "";
-  }else{
-    sel.value = "";
-  }
-}
-
-function __dashMapPopulatePeligro(data){
-  const sel = document.getElementById("dashMapPeligro");
-  if(!sel) return;
-  const prev = String(sel.value || "");
-  const dep = __dashMapGetSelectedDepartamento();
-  const base = (Array.isArray(data) ? data : []).filter(e => !dep || __dashNormText(e && e.departamento) === dep);
-  const peligros = Array.from(new Set(base
-    .map(e => String((e && e.peligro) || "").trim())
-    .filter(Boolean)))
-    .sort((a,b)=>a.localeCompare(b,"es"));
-  sel.innerHTML = '<option value="">(Todos)</option>' + peligros.map(x=>`<option value="${__dashHtmlEscape(x)}">${__dashHtmlEscape(x)}</option>`).join("");
-  if(prev && peligros.some(x => __dashNormText(x) === __dashNormText(prev))){
-    sel.value = peligros.find(x => __dashNormText(x) === __dashNormText(prev)) || "";
-  }else{
-    sel.value = "";
-  }
-}
-
-function __dashMapGetDeptPageSize(){
-  const n = Number(document.getElementById("dashMapDeptPageSize")?.value || __dashMapDeptPager.size || 5);
-  return [5,10,25,50,100].includes(n) ? n : 5;
-}
-
-function __dashMapRenderDepartamentoResumen(data){
-  const tbody = document.getElementById("dashMapDeptTbody");
-  const hint = document.getElementById("dashMapDeptHint");
-  const pageInfo = document.getElementById("dashMapDeptPageInfo");
-  const btnPrev = document.getElementById("dashMapDeptPrev");
-  const btnNext = document.getElementById("dashMapDeptNext");
-  if(!tbody) return;
-
-  const depRaw = String(document.getElementById("dashMapDepartamento")?.value || "").trim();
-  const list = __dashMapApplyDepartamentoFilter(data).slice().sort((a,b)=>{
-    const pa = String(a?.peligro || "");
-    const pb = String(b?.peligro || "");
-    const da = String(a?.distrito || "");
-    const db = String(b?.distrito || "");
-    return pa.localeCompare(pb,"es") || da.localeCompare(db,"es") || String(a?.codigo||"").localeCompare(String(b?.codigo||""),"es");
-  });
-
-  __dashMapDeptPager.size = __dashMapGetDeptPageSize();
-  const total = list.length;
-  const totalPages = Math.max(1, Math.ceil(total / __dashMapDeptPager.size));
-  __dashMapDeptPager.page = Math.min(Math.max(1, Number(__dashMapDeptPager.page || 1)), totalPages);
-
-  const peligroRaw = String(document.getElementById("dashMapPeligro")?.value || "").trim();
-  const fechaIniRaw = String(document.getElementById("dashMapFechaInicial")?.value || "").trim();
-  const fechaFinRaw = String(document.getElementById("dashMapFechaFinal")?.value || "").trim();
-  if(hint){
-    const depTxt = depRaw ? `Departamento seleccionado: ${depRaw}` : "Todos los departamentos";
-    const peligroTxt = peligroRaw ? `Peligro seleccionado: ${peligroRaw}` : "Todos los peligros";
-    const fechaTxt = (fechaIniRaw || fechaFinRaw) ? `Fecha del peligro: ${fechaIniRaw || "inicio"} a ${fechaFinRaw || "fin"}` : "Todas las fechas del peligro";
-    hint.textContent = `${depTxt}. ${peligroTxt}. ${fechaTxt}. Emergencias mostradas: ${total}.`;
-  }
-
-  if(!total){
-    tbody.innerHTML = '<tr><td colspan="6" class="text-muted small">Sin emergencias para el filtro seleccionado.</td></tr>';
-    if(pageInfo) pageInfo.textContent = "0 a 0 de 0 registros";
-    if(btnPrev) btnPrev.disabled = true;
-    if(btnNext) btnNext.disabled = true;
-    return;
-  }
-
-  const start = (__dashMapDeptPager.page - 1) * __dashMapDeptPager.size;
-  const end = Math.min(start + __dashMapDeptPager.size, total);
-  const pageRows = list.slice(start, end);
-
-  const rows = pageRows.map(e=>{
-    const t = __dashSumDanios(__dashCurrentDaniosMidis(e));
-    return `<tr>
-      <td>${__dashHtmlEscape(e?.codigo || "")}</td>
-      <td>${__dashHtmlEscape(e?.distrito || "")}</td>
-      <td>${__dashHtmlEscape(e?.peligro || "")}</td>
-      <td class="text-end">${Number(t.usuarios || 0)}</td>
-      <td class="text-end">${Number(t.servicios || 0)}</td>
-      <td class="text-center"><button type="button" class="btn btn-sm btn-outline-secondary dashMapDeptVer" data-codigo="${__dashHtmlEscape(e?.codigo || "")}" title="Ver detalle RP/RC">👁</button></td>
-    </tr>`;
-  }).join("");
-  tbody.innerHTML = rows;
-
-  try{
-    tbody.querySelectorAll(".dashMapDeptVer").forEach(btn=>{
-      btn.addEventListener("click", ()=>{
-        const code = String(btn.getAttribute("data-codigo") || "").trim();
-        if(!code) return;
-        const local = (Array.isArray(emergencias) ? emergencias : []).find(x => String(x && x.codigo ? x.codigo : "").trim() === code) || null;
-        if(typeof __withFullEmergencia === "function"){
-          __withFullEmergencia(local || code, (full)=>{
-            verEmergencia(full);
-            try{ if(typeof __getRCList === "function" && __getRCList(full).length > 0 && typeof __scrollVerToLastRC === "function") __scrollVerToLastRC(); }catch(_e){}
-          }, {loadingModal:true});
-        }else if(local && typeof verEmergencia === "function"){
-          verEmergencia(local);
-          try{ if(typeof __getRCList === "function" && __getRCList(local).length > 0 && typeof __scrollVerToLastRC === "function") __scrollVerToLastRC(); }catch(_e){}
-        }else{
-          alert("No se encontró la emergencia: " + code);
-        }
-      });
-    });
-  }catch(_e){}
-
-  if(pageInfo) pageInfo.textContent = `${start + 1} a ${end} de ${total} registros`;
-  if(btnPrev) btnPrev.disabled = (__dashMapDeptPager.page <= 1);
-  if(btnNext) btnNext.disabled = (__dashMapDeptPager.page >= totalPages);
-}
-
-function __dashGetStatus(e){
-  // Cerrada: acepta todas las variantes históricas del aplicativo.
-  const cierreEstado = String((e && (e.cierreEstado || e.estadoCierre || e.estado)) || "").trim().toLowerCase();
-  if(e && (e.cerrada === true || cierreEstado === "cerrada" || cierreEstado === "aprobado" || cierreEstado === "cierre aprobado")){
-    return {name:"Cerrada", color:"#198754"};
-  }
-
-  // En proceso: abierta con RC o con avance posterior al RP.
-  const rcList = (e && Array.isArray(e.rcReportes)) ? e.rcReportes : [];
-  if(rcList.length > 0){
-    return {name:"En proceso", color:"#fd7e14"};
-  }
-
-  // Activo = registrado hoy (fechaHora). Si no hay fechaHora, usa fechaPeligro.
-  const hoyYmd = __dashTodayPeruYMD ? __dashTodayPeruYMD() : null;
-  const fr = __dashParseDateOnly(e?.fechaHora) || __dashParseDateOnly(e?.fechaPeligro);
-  const frYmd = fr ? `${fr.getFullYear()}-${String(fr.getMonth()+1).padStart(2,"0")}-${String(fr.getDate()).padStart(2,"0")}` : "";
-  if(hoyYmd && frYmd === hoyYmd) return {name:"Activo", color:"#dc3545"};
-
-  // En proceso = abierta, pero no es del día.
-  return {name:"En proceso", color:"#fd7e14"};
+    if(!dashChartUsuariosProg) dashChartUsuariosProg = mkBar(document.getElementById("dashChartUsuariosProg"), "Usuarios afectados");
+  if(!dashChartServiciosProg) dashChartServiciosProg = mkBar(document.getElementById("dashChartServiciosProg"), "Servicios afectados");
+  if(!dashChartAfectProg) dashChartAfectProg = mkBar(document.getElementById("dashChartAfectProg"), "N° emergencias");
 }
 
 function __dashRenderMap(data){
   if(!dashLayer || !window.L) return;
   dashLayer.clearLayers();
 
-  const shown = [];
-  const coincidentes = new Map();
-
-  (Array.isArray(data) ? data : []).forEach(e=>{
-    const coord = __dashGetCoords(e);
-    if(!coord) return;
+  data.forEach(e=>{
+    const lat = parseFloat(String(e?.latitud ?? "").replace(",", "."));
+    const lon = parseFloat(String(e?.longitud ?? "").replace(",", "."));
+    if(isNaN(lat) || isNaN(lon)) return;
 
     const st = __dashGetStatus(e);
     if(!__dashMapIsVisible(st.name)) return;
-
-    const key = coord.lat.toFixed(5) + "," + coord.lon.toFixed(5);
-    const n = coincidentes.get(key) || 0;
-    coincidentes.set(key, n + 1);
-
-    // Si varios registros tienen exactamente el mismo punto (mismo distrito/centroide),
-    // se dibujan con un desplazamiento mínimo para que no se tapen entre ellos.
-    let lat = coord.lat;
-    let lon = coord.lon;
-    if(n > 0){
-      const angle = (n * 55) * Math.PI / 180;
-      const r = 0.018 + (Math.floor(n / 6) * 0.006);
-      lat = coord.lat + Math.sin(angle) * r;
-      lon = coord.lon + Math.cos(angle) * r;
-    }
-
     const marker = L.circleMarker([lat, lon], {
       radius: 8,
       color: st.color,
@@ -8965,30 +8452,17 @@ function __dashRenderMap(data){
       weight: 2
     });
 
-    const notaCoord = coord.source === "ubigeo"
-      ? "<br><span style='color:#666'>Coordenada referencial por distrito.</span>"
-      : (n > 0 ? "<br><span style='color:#666'>Punto desplazado levemente para evitar superposición.</span>" : "");
-
     marker.bindPopup(`
       <b>${e.codigo||""}</b><br>
       <b>Estado:</b> ${st.name}<br>
       <b>Peligro:</b> ${e.peligro||""}<br>
       <b>Ubicación:</b> ${(e.departamento||"")} / ${(e.provincia||"")} / ${(e.distrito||"")}<br>
       <b>Fecha del peligro:</b> ${e.fechaPeligro||""}<br>
-      <b>Registro:</b> ${e.fechaHora||""}${notaCoord}
+      <b>Registro:</b> ${e.fechaHora||""}
     `);
 
     marker.addTo(dashLayer);
-    shown.push([lat, lon]);
   });
-
-  try{
-    if(shown.length === 1){
-      dashMap.setView(shown[0], 8);
-    }else if(shown.length > 1){
-      dashMap.fitBounds(L.latLngBounds(shown), {padding:[25,25], maxZoom:7});
-    }
-  }catch(e){}
 }
 
 function __dashGetActivasHoyList(){
@@ -9089,39 +8563,6 @@ function __dashExportActivasHoyWord(){
   table{border-collapse:collapse; width:100%;}
   th,td{border:1px solid #000; padding:6px; vertical-align:top;}
   th{background:#FEE599; color:#1F4E79; font-weight:bold; text-align:center;}
-
-/* ======= VERSION 238: Dashboard Impacto MIDIS - visualización completa ======= */
-#dashTab #dashChartUsuariosProg,
-#dashTab #dashChartServiciosProg,
-#dashTab #dashChartAfectProg{
-  height:260px !important;
-  max-height:260px !important;
-}
-#dashTab #dashChartAfectProg{
-  margin-bottom:8px;
-}
-#dashTab #dashAfectaMidisTbody td,
-#dashTab #dashAfectaMidisTbody th{
-  vertical-align:middle;
-}
-#dashTab .dash-impact-chart-box{
-  height:280px;
-  min-height:280px;
-  position:relative;
-}
-@media (max-width: 768px){
-  #dashTab #dashChartUsuariosProg,
-  #dashTab #dashChartServiciosProg,
-  #dashTab #dashChartAfectProg{
-    height:220px !important;
-    max-height:220px !important;
-  }
-  #dashTab .dash-impact-chart-box{
-    height:240px;
-    min-height:240px;
-  }
-}
-
 </style>
 </head>
 <body>
@@ -9362,100 +8803,6 @@ function __dashSliceForPager(arr, pager){
   return { slice: list.slice(start, start + size), pages };
 }
 
-
-
-// ======= FIX v236: N° Global visible en Detalle / Dashboard =======
-function __numeroGlobalVisible(e){
-  try{
-    if(typeof __dashNumeroGlobalVisible === "function") return __dashNumeroGlobalVisible(e);
-  }catch(_e){}
-  try{
-    return __dashFirstNonEmptyValue(
-      e && e.numeroGlobal,
-      e && e.numeroReporte,
-      e && e.numGlobalRP,
-      e && e.numeroGlobalRP,
-      e && e.nroGlobal,
-      e && e.nGlobal
-    );
-  }catch(_e){
-    return (e && e.numeroGlobal) ? String(e.numeroGlobal) : "";
-  }
-}
-
-// ======= FIX v235: N° Global visible en Dashboard / Emergencias del día =======
-// Corrige casos donde el RP quedó con un correlativo local provisional (ej. 22/23)
-// pero el correlativo global real se puede inferir de registros cercanos ya sincronizados.
-function __dashExtractRPSeq(codigo){
-  try{
-    const m = String(codigo || "").trim().match(/^RP-(\d+)-(\d{4})$/i);
-    if(!m) return null;
-    return { seq: Number(m[1]) || 0, year: String(m[2] || "") };
-  }catch(e){ return null; }
-}
-
-function __dashFirstNonEmptyValue(){
-  for(let i=0;i<arguments.length;i++){
-    const v = arguments[i];
-    if(v === null || v === undefined) continue;
-    const s = String(v).trim();
-    if(s !== "") return s;
-  }
-  return "";
-}
-
-function __dashRawNumeroGlobal(e){
-  try{
-    return __dashFirstNonEmptyValue(
-      e && e.numeroGlobal,
-      e && e.numeroReporte,
-      e && e.numGlobalRP,
-      e && e.numeroGlobalRP,
-      e && e.nroGlobal,
-      e && e.nGlobal
-    );
-  }catch(_e){ return ""; }
-}
-
-function __dashGlobalOffsetForYear(year){
-  try{
-    const counts = {};
-    const arr = (typeof __dashGetEmergencias === "function") ? __dashGetEmergencias() : (Array.isArray(emergencias) ? emergencias : []);
-    (Array.isArray(arr) ? arr : []).forEach(x=>{
-      const rp = __dashExtractRPSeq(x && x.codigo);
-      if(!rp || String(rp.year) !== String(year) || !rp.seq) return;
-      const raw = __dashRawNumeroGlobal(x);
-      const g = Number(raw);
-      // Solo usar registros claramente válidos para calcular el desfase.
-      if(!Number.isFinite(g) || g <= 1000 || rp.seq <= 1000) return;
-      const off = g - rp.seq;
-      if(!Number.isFinite(off) || off < 0 || off > 1000) return;
-      counts[String(off)] = (counts[String(off)] || 0) + 1;
-    });
-    let best = null;
-    let bestCount = 0;
-    Object.keys(counts).forEach(k=>{
-      if(counts[k] > bestCount){ best = Number(k); bestCount = counts[k]; }
-    });
-    return (best !== null && bestCount > 0) ? best : null;
-  }catch(e){ return null; }
-}
-
-function __dashNumeroGlobalVisible(e){
-  const raw = __dashRawNumeroGlobal(e);
-  const rp = __dashExtractRPSeq(e && e.codigo);
-  if(!rp || !rp.seq) return raw;
-
-  const n = Number(raw);
-  const offset = __dashGlobalOffsetForYear(rp.year);
-
-  // Si el registro grande aparece con N° Global chico, es un provisional local.
-  if(offset !== null && rp.seq > 1000 && (!raw || (Number.isFinite(n) && n > 0 && n < 1000))){
-    return String(rp.seq + offset);
-  }
-  return raw;
-}
-
 function __dashRenderActivasHoy(){
   const tbody = document.getElementById("dashActivasTbody");
   if(tbody) tbody.innerHTML = "";
@@ -9518,7 +8865,7 @@ function __dashRenderActivasHoy(){
         <td>${e.peligro||""}</td>
         <td>${ub}</td>
         <td>${e.fechaPeligro||""}</td>
-        <td>${__dashNumeroGlobalVisible(e)}</td>
+        <td>${e.numeroGlobal||""}</td>
         <td>${badge} ${st.name}</td>
         <td class="text-center">
           <button type="button" class="btn btn-sm btn-outline-primary" title="Ver RP/RC"
@@ -9584,14 +8931,6 @@ function __dashSumDanios(daniosMIDIS){
     fallecidos += Number(d.usuariosFallecidos || 0);
   });
   return {usuarios, servicios, ups, fallecidos};
-}
-
-function __dashResizeImpactCharts(){
-  try{
-    [dashChartUsuariosProg, dashChartServiciosProg, dashChartAfectProg].forEach(ch=>{
-      if(ch && typeof ch.resize === "function") ch.resize();
-    });
-  }catch(e){}
 }
 
 function __dashRenderImpacto(data, groupBy){
@@ -9705,7 +9044,6 @@ function __dashRenderImpacto(data, groupBy){
     dashChartAfectProg.data.datasets[0].data = f;
     dashChartAfectProg.update();
   }
-  __dashResizeImpactCharts();
 }
 
 function __dashRenderAfectaMidisTable(data){
@@ -9766,14 +9104,7 @@ function __dashBuildRenderSignature(){
     }).join("|");
     let impacto = "";
     try{ impacto = __dashGetImpactoGroupBy ? __dashGetImpactoGroupBy() : ""; }catch(_e){}
-    let mapExtra = "";
-    try{ mapExtra = [
-      document.getElementById("dashMapDepartamento")?.value || "",
-      document.getElementById("dashMapPeligro")?.value || "",
-      document.getElementById("dashMapFechaInicial")?.value || "",
-      document.getElementById("dashMapFechaFinal")?.value || ""
-    ].join("|"); }catch(_e){}
-    return [arr.length, maxUpd, f, impacto, Array.from(__dashMapStatusEnabled || []).sort().join(","), mapExtra].join("||");
+    return [arr.length, maxUpd, f, impacto, Array.from(__dashMapStatusEnabled || []).sort().join(",")].join("||");
   }catch(e){
     return String(Date.now());
   }
@@ -9797,11 +9128,7 @@ function dashboardRefresh(opts){
   __dashLastFiltered = data;
 
 
-  __dashMapPopulateDepartamento(data);
-  __dashMapPopulatePeligro(data);
-  const mapData = __dashMapApplyDepartamentoFilter(data);
-  __dashRenderMap(mapData);
-  __dashMapRenderDepartamentoResumen(data);
+  __dashRenderMap(data);
   __dashRenderActivasHoy();
   __dashRenderHistogramas(data);
 
@@ -9830,39 +9157,7 @@ document.addEventListener("DOMContentLoaded", ()=>{
 
   __dashMapSyncButtons();
 
-  document.getElementById("dashMapDepartamento")?.addEventListener("change", ()=>{
-    __dashMapDeptPager.page = 1;
-    dashboardRefresh({force:true});
-  });
 
-  document.getElementById("dashMapPeligro")?.addEventListener("change", ()=>{
-    __dashMapDeptPager.page = 1;
-    dashboardRefresh({force:true});
-  });
-
-  document.getElementById("dashMapFechaInicial")?.addEventListener("change", ()=>{
-    __dashMapDeptPager.page = 1;
-    dashboardRefresh({force:true});
-  });
-
-  document.getElementById("dashMapFechaFinal")?.addEventListener("change", ()=>{
-    __dashMapDeptPager.page = 1;
-    dashboardRefresh({force:true});
-  });
-
-  document.getElementById("dashMapDeptPageSize")?.addEventListener("change", ()=>{
-    __dashMapDeptPager.size = __dashMapGetDeptPageSize();
-    __dashMapDeptPager.page = 1;
-    __dashMapRenderDepartamentoResumen(__dashLastFiltered || __dashGetFiltered());
-  });
-  document.getElementById("dashMapDeptPrev")?.addEventListener("click", ()=>{
-    __dashMapDeptPager.page = Math.max(1, (__dashMapDeptPager.page || 1) - 1);
-    __dashMapRenderDepartamentoResumen(__dashLastFiltered || __dashGetFiltered());
-  });
-  document.getElementById("dashMapDeptNext")?.addEventListener("click", ()=>{
-    __dashMapDeptPager.page = (__dashMapDeptPager.page || 1) + 1;
-    __dashMapRenderDepartamentoResumen(__dashLastFiltered || __dashGetFiltered());
-  });
 
   if(btnHoy) btnHoy.addEventListener("click", ()=>{
     const hoy = __dashTodayPeruYMD() || new Date().toISOString().slice(0,10);
@@ -9906,845 +9201,6 @@ document.addEventListener("DOMContentLoaded", ()=>{
   document.getElementById("dashPillEvento")?.addEventListener("shown.bs.tab", ()=>dashboardRefresh({force:true}));
   document.getElementById("dashPillRegion")?.addEventListener("shown.bs.tab", ()=>dashboardRefresh({force:true}));
 });
-
-// ======= VERSION 240: Dashboard - corrección de visualización y fuente de datos MIDIS =======
-// Motivo: los gráficos de Impacto y la relación MIDIS estaban leyendo solo daniosMIDIS del RP.
-// Ahora toman la última matriz disponible (RC más reciente si existe; si no RP) y normalizan llaves históricas.
-(function(){
-  function esc(v){
-    try{ if(typeof __dashHtmlEscape === "function") return __dashHtmlEscape(v); }catch(_e){}
-    return String(v ?? "").replace(/[&<>'"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;","\"":"&quot;"}[c]));
-  }
-  function norm(v){
-    try{
-      return String(v || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toUpperCase().replace(/\s+/g," ");
-    }catch(_e){ return String(v || "").trim().toUpperCase(); }
-  }
-  function num(v){
-    const n = Number(v || 0);
-    return Number.isFinite(n) ? n : 0;
-  }
-  window.__dashCanonProgKeyV240 = function(k){
-    const n = norm(k);
-    if(n.includes("CUNA")) return "CUNA MAS";
-    if(n.includes("PENSION")) return "PENSION 65";
-    if(n.includes("ALIMENTACION")) return "ALIMENTACION ESCOLAR";
-    if(n.includes("CONTIGO")) return "CONTIGO";
-    if(n.includes("FONCODES")) return "FONCODES";
-    if(n.includes("JUNTOS")) return "JUNTOS";
-    if(n.includes("PAIS")) return "PAIS";
-    if(n === "PCA" || n.includes("COMPLEMENTACION")) return "PCA";
-    return n || "SIN DATO";
-  };
-  window.__dashCurrentDaniosMidis = function(e){
-    try{
-      const rcList = (typeof __getRCList === "function") ? __getRCList(e) : (Array.isArray(e && e.rcReportes) ? e.rcReportes : []);
-      if(Array.isArray(rcList) && rcList.length){
-        for(let i = rcList.length - 1; i >= 0; i--){
-          const rc = rcList[i] || {};
-          const dm = rc.daniosMIDIS || rc.daniosMidis || rc.daniosSectorMIDIS || rc.daniosSector || rc.danios || null;
-          if(dm && typeof dm === "object" && Object.keys(dm).length) return dm;
-        }
-      }
-      const rp = (e && (e.daniosMIDIS || e.daniosMidis || e.daniosSectorMIDIS || e.daniosSector || e.danios)) || {};
-      return (rp && typeof rp === "object") ? rp : {};
-    }catch(_e){ return (e && e.daniosMIDIS) ? e.daniosMIDIS : {}; }
-  };
-  window.__dashProgramDataV240 = function(danios, programKey){
-    const wanted = window.__dashCanonProgKeyV240(programKey);
-    const out = {usuariosAfectados:0, serviciosAfectados:0, usuariosPorServicios:0, usuariosFallecidos:0, moduloAfectado:0};
-    Object.keys(danios || {}).forEach(k=>{
-      if(window.__dashCanonProgKeyV240(k) !== wanted) return;
-      const d = danios[k] || {};
-      out.usuariosAfectados += num(d.usuariosAfectados ?? d.usuarios_afectados ?? d.totalUsuariosAfectados);
-      out.serviciosAfectados += num(d.serviciosAfectados ?? d.servicios_afectados ?? d.totalServiciosAfectados);
-      out.usuariosPorServicios += num(d.usuariosPorServicios ?? d.usuarios_por_servicios ?? d.usuariosServicios ?? d.totalUsuariosPorServicios);
-      out.usuariosFallecidos += num(d.usuariosFallecidos ?? d.fallecidos ?? d.totalFallecidos);
-      out.moduloAfectado += num(d.moduloAfectado ?? d.modulosAfectados);
-    });
-    return out;
-  };
-  window.__dashSumDanios = function(daniosMIDIS){
-    const out = {usuarios:0, servicios:0, ups:0, fallecidos:0};
-    Object.keys(daniosMIDIS || {}).forEach(k=>{
-      const d = daniosMIDIS[k] || {};
-      out.usuarios += num(d.usuariosAfectados ?? d.usuarios_afectados ?? d.totalUsuariosAfectados);
-      out.servicios += num(d.serviciosAfectados ?? d.servicios_afectados ?? d.totalServiciosAfectados);
-      out.ups += num(d.usuariosPorServicios ?? d.usuarios_por_servicios ?? d.usuariosServicios ?? d.totalUsuariosPorServicios);
-      out.fallecidos += num(d.usuariosFallecidos ?? d.fallecidos ?? d.totalFallecidos);
-    });
-    return out;
-  };
-  window.__dashTotalesMidis = function(daniosMIDIS){
-    const t = window.__dashSumDanios(daniosMIDIS);
-    return {usuarios:t.usuarios, servicios:t.servicios, fallecidos:t.fallecidos};
-  };
-  window.__dashAfectaMidis = function(e){
-    const dm = window.__dashCurrentDaniosMidis(e);
-    const t = window.__dashSumDanios(dm);
-    if(t.usuarios > 0 || t.servicios > 0 || t.ups > 0 || t.fallecidos > 0) return true;
-    // compatibilidad con módulo afectado/FONCODES y otros nombres de campos
-    return Object.keys(dm || {}).some(k=>{
-      const d = dm[k] || {};
-      return num(d.moduloAfectado ?? d.modulosAfectados) > 0;
-    });
-  };
-  window.__dashEnsureChartBoxV240 = function(){
-    try{
-      ["dashChartEvento","dashChartRegion"].forEach(id=>{
-        const el = document.getElementById(id);
-        if(el){ el.style.height = el.style.height || "360px"; el.style.maxHeight = "360px"; }
-      });
-      [dashChartEvento, dashChartRegion, dashChartUsuariosProg, dashChartServiciosProg, dashChartAfectProg].forEach(ch=>{
-        if(!ch) return;
-        ch.options = ch.options || {};
-        ch.options.maintainAspectRatio = false;
-        if(ch.options.scales && ch.options.scales.y) ch.options.scales.y.beginAtZero = true;
-        if(ch.options.scales && ch.options.scales.y && ch.options.scales.y.ticks) ch.options.scales.y.ticks.precision = 0;
-      });
-    }catch(_e){}
-  };
-  window.__dashRenderHistogramas = function(data){
-    data = Array.isArray(data) ? data : [];
-    window.__dashEnsureChartBoxV240();
-    const byEvento = {};
-    data.forEach(e=>{ const k = String((e && e.peligro) || "Sin dato").trim() || "Sin dato"; byEvento[k] = (byEvento[k]||0) + 1; });
-    const evEntries = Object.entries(byEvento).sort((a,b)=> (b[1]-a[1]) || a[0].localeCompare(b[0],"es"));
-    if(dashChartEvento){
-      dashChartEvento.data.labels = evEntries.map(x=>x[0]);
-      dashChartEvento.data.datasets[0].label = "Emergencias";
-      dashChartEvento.data.datasets[0].data = evEntries.map(x=>x[1]);
-      dashChartEvento.update();
-      try{ dashChartEvento.resize(); }catch(_e){}
-    }
-    const byDep = {};
-    data.forEach(e=>{ const k = String((e && e.departamento) || "Sin dato").trim() || "Sin dato"; byDep[k] = (byDep[k]||0) + 1; });
-    const depEntries = Object.entries(byDep).sort((a,b)=> (b[1]-a[1]) || a[0].localeCompare(b[0],"es"));
-    if(dashChartRegion){
-      dashChartRegion.data.labels = depEntries.map(x=>x[0]);
-      dashChartRegion.data.datasets[0].label = "Emergencias";
-      dashChartRegion.data.datasets[0].data = depEntries.map(x=>x[1]);
-      dashChartRegion.update();
-      try{ dashChartRegion.resize(); }catch(_e){}
-    }
-    const total = data.length;
-    const elTotEv = document.getElementById("dashTotalEmergenciasEvento"); if(elTotEv) elTotEv.textContent = String(total);
-    const elTotReg = document.getElementById("dashTotalEmergenciasRegion"); if(elTotReg) elTotReg.textContent = String(total);
-  };
-  window.__dashRenderImpacto = function(data, groupBy){
-    data = Array.isArray(data) ? data : [];
-    groupBy = groupBy || "programa";
-    if(typeof __dashSetImpactoLabels === "function") __dashSetImpactoLabels(groupBy);
-    window.__dashEnsureChartBoxV240();
-    let labels=[], u=[], s=[], ups=[], f=[];
-    let totalU=0,totalS=0,totalUPS=0,totalF=0;
-    if(groupBy === "programa"){
-      const progs = (Array.isArray(window.__DASH_PROGRAMAS) ? window.__DASH_PROGRAMAS : null) || __DASH_PROGRAMAS;
-      labels = progs.map(p=>p.label);
-      u = new Array(labels.length).fill(0); s = new Array(labels.length).fill(0); ups = new Array(labels.length).fill(0); f = new Array(labels.length).fill(0);
-      data.forEach(e=>{
-        const dm = window.__dashCurrentDaniosMidis(e);
-        progs.forEach((p,i)=>{
-          const d = window.__dashProgramDataV240(dm, p.key || p.label);
-          u[i]+=d.usuariosAfectados; s[i]+=d.serviciosAfectados; ups[i]+=d.usuariosPorServicios; f[i]+=d.usuariosFallecidos;
-          totalU+=d.usuariosAfectados; totalS+=d.serviciosAfectados; totalUPS+=d.usuariosPorServicios; totalF+=d.usuariosFallecidos;
-        });
-      });
-    }else{
-      const map = {};
-      data.forEach(e=>{
-        const k = (groupBy === "evento") ? (e.peligro || "Sin dato") : (e.departamento || "Sin dato");
-        const t = window.__dashSumDanios(window.__dashCurrentDaniosMidis(e));
-        if(!map[k]) map[k] = {usuarios:0, servicios:0, ups:0, fallecidos:0};
-        map[k].usuarios += t.usuarios; map[k].servicios += t.servicios; map[k].ups += t.ups; map[k].fallecidos += t.fallecidos;
-        totalU+=t.usuarios; totalS+=t.servicios; totalUPS+=t.ups; totalF+=t.fallecidos;
-      });
-      const entries = Object.entries(map).map(([k,v])=>({k,...v})).sort((a,b)=> (b.usuarios-a.usuarios) || (b.servicios-a.servicios) || a.k.localeCompare(b.k,"es"));
-      labels = entries.map(x=>x.k); u=entries.map(x=>x.usuarios); s=entries.map(x=>x.servicios); ups=entries.map(x=>x.ups); f=entries.map(x=>x.fallecidos);
-    }
-    const setTxt=(id,val)=>{ const el=document.getElementById(id); if(el) el.textContent=String(val); };
-    setTxt("dashTotalUsuarios", totalU); setTxt("dashTotalServicios", totalS); setTxt("dashTotalUsuariosPorServicios", totalUPS); setTxt("dashTotalFallecidos", totalF);
-    if(dashChartUsuariosProg){ dashChartUsuariosProg.data.labels=labels; dashChartUsuariosProg.data.datasets[0].label="Usuarios afectados"; dashChartUsuariosProg.data.datasets[0].data=u; dashChartUsuariosProg.update(); }
-    if(dashChartServiciosProg){
-      dashChartServiciosProg.data.labels=labels;
-      dashChartServiciosProg.data.datasets[0].label="Servicios afectados";
-      dashChartServiciosProg.data.datasets[0].data=s;
-      if(!dashChartServiciosProg.data.datasets[1]) dashChartServiciosProg.data.datasets.push({label:"Usuarios por servicios", data:[]});
-      dashChartServiciosProg.data.datasets[1].label="Usuarios por servicios";
-      dashChartServiciosProg.data.datasets[1].data=ups;
-      dashChartServiciosProg.update();
-    }
-    if(dashChartAfectProg){ dashChartAfectProg.data.labels=labels; dashChartAfectProg.data.datasets[0].label="Usuarios fallecidos"; dashChartAfectProg.data.datasets[0].data=f; dashChartAfectProg.update(); }
-    try{ __dashResizeImpactCharts(); }catch(_e){}
-  };
-  window.__dashRenderAfectaMidisTable = function(data){
-    const tbody = document.getElementById("dashAfectaMidisTbody");
-    if(tbody) tbody.innerHTML = "";
-    const list = (Array.isArray(data) ? data : []).filter(window.__dashAfectaMidis).sort((a,b)=>String(b.fechaPeligro||"").localeCompare(String(a.fechaPeligro||"")) || String(b.codigo||"").localeCompare(String(a.codigo||"")));
-    __dashPagerMidis.size = __dashReadPageSize("dashAfectaMidisPageSize", __dashPagerMidis.size || 10);
-    const page = __dashSliceForPager(list, __dashPagerMidis);
-    __dashUpdatePagerUI(__dashPagerMidis, list.length, "dashAfectaMidisPageInfo", "dashAfectaMidisPrev", "dashAfectaMidisNext");
-    if(!tbody) return;
-    if(!list.length){ tbody.innerHTML = '<tr><td colspan="10" class="text-muted small">Sin emergencias con afectación MIDIS para el filtro seleccionado.</td></tr>'; return; }
-    page.slice.forEach(e=>{
-      const st = __dashGetStatus(e);
-      const badge = `<span class="badge" style="background:${st.color}"> </span>`;
-      const t = window.__dashTotalesMidis(window.__dashCurrentDaniosMidis(e));
-      tbody.innerHTML += `<tr>
-        <td>${esc(e.codigo||"")}</td><td>${badge} ${esc(st.name)}</td><td>${esc(e.peligro||"")}</td>
-        <td>${esc(e.departamento||"")}</td><td>${esc(e.provincia||"")}</td><td>${esc(e.distrito||"")}</td>
-        <td>${esc(e.fechaPeligro||"")}</td><td>${t.usuarios}</td><td>${t.servicios}</td>
-        <td class="text-center"><button type="button" class="btn btn-sm btn-outline-primary" title="Ver RP/RC" onclick='__openVerByCodigo(${JSON.stringify(String(e.codigo||""))})'>👁</button></td>
-      </tr>`;
-    });
-  };
-})();
-
-
-
-// ======= VERSION 241: Dashboard robusto - recuperación de datos y render estable =======
-// Alcance: solo Dashboard. Corrige pantallas en blanco cuando el Dashboard se abre antes de terminar la hidratación/sincronización.
-(function(){
-  function _safeArr(v){ return Array.isArray(v) ? v : []; }
-  function _isDeletedSafe(e){
-    try{ if(typeof __isDeleted === "function") return __isDeleted(e); }catch(_e){}
-    try{
-      if(!e) return true;
-      return !!(e.deleted || e.eliminado || e._deleted || e.__deleted || e.estado === "Eliminado");
-    }catch(_e){ return false; }
-  }
-  function _loadAll(){
-    let arr = [];
-    try{ if(typeof emergencias !== "undefined" && Array.isArray(emergencias) && emergencias.length) arr = emergencias; }catch(_e){}
-    if(!arr.length){
-      try{ if(typeof __loadEmergencias === "function") arr = __loadEmergencias(); }catch(_e){}
-    }
-    if(!Array.isArray(arr) || !arr.length){
-      try{
-        const raw = (typeof __lsGet === "function") ? __lsGet(__AUTH_KEYS.emerg) : localStorage.getItem("midis_emergencias_v1");
-        const parsed = raw ? JSON.parse(raw) : [];
-        if(Array.isArray(parsed)) arr = parsed;
-      }catch(_e){}
-    }
-    try{ if(typeof emergencias !== "undefined" && Array.isArray(arr) && arr.length && (!Array.isArray(emergencias) || !emergencias.length)) emergencias = arr; }catch(_e){}
-    return _safeArr(arr).filter(e=>!_isDeletedSafe(e));
-  }
-  function _num(v){ const n = Number(v || 0); return Number.isFinite(n) ? n : 0; }
-  function _norm(v){
-    try{ return String(v || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toUpperCase().replace(/\s+/g," "); }
-    catch(_e){ return String(v || "").trim().toUpperCase(); }
-  }
-  function _canonProg(k){
-    const n = _norm(k);
-    if(n.includes("CUNA")) return "CUNA MAS";
-    if(n.includes("PENSION")) return "PENSION 65";
-    if(n.includes("ALIMENTACION")) return "ALIMENTACION ESCOLAR";
-    if(n.includes("CONTIGO")) return "CONTIGO";
-    if(n.includes("FONCODES")) return "FONCODES";
-    if(n.includes("JUNTOS")) return "JUNTOS";
-    if(n.includes("PAIS")) return "PAIS";
-    if(n === "PCA" || n.includes("COMPLEMENTACION")) return "PCA";
-    return n || "SIN DATO";
-  }
-  function _currentDanios(e){
-    try{
-      const rcList = (typeof __getRCList === "function") ? __getRCList(e) : (Array.isArray(e && e.rcReportes) ? e.rcReportes : []);
-      for(let i = rcList.length - 1; i >= 0; i--){
-        const rc = rcList[i] || {};
-        const dm = rc.daniosMIDIS || rc.daniosMidis || rc.daniosSectorMIDIS || rc.daniosSector || rc.danios || null;
-        if(dm && typeof dm === "object" && Object.keys(dm).length) return dm;
-      }
-      const rp = e && (e.daniosMIDIS || e.daniosMidis || e.daniosSectorMIDIS || e.daniosSector || e.danios) || {};
-      return (rp && typeof rp === "object") ? rp : {};
-    }catch(_e){ return {}; }
-  }
-  function _sumDanios(dm){
-    const out = {usuarios:0, servicios:0, ups:0, fallecidos:0, modulo:0};
-    Object.keys(dm || {}).forEach(k=>{
-      const d = dm[k] || {};
-      out.usuarios += _num(d.usuariosAfectados ?? d.usuarios_afectados ?? d.totalUsuariosAfectados);
-      out.servicios += _num(d.serviciosAfectados ?? d.servicios_afectados ?? d.totalServiciosAfectados);
-      out.ups += _num(d.usuariosPorServicios ?? d.usuarios_por_servicios ?? d.usuariosServicios ?? d.totalUsuariosPorServicios);
-      out.fallecidos += _num(d.usuariosFallecidos ?? d.fallecidos ?? d.totalFallecidos);
-      out.modulo += _num(d.moduloAfectado ?? d.modulosAfectados);
-    });
-    return out;
-  }
-  function _programData(dm, programKey){
-    const wanted = _canonProg(programKey);
-    const out = {usuariosAfectados:0, serviciosAfectados:0, usuariosPorServicios:0, usuariosFallecidos:0, moduloAfectado:0};
-    Object.keys(dm || {}).forEach(k=>{
-      if(_canonProg(k) !== wanted) return;
-      const d = dm[k] || {};
-      out.usuariosAfectados += _num(d.usuariosAfectados ?? d.usuarios_afectados ?? d.totalUsuariosAfectados);
-      out.serviciosAfectados += _num(d.serviciosAfectados ?? d.servicios_afectados ?? d.totalServiciosAfectados);
-      out.usuariosPorServicios += _num(d.usuariosPorServicios ?? d.usuarios_por_servicios ?? d.usuariosServicios ?? d.totalUsuariosPorServicios);
-      out.usuariosFallecidos += _num(d.usuariosFallecidos ?? d.fallecidos ?? d.totalFallecidos);
-      out.moduloAfectado += _num(d.moduloAfectado ?? d.modulosAfectados);
-    });
-    return out;
-  }
-  function _esc(v){
-    try{ if(typeof __dashHtmlEscape === "function") return __dashHtmlEscape(v); }catch(_e){}
-    return String(v ?? "").replace(/[&<>'"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;","\"":"&quot;"}[c]));
-  }
-  function _ensureCharts(){
-    try{ if(typeof __dashInitIfNeeded === "function") __dashInitIfNeeded(); }catch(_e){}
-    try{
-      const h = {dashChartEvento:360, dashChartRegion:360, dashChartUsuariosProg:260, dashChartServiciosProg:260, dashChartAfectProg:260};
-      Object.keys(h).forEach(id=>{ const el=document.getElementById(id); if(el){ el.style.height=h[id]+"px"; el.style.maxHeight=h[id]+"px"; }});
-      [dashChartEvento, dashChartRegion, dashChartUsuariosProg, dashChartServiciosProg, dashChartAfectProg].forEach(ch=>{
-        if(!ch) return;
-        ch.options = ch.options || {};
-        ch.options.maintainAspectRatio = false;
-        ch.options.responsive = true;
-        if(ch.options.scales && ch.options.scales.y){ ch.options.scales.y.beginAtZero = true; ch.options.scales.y.ticks = ch.options.scales.y.ticks || {}; ch.options.scales.y.ticks.precision = 0; }
-      });
-    }catch(_e){}
-  }
-  window.__dashGetEmergencias = __dashGetEmergencias = function(){ return _loadAll(); };
-  window.__dashCurrentDaniosMidis = _currentDanios;
-  window.__dashSumDanios = _sumDanios;
-  window.__dashTotalesMidis = function(dm){ const t=_sumDanios(dm); return {usuarios:t.usuarios, servicios:t.servicios, fallecidos:t.fallecidos}; };
-  window.__dashAfectaMidis = function(e){ const t=_sumDanios(_currentDanios(e)); return (t.usuarios>0 || t.servicios>0 || t.ups>0 || t.fallecidos>0 || t.modulo>0); };
-  window.__dashGetFiltered = __dashGetFiltered = function(){
-    const tipo = document.getElementById("dashTipoFecha")?.value || "evento";
-    const desde = (typeof __dashParseDateOnly === "function") ? __dashParseDateOnly(document.getElementById("dashDesde")?.value) : null;
-    const hasta = (typeof __dashParseDateOnly === "function") ? __dashParseDateOnly(document.getElementById("dashHasta")?.value) : null;
-    const soloMidis = !!document.getElementById("dashSoloMidis")?.checked;
-    return _loadAll().filter(e=>{
-      let okRango = true;
-      try{
-        const f = (typeof __dashGetFechaSegunTipo === "function") ? __dashGetFechaSegunTipo(e, tipo) : null;
-        okRango = (!desde && !hasta) ? true : (typeof __dashInRange === "function" ? __dashInRange(f, desde, hasta) : true);
-      }catch(_e){ okRango = true; }
-      return okRango && (soloMidis ? window.__dashAfectaMidis(e) : true);
-    });
-  };
-  window.__dashRenderHistogramas = __dashRenderHistogramas = function(data){
-    data = Array.isArray(data) ? data : window.__dashGetFiltered();
-    _ensureCharts();
-    const byEvento = {}, byDep = {};
-    data.forEach(e=>{
-      const ev = String(e?.peligro || "Sin dato").trim() || "Sin dato";
-      const dep = String(e?.departamento || "Sin dato").trim() || "Sin dato";
-      byEvento[ev]=(byEvento[ev]||0)+1; byDep[dep]=(byDep[dep]||0)+1;
-    });
-    const evEntries = Object.entries(byEvento).sort((a,b)=>(b[1]-a[1]) || a[0].localeCompare(b[0],"es"));
-    const depEntries = Object.entries(byDep).sort((a,b)=>(b[1]-a[1]) || a[0].localeCompare(b[0],"es"));
-    try{ if(dashChartEvento){ dashChartEvento.data.labels=evEntries.map(x=>x[0]); dashChartEvento.data.datasets[0].data=evEntries.map(x=>x[1]); dashChartEvento.update(); dashChartEvento.resize(); } }catch(_e){}
-    try{ if(dashChartRegion){ dashChartRegion.data.labels=depEntries.map(x=>x[0]); dashChartRegion.data.datasets[0].data=depEntries.map(x=>x[1]); dashChartRegion.update(); dashChartRegion.resize(); } }catch(_e){}
-    const t=data.length;
-    const evTot=document.getElementById("dashTotalEmergenciasEvento"); if(evTot) evTot.textContent=String(t);
-    const rgTot=document.getElementById("dashTotalEmergenciasRegion"); if(rgTot) rgTot.textContent=String(t);
-  };
-  window.__dashRenderImpacto = __dashRenderImpacto = function(data, groupBy){
-    data = Array.isArray(data) ? data : window.__dashGetFiltered();
-    groupBy = groupBy || ((typeof __dashGetImpactoGroupBy === "function") ? __dashGetImpactoGroupBy() : "programa");
-    try{ if(typeof __dashSetImpactoLabels === "function") __dashSetImpactoLabels(groupBy); }catch(_e){}
-    _ensureCharts();
-    let labels=[], u=[], s=[], ups=[], f=[];
-    let totalU=0,totalS=0,totalUPS=0,totalF=0;
-    if(groupBy === "programa"){
-      const progs = (typeof __DASH_PROGRAMAS !== "undefined" && Array.isArray(__DASH_PROGRAMAS)) ? __DASH_PROGRAMAS : [
-        {key:"CONTIGO", label:"CONTIGO"},{key:"CUNA MAS", label:"CUNA MÁS"},{key:"FONCODES", label:"FONCODES"},{key:"JUNTOS", label:"JUNTOS"},{key:"PAIS", label:"PAIS"},{key:"PENSION 65", label:"PENSIÓN 65"},{key:"PCA", label:"PCA"},{key:"ALIMENTACION ESCOLAR", label:"ALIMENTACIÓN ESCOLAR"}
-      ];
-      labels = progs.map(p=>p.label); u=labels.map(()=>0); s=labels.map(()=>0); ups=labels.map(()=>0); f=labels.map(()=>0);
-      data.forEach(e=>{ const dm=_currentDanios(e); progs.forEach((p,i)=>{ const d=_programData(dm,p.key||p.label); u[i]+=d.usuariosAfectados; s[i]+=d.serviciosAfectados; ups[i]+=d.usuariosPorServicios; f[i]+=d.usuariosFallecidos; }); });
-      totalU=u.reduce((a,b)=>a+b,0); totalS=s.reduce((a,b)=>a+b,0); totalUPS=ups.reduce((a,b)=>a+b,0); totalF=f.reduce((a,b)=>a+b,0);
-    }else{
-      const map={};
-      data.forEach(e=>{ const k=String((groupBy==="evento"?e?.peligro:e?.departamento)||"Sin dato").trim()||"Sin dato"; const t=_sumDanios(_currentDanios(e)); if(!map[k]) map[k]={u:0,s:0,ups:0,f:0}; map[k].u+=t.usuarios; map[k].s+=t.servicios; map[k].ups+=t.ups; map[k].f+=t.fallecidos; });
-      const entries=Object.entries(map).map(([k,v])=>({k,...v})).sort((a,b)=>(b.u-a.u)||(b.s-a.s)||a.k.localeCompare(b.k,"es"));
-      labels=entries.map(x=>x.k); u=entries.map(x=>x.u); s=entries.map(x=>x.s); ups=entries.map(x=>x.ups); f=entries.map(x=>x.f);
-      totalU=u.reduce((a,b)=>a+b,0); totalS=s.reduce((a,b)=>a+b,0); totalUPS=ups.reduce((a,b)=>a+b,0); totalF=f.reduce((a,b)=>a+b,0);
-    }
-    [["dashTotalUsuarios",totalU],["dashTotalServicios",totalS],["dashTotalUsuariosPorServicios",totalUPS],["dashTotalFallecidos",totalF]].forEach(([id,val])=>{ const el=document.getElementById(id); if(el) el.textContent=String(val); });
-    try{ if(dashChartUsuariosProg){ dashChartUsuariosProg.data.labels=labels; dashChartUsuariosProg.data.datasets[0].data=u; dashChartUsuariosProg.update(); dashChartUsuariosProg.resize(); } }catch(_e){}
-    try{ if(dashChartServiciosProg){ dashChartServiciosProg.data.labels=labels; dashChartServiciosProg.data.datasets[0].data=s; if(!dashChartServiciosProg.data.datasets[1]) dashChartServiciosProg.data.datasets.push({label:"Usuarios por servicios", data:[]}); dashChartServiciosProg.data.datasets[1].data=ups; dashChartServiciosProg.update(); dashChartServiciosProg.resize(); } }catch(_e){}
-    try{ if(dashChartAfectProg){ dashChartAfectProg.data.labels=labels; dashChartAfectProg.data.datasets[0].data=f; dashChartAfectProg.update(); dashChartAfectProg.resize(); } }catch(_e){}
-  };
-  window.__dashRenderAfectaMidisTable = __dashRenderAfectaMidisTable = function(data){
-    const tbody=document.getElementById("dashAfectaMidisTbody"); if(tbody) tbody.innerHTML="";
-    data = Array.isArray(data) ? data : window.__dashGetFiltered();
-    const list=data.filter(window.__dashAfectaMidis).sort((a,b)=>String(b.fechaPeligro||"").localeCompare(String(a.fechaPeligro||"")) || String(b.codigo||"").localeCompare(String(a.codigo||"")));
-    try{ __dashPagerMidis.size = (typeof __dashReadPageSize === "function") ? __dashReadPageSize("dashAfectaMidisPageSize", __dashPagerMidis.size || 10) : (__dashPagerMidis.size||10); }catch(_e){}
-    let page={slice:list};
-    try{ page = (typeof __dashSliceForPager === "function") ? __dashSliceForPager(list, __dashPagerMidis) : {slice:list.slice(0,10)}; }catch(_e){}
-    try{ if(typeof __dashUpdatePagerUI === "function") __dashUpdatePagerUI(__dashPagerMidis, list.length, "dashAfectaMidisPageInfo", "dashAfectaMidisPrev", "dashAfectaMidisNext"); }catch(_e){}
-    if(!tbody) return;
-    if(!list.length){ tbody.innerHTML='<tr><td colspan="10" class="text-muted small">Sin emergencias con afectación MIDIS para el filtro seleccionado.</td></tr>'; return; }
-    page.slice.forEach(e=>{ const st=(typeof __dashGetStatus === "function") ? __dashGetStatus(e) : {name:e?.cerrada?"Cerrada":"Abierta",color:e?.cerrada?"#198754":"#dc3545"}; const t=window.__dashTotalesMidis(_currentDanios(e)); tbody.innerHTML += `<tr><td>${_esc(e.codigo||"")}</td><td><span class="badge" style="background:${st.color}"> </span> ${_esc(st.name)}</td><td>${_esc(e.peligro||"")}</td><td>${_esc(e.departamento||"")}</td><td>${_esc(e.provincia||"")}</td><td>${_esc(e.distrito||"")}</td><td>${_esc(e.fechaPeligro||"")}</td><td>${t.usuarios}</td><td>${t.servicios}</td><td class="text-center"><button type="button" class="btn btn-sm btn-outline-primary" title="Ver RP/RC" onclick='__openVerByCodigo(${JSON.stringify(String(e.codigo||""))})'>👁</button></td></tr>`; });
-  };
-  window.dashboardRefresh = dashboardRefresh = function(opts){
-    opts = opts || {};
-    try{ _ensureCharts(); }catch(_e){}
-    const data = window.__dashGetFiltered();
-    try{ __dashLastFiltered = data; }catch(_e){}
-    try{ if(typeof __dashMapPopulateDepartamento === "function") __dashMapPopulateDepartamento(data); }catch(_e){}
-    try{ if(typeof __dashMapPopulatePeligro === "function") __dashMapPopulatePeligro(data); }catch(_e){}
-    let mapData = data;
-    try{ if(typeof __dashMapApplyDepartamentoFilter === "function") mapData = __dashMapApplyDepartamentoFilter(data); }catch(_e){}
-    try{ if(typeof __dashRenderMap === "function") __dashRenderMap(mapData); }catch(_e){ console.warn("Dashboard mapa:", _e); }
-    try{ if(typeof __dashMapRenderDepartamentoResumen === "function") __dashMapRenderDepartamentoResumen(data); }catch(_e){}
-    try{ if(typeof __dashRenderActivasHoy === "function") __dashRenderActivasHoy(); }catch(_e){}
-    window.__dashRenderHistogramas(data);
-    window.__dashRenderImpacto(data, (typeof __dashGetImpactoGroupBy === "function") ? __dashGetImpactoGroupBy() : "programa");
-    window.__dashRenderAfectaMidisTable(data);
-    try{ setTimeout(()=>{ if(dashMap){ dashMap.invalidateSize(); } [dashChartEvento,dashChartRegion,dashChartUsuariosProg,dashChartServiciosProg,dashChartAfectProg].forEach(ch=>{ try{ ch && ch.resize && ch.resize(); }catch(_e){} }); }, 250); }catch(_e){}
-  };
-  document.addEventListener("DOMContentLoaded", function(){
-    setTimeout(()=>{ try{ dashboardRefresh({force:true}); }catch(_e){} }, 800);
-    setTimeout(()=>{ try{ dashboardRefresh({force:true}); }catch(_e){} }, 2500);
-  });
-})();
-
-
-// ======= VERSION 242: Dashboard - alineación con Excel y gráfico por Eventos/Peligros =======
-// Alcance: solo Dashboard. Usa la misma base del Exportar Excel: fecha de elaboración/registro,
-// peligros y matriz RP (daniosMIDIS) para que las cantidades coincidan con el Excel exportado.
-(function(){
-  function _norm(v){
-    try{return String(v||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").trim().toUpperCase().replace(/\s+/g," ");}
-    catch(_e){return String(v||"").trim().toUpperCase();}
-  }
-  function _num(v){ const n=Number(v||0); return Number.isFinite(n)?n:0; }
-  function _esc(v){
-    try{ if(typeof __dashHtmlEscape === "function") return __dashHtmlEscape(v); }catch(_e){}
-    return String(v ?? "").replace(/[&<>'"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;","\"":"&quot;"}[c]));
-  }
-  function _isDeleted(e){ try{return (typeof __isDeleted==="function") ? __isDeleted(e) : false;}catch(_e){return false;} }
-  function _isSeguimientoRecord(em){
-    try{
-      const vals=[em?.tipo,em?.modulo,em?.origen,em?.source,em?.vista,em?.seccion].map(v=>String(v||"").toLowerCase());
-      return vals.some(v=>v.includes("seguimiento"));
-    }catch(_e){return false;}
-  }
-  function _loadAll(){
-    try{ return (Array.isArray(emergencias)?emergencias:[]).filter(e=>e && !_isDeleted(e) && !_isSeguimientoRecord(e)); }
-    catch(_e){ return []; }
-  }
-  function _programKey(k){
-    const n=_norm(k);
-    if(n.includes("CUNA")) return "CUNA MAS";
-    if(n.includes("PENSION")) return "PENSION 65";
-    if(n.includes("ALIMENTACION")) return "ALIMENTACION ESCOLAR";
-    if(n.includes("CONTIGO")) return "CONTIGO";
-    if(n.includes("FONCODES")) return "FONCODES";
-    if(n.includes("JUNTOS")) return "JUNTOS";
-    if(n.includes("PAIS")) return "PAIS";
-    if(n==="PCA" || n.includes("COMPLEMENTACION")) return "PCA";
-    return n || "SIN DATO";
-  }
-  function _rpDanios(e){
-    let o = e && (e.daniosMIDIS || e.dañosMIDIS || e.danosMIDIS || e.daniosSector || e.daniosSectorMidis || e.daniosSectorDesarrollo) || {};
-    if(typeof o === "string"){ try{o=JSON.parse(o);}catch(_e){o={};} }
-    return (o && typeof o === "object") ? o : {};
-  }
-  function _programData(dm, prog){
-    const wanted=_programKey(prog);
-    const out={usuariosAfectados:0, serviciosAfectados:0, usuariosPorServicios:0, usuariosFallecidos:0, moduloAfectado:0};
-    Object.keys(dm||{}).forEach(k=>{
-      if(_programKey(k)!==wanted) return;
-      const d=dm[k]||{};
-      out.usuariosAfectados += _num(d.usuariosAfectados);
-      out.serviciosAfectados += _num(d.serviciosAfectados);
-      out.usuariosPorServicios += _num(d.usuariosPorServicios);
-      out.usuariosFallecidos += _num(d.usuariosFallecidos);
-      out.moduloAfectado += _num(d.moduloAfectado);
-    });
-    return out;
-  }
-  function _sumDanios(dm){
-    const progs = (Array.isArray(programas) && programas.length) ? programas : Object.keys(dm||{});
-    const t={usuarios:0, servicios:0, ups:0, fallecidos:0, modulo:0};
-    progs.forEach(p=>{
-      const d=_programData(dm,p);
-      t.usuarios += d.usuariosAfectados;
-      t.servicios += d.serviciosAfectados;
-      t.ups += d.usuariosPorServicios;
-      t.fallecidos += d.usuariosFallecidos;
-      t.modulo += d.moduloAfectado;
-    });
-    return t;
-  }
-  function _fechaElabDate(e){
-    try{
-      const raw=String((e && (e.fechaHora || e.fechaElaboracion || e.fechaRegistro || e.createdAt || e.__serverCreatedAt)) || "").trim();
-      if(!raw) return null;
-      if(typeof __dashParseDateOnly === "function") return __dashParseDateOnly(raw);
-      const d=new Date(raw); return isNaN(d.getTime()) ? null : new Date(d.getFullYear(),d.getMonth(),d.getDate());
-    }catch(_e){return null;}
-  }
-  function _fechaEventoDate(e){
-    try{ return (typeof __dashParseDateOnly === "function") ? __dashParseDateOnly(e?.fechaPeligro) : null; }
-    catch(_e){ return null; }
-  }
-  function _getDateForFilter(e,tipo){ return (tipo === "registro") ? _fechaElabDate(e) : _fechaEventoDate(e); }
-  function _inRange(d,desde,hasta){
-    if(!desde && !hasta) return true;
-    if(!d) return false;
-    if(desde && d < desde) return false;
-    if(hasta && d > hasta) return false;
-    return true;
-  }
-  function _affected(e){ const t=_sumDanios(_rpDanios(e)); return (t.usuarios>0 || t.servicios>0 || t.ups>0 || t.fallecidos>0 || t.modulo>0); }
-  function _filtered(){
-    const tipo=document.getElementById("dashTipoFecha")?.value || "evento";
-    const desde=(typeof __dashParseDateOnly==="function") ? __dashParseDateOnly(document.getElementById("dashDesde")?.value) : null;
-    const hasta=(typeof __dashParseDateOnly==="function") ? __dashParseDateOnly(document.getElementById("dashHasta")?.value) : null;
-    const solo=!!document.getElementById("dashSoloMidis")?.checked;
-    return _loadAll().filter(e=>_inRange(_getDateForFilter(e,tipo),desde,hasta) && (solo ? _affected(e) : true));
-  }
-  function _ensureCanvas(id,h){
-    const el=document.getElementById(id); if(!el) return null;
-    el.style.display="block"; el.style.width="100%"; el.style.height=h+"px"; el.style.maxHeight=h+"px";
-    if(el.parentElement){ el.parentElement.style.minHeight=(h+20)+"px"; el.parentElement.style.position="relative"; }
-    return el;
-  }
-  function _newBar(id,label,h,dual){
-    if(typeof Chart === "undefined") return null;
-    const el=_ensureCanvas(id,h); if(!el) return null;
-    try{ const old=Chart.getChart(el); if(old) old.destroy(); }catch(_e){}
-    const datasets = dual ? [{label:"Servicios afectados",data:[]},{label:"Usuarios por servicios",data:[]}] : [{label:label,data:[]}];
-    return new Chart(el,{type:"bar",data:{labels:[],datasets},options:{responsive:true,maintainAspectRatio:false,animation:false,plugins:{legend:{display:true}},scales:{x:{ticks:{autoSkip:false,maxRotation:45,minRotation:0}},y:{beginAtZero:true,ticks:{precision:0}}}}});
-  }
-  function _ensureCharts(){
-    dashChartEvento = _newBar("dashChartEvento","Emergencias",360,false) || dashChartEvento;
-    dashChartRegion = _newBar("dashChartRegion","Emergencias",360,false) || dashChartRegion;
-    dashChartUsuariosProg = _newBar("dashChartUsuariosProg","Usuarios afectados",260,false) || dashChartUsuariosProg;
-    dashChartServiciosProg = _newBar("dashChartServiciosProg","Servicios afectados",260,true) || dashChartServiciosProg;
-    dashChartAfectProg = _newBar("dashChartAfectProg","Usuarios fallecidos",260,false) || dashChartAfectProg;
-  }
-  function _setChart(ch,labels,values,label){
-    if(!ch) return;
-    ch.data.labels = labels;
-    if(!ch.data.datasets || !ch.data.datasets[0]) ch.data.datasets=[{label:label||"",data:[]}];
-    if(label) ch.data.datasets[0].label=label;
-    ch.data.datasets[0].data = values;
-    ch.update();
-    try{ ch.resize(); }catch(_e){}
-  }
-  window.__dashGetEmergencias = __dashGetEmergencias = function(){ return _loadAll(); };
-  window.__dashCurrentDaniosMidis = function(e){ return _rpDanios(e); };
-  window.__dashSumDanios = function(dm){ return _sumDanios(dm); };
-  window.__dashTotalesMidis = function(dm){ const t=_sumDanios(dm); return {usuarios:t.usuarios,servicios:t.servicios,fallecidos:t.fallecidos}; };
-  window.__dashAfectaMidis = __dashAfectaMidis = function(e){ return _affected(e); };
-  window.__dashGetFiltered = __dashGetFiltered = function(){ return _filtered(); };
-  window.__dashRenderHistogramas = __dashRenderHistogramas = function(data){
-    data = Array.isArray(data) ? data : _filtered();
-    const byEv={}, byDep={};
-    data.forEach(e=>{
-      const ev=String(e?.peligro||"Sin dato").trim()||"Sin dato";
-      const dep=String(e?.departamento||"Sin dato").trim()||"Sin dato";
-      byEv[ev]=(byEv[ev]||0)+1; byDep[dep]=(byDep[dep]||0)+1;
-    });
-    const evEntries=Object.entries(byEv).sort((a,b)=>(b[1]-a[1])||a[0].localeCompare(b[0],"es"));
-    const depEntries=Object.entries(byDep).sort((a,b)=>(b[1]-a[1])||a[0].localeCompare(b[0],"es"));
-    _setChart(dashChartEvento, evEntries.map(x=>x[0]), evEntries.map(x=>x[1]), "Emergencias");
-    _setChart(dashChartRegion, depEntries.map(x=>x[0]), depEntries.map(x=>x[1]), "Emergencias");
-    const t=data.length;
-    const eTot=document.getElementById("dashTotalEmergenciasEvento"); if(eTot) eTot.textContent=String(t);
-    const rTot=document.getElementById("dashTotalEmergenciasRegion"); if(rTot) rTot.textContent=String(t);
-  };
-  window.__dashRenderImpacto = __dashRenderImpacto = function(data, groupBy){
-    data = Array.isArray(data) ? data : _filtered();
-    groupBy = groupBy || ((typeof __dashGetImpactoGroupBy==="function") ? __dashGetImpactoGroupBy() : "programa");
-    try{ if(typeof __dashSetImpactoLabels==="function") __dashSetImpactoLabels(groupBy); }catch(_e){}
-    const progs=(Array.isArray(programas)&&programas.length)?programas:["Contigo","CUNA MAS","FONCODES","JUNTOS","PAIS","PENSION 65","PCA","ALIMENTACION ESCOLAR"];
-    let labels=[], u=[], s=[], ups=[], f=[];
-    if(groupBy === "programa"){
-      labels=progs.map(p=>String(p).replace("CUNA MAS","CUNA MÁS").replace("PENSION 65","PENSIÓN 65").replace("ALIMENTACION ESCOLAR","ALIMENTACIÓN ESCOLAR"));
-      u=labels.map(()=>0); s=labels.map(()=>0); ups=labels.map(()=>0); f=labels.map(()=>0);
-      data.forEach(e=>{ const dm=_rpDanios(e); progs.forEach((p,i)=>{ const d=_programData(dm,p); u[i]+=d.usuariosAfectados; s[i]+=d.serviciosAfectados; ups[i]+=d.usuariosPorServicios; f[i]+=d.usuariosFallecidos; }); });
-    }else{
-      const map={};
-      data.forEach(e=>{ const k=String((groupBy==="evento"?e?.peligro:e?.departamento)||"Sin dato").trim()||"Sin dato"; const t=_sumDanios(_rpDanios(e)); if(!map[k]) map[k]={u:0,s:0,ups:0,f:0}; map[k].u+=t.usuarios; map[k].s+=t.servicios; map[k].ups+=t.ups; map[k].f+=t.fallecidos; });
-      const entries=Object.entries(map).map(([k,v])=>({k,...v})).sort((a,b)=>(b.u-a.u)||(b.s-a.s)||a.k.localeCompare(b.k,"es"));
-      labels=entries.map(x=>x.k); u=entries.map(x=>x.u); s=entries.map(x=>x.s); ups=entries.map(x=>x.ups); f=entries.map(x=>x.f);
-    }
-    const totalU=u.reduce((a,b)=>a+b,0), totalS=s.reduce((a,b)=>a+b,0), totalUPS=ups.reduce((a,b)=>a+b,0), totalF=f.reduce((a,b)=>a+b,0);
-    [["dashTotalUsuarios",totalU],["dashTotalServicios",totalS],["dashTotalUsuariosPorServicios",totalUPS],["dashTotalFallecidos",totalF]].forEach(([id,val])=>{ const el=document.getElementById(id); if(el) el.textContent=String(val); });
-    _setChart(dashChartUsuariosProg,labels,u,"Usuarios afectados");
-    if(dashChartServiciosProg){ dashChartServiciosProg.data.labels=labels; dashChartServiciosProg.data.datasets=[{label:"Servicios afectados",data:s},{label:"Usuarios por servicios",data:ups}]; dashChartServiciosProg.update(); try{dashChartServiciosProg.resize();}catch(_e){} }
-    _setChart(dashChartAfectProg,labels,f,"Usuarios fallecidos");
-  };
-  window.__dashRenderAfectaMidisTable = __dashRenderAfectaMidisTable = function(data){
-    const tbody=document.getElementById("dashAfectaMidisTbody"); if(tbody) tbody.innerHTML="";
-    data = Array.isArray(data) ? data : _filtered();
-    const list=data.filter(_affected).sort((a,b)=>String(b.fechaPeligro||"").localeCompare(String(a.fechaPeligro||"")) || String(b.codigo||"").localeCompare(String(a.codigo||"")));
-    try{ __dashPagerMidis.size = (typeof __dashReadPageSize==="function") ? __dashReadPageSize("dashAfectaMidisPageSize", __dashPagerMidis.size||10) : (__dashPagerMidis.size||10); }catch(_e){}
-    let page={slice:list.slice(0,__dashPagerMidis.size||10)};
-    try{ page = (typeof __dashSliceForPager==="function") ? __dashSliceForPager(list,__dashPagerMidis) : page; }catch(_e){}
-    try{ if(typeof __dashUpdatePagerUI==="function") __dashUpdatePagerUI(__dashPagerMidis,list.length,"dashAfectaMidisPageInfo","dashAfectaMidisPrev","dashAfectaMidisNext"); }catch(_e){}
-    if(!tbody) return;
-    if(!list.length){ tbody.innerHTML='<tr><td colspan="10" class="text-muted small">Sin emergencias con afectación MIDIS para el filtro seleccionado.</td></tr>'; return; }
-    page.slice.forEach(e=>{ const st=(typeof __dashGetStatus==="function")?__dashGetStatus(e):{name:e?.cerrada?"Cerrada":"Abierta",color:e?.cerrada?"#198754":"#dc3545"}; const t=_sumDanios(_rpDanios(e)); tbody.innerHTML += `<tr><td>${_esc(e.codigo||"")}</td><td><span class="badge" style="background:${st.color}"> </span> ${_esc(st.name)}</td><td>${_esc(e.peligro||"")}</td><td>${_esc(e.departamento||"")}</td><td>${_esc(e.provincia||"")}</td><td>${_esc(e.distrito||"")}</td><td>${_esc(e.fechaPeligro||"")}</td><td>${t.usuarios}</td><td>${t.servicios}</td><td class="text-center"><button type="button" class="btn btn-sm btn-outline-primary" title="Ver RP/RC" onclick='__openVerByCodigo(${JSON.stringify(String(e.codigo||""))})'>👁</button></td></tr>`; });
-  };
-  window.dashboardRefresh = dashboardRefresh = function(opts){
-    opts = opts || {};
-    try{ if(typeof __dashInitIfNeeded==="function") __dashInitIfNeeded(); }catch(_e){}
-    _ensureCharts();
-    const data=_filtered();
-    try{ __dashLastFiltered=data; }catch(_e){}
-    try{ if(typeof __dashMapPopulateDepartamento==="function") __dashMapPopulateDepartamento(data); }catch(_e){}
-    try{ if(typeof __dashMapPopulatePeligro==="function") __dashMapPopulatePeligro(data); }catch(_e){}
-    let mapData=data; try{ if(typeof __dashMapApplyDepartamentoFilter==="function") mapData=__dashMapApplyDepartamentoFilter(data); }catch(_e){}
-    try{ if(typeof __dashRenderMap==="function") __dashRenderMap(mapData); }catch(_e){}
-    try{ if(typeof __dashMapRenderDepartamentoResumen==="function") __dashMapRenderDepartamentoResumen(data); }catch(_e){}
-    try{ if(typeof __dashRenderActivasHoy==="function") __dashRenderActivasHoy(); }catch(_e){}
-    window.__dashRenderHistogramas(data);
-    window.__dashRenderImpacto(data,(typeof __dashGetImpactoGroupBy==="function")?__dashGetImpactoGroupBy():"programa");
-    window.__dashRenderAfectaMidisTable(data);
-    setTimeout(()=>{ try{ if(dashMap) dashMap.invalidateSize(); [dashChartEvento,dashChartRegion,dashChartUsuariosProg,dashChartServiciosProg,dashChartAfectProg].forEach(ch=>{try{ch&&ch.resize&&ch.resize();}catch(_e){}}); }catch(_e){} },250);
-  };
-  document.addEventListener("DOMContentLoaded", function(){
-    [500,1800,3500].forEach(ms=>setTimeout(()=>{try{dashboardRefresh({force:true});}catch(_e){}},ms));
-    document.getElementById("dashPillEvento")?.addEventListener("shown.bs.tab", ()=>setTimeout(()=>{try{dashboardRefresh({force:true});}catch(_e){}},150));
-    document.getElementById("dashPillRegion")?.addEventListener("shown.bs.tab", ()=>setTimeout(()=>{try{dashboardRefresh({force:true});}catch(_e){}},150));
-  });
-})();
-
-
-// ======= VERSION 243: Dashboard - impacto MIDIS alineado con Excel e hidratación de detalle =======
-// Alcance: solo Dashboard. Corrige totales/histogramas para que usen la misma base que Exportar Excel.
-(function(){
-  function _norm(v){
-    try{return String(v||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").trim().toUpperCase().replace(/\s+/g," ");}
-    catch(_e){return String(v||"").trim().toUpperCase();}
-  }
-  function _num(v){ const n=Number(v||0); return Number.isFinite(n)?n:0; }
-  function _esc(v){
-    try{ if(typeof __dashHtmlEscape === "function") return __dashHtmlEscape(v); }catch(_e){}
-    return String(v ?? "").replace(/[&<>'"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;","\"":"&quot;"}[c]));
-  }
-  function _isDeleted(e){ try{return (typeof __isDeleted==="function") ? __isDeleted(e) : false;}catch(_e){return false;} }
-  function _isSeguimientoRecord(em){
-    try{
-      const vals=[em?.tipo,em?.modulo,em?.origen,em?.source,em?.vista,em?.seccion].map(v=>String(v||"").toLowerCase());
-      return vals.some(v=>v.includes("seguimiento"));
-    }catch(_e){return false;}
-  }
-  function _programKey(k){
-    const n=_norm(k);
-    if(n.includes("CUNA")) return "CUNA MAS";
-    if(n.includes("PENSION")) return "PENSION 65";
-    if(n.includes("ALIMENTACION")) return "ALIMENTACION ESCOLAR";
-    if(n.includes("CONTIGO")) return "CONTIGO";
-    if(n.includes("FONCODES")) return "FONCODES";
-    if(n.includes("JUNTOS")) return "JUNTOS";
-    if(n.includes("PAIS")) return "PAIS";
-    if(n==="PCA" || n.includes("COMPLEMENTACION")) return "PCA";
-    return n || "SIN DATO";
-  }
-  function _coalesceObject(){
-    for(let i=0;i<arguments.length;i++){
-      let v=arguments[i];
-      if(typeof v === "string"){
-        try{ v=JSON.parse(v); }catch(_e){}
-      }
-      if(v && typeof v === "object" && !Array.isArray(v)) return v;
-    }
-    return {};
-  }
-  function _rpDanios(e){
-    return _coalesceObject(e?.daniosMIDIS, e?.dañosMIDIS, e?.danosMIDIS, e?.daniosSector, e?.daniosSectorMidis, e?.daniosSectorDesarrollo);
-  }
-  function _programData(dm, prog){
-    const wanted=_programKey(prog);
-    const out={usuariosAfectados:0, serviciosAfectados:0, usuariosPorServicios:0, usuariosFallecidos:0, moduloAfectado:0};
-    Object.keys(dm||{}).forEach(k=>{
-      if(_programKey(k)!==wanted) return;
-      const d=dm[k]||{};
-      out.usuariosAfectados += _num(d.usuariosAfectados);
-      out.serviciosAfectados += _num(d.serviciosAfectados);
-      out.usuariosPorServicios += _num(d.usuariosPorServicios);
-      out.usuariosFallecidos += _num(d.usuariosFallecidos);
-      out.moduloAfectado += _num(d.moduloAfectado);
-    });
-    return out;
-  }
-  function _sumDanios(dm){
-    const progs=(Array.isArray(programas)&&programas.length)?programas:Object.keys(dm||{});
-    const t={usuarios:0, servicios:0, ups:0, fallecidos:0, modulo:0};
-    progs.forEach(p=>{ const d=_programData(dm,p); t.usuarios+=d.usuariosAfectados; t.servicios+=d.serviciosAfectados; t.ups+=d.usuariosPorServicios; t.fallecidos+=d.usuariosFallecidos; t.modulo+=d.moduloAfectado; });
-    return t;
-  }
-  function _parseDateOnlyValue(raw){
-    const s=String(raw||"").trim();
-    if(!s) return null;
-    let m=s.match(/^(\d{4})-(\d{2})-(\d{2})/);
-    if(m) return new Date(Number(m[1]), Number(m[2])-1, Number(m[3]));
-    m=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
-    if(m) return new Date(Number(m[3]), Number(m[2])-1, Number(m[1]));
-    try{
-      if(typeof __rpParseDateTimePeru === "function"){
-        const d=__rpParseDateTimePeru(s);
-        if(d && !isNaN(d.getTime())) return new Date(d.getFullYear(),d.getMonth(),d.getDate());
-      }
-    }catch(_e){}
-    const d2=new Date(s);
-    return isNaN(d2.getTime()) ? null : new Date(d2.getFullYear(),d2.getMonth(),d2.getDate());
-  }
-  function _fechaElabDate(e){ return _parseDateOnlyValue(e?.fechaHora || e?.fechaElaboracion || e?.fechaRegistro || e?.createdAt || e?.__serverCreatedAt); }
-  function _fechaEventoDate(e){ return _parseDateOnlyValue(e?.fechaPeligro); }
-  function _getDateForFilter(e,tipo){ return (tipo === "registro") ? _fechaElabDate(e) : _fechaEventoDate(e); }
-  function _inRange(d,desde,hasta){ if(!desde && !hasta) return true; if(!d) return false; if(desde && d<desde) return false; if(hasta && d>hasta) return false; return true; }
-  function _loadAll(){ try{return (Array.isArray(emergencias)?emergencias:[]).filter(e=>e && !_isDeleted(e) && !_isSeguimientoRecord(e));}catch(_e){return [];} }
-  function _affected(e){ const t=_sumDanios(_rpDanios(e)); return (t.usuarios>0 || t.servicios>0 || t.ups>0 || t.fallecidos>0 || t.modulo>0); }
-  function _filtered(){
-    const tipo=document.getElementById("dashTipoFecha")?.value || "evento";
-    const desde=_parseDateOnlyValue(document.getElementById("dashDesde")?.value);
-    const hasta=_parseDateOnlyValue(document.getElementById("dashHasta")?.value);
-    const solo=!!document.getElementById("dashSoloMidis")?.checked;
-    return _loadAll().filter(e=>_inRange(_getDateForFilter(e,tipo),desde,hasta) && (solo ? _affected(e) : true));
-  }
-  function _needsDashDetail(e){
-    if(!e || !e.codigo) return false;
-    const dm=_rpDanios(e);
-    const hasDanios = dm && typeof dm === "object" && Object.keys(dm).length>0;
-    const hasText = !!String(e.hechos || e.daniosOtros || e.accionesPreliminar || "").trim();
-    return !hasDanios || !hasText;
-  }
-  async function _hydrateDashboardDetails(data){
-    if(typeof __ensureFullEmergencia !== "function") return false;
-    if(!navigator.onLine) return false;
-    const arr=Array.isArray(data)?data:[];
-    const jobs=arr.filter(_needsDashDetail).map(e=>String(e.codigo||"").trim()).filter(Boolean);
-    if(!jobs.length) return false;
-    let changed=false, cursor=0;
-    const workers=Array.from({length:Math.min(8,jobs.length)}, async()=>{
-      while(cursor<jobs.length){
-        const code=jobs[cursor++];
-        try{
-          const full=await __ensureFullEmergencia(code);
-          if(full && full.codigo){
-            const idx=(Array.isArray(emergencias)?emergencias:[]).findIndex(x=>String(x?.codigo||"").trim()===code);
-            if(idx>=0) emergencias[idx]=full;
-            changed=true;
-          }
-        }catch(_e){}
-      }
-    });
-    await Promise.all(workers);
-    try{ if(changed && typeof __saveEmergencias === "function") __saveEmergencias(); }catch(_e){}
-    return changed;
-  }
-  function _ensureCanvas(id,h){
-    const el=document.getElementById(id); if(!el) return null;
-    el.style.display="block"; el.style.width="100%"; el.style.height=h+"px"; el.style.maxHeight=h+"px";
-    if(el.parentElement){ el.parentElement.style.minHeight=(h+20)+"px"; el.parentElement.style.position="relative"; }
-    return el;
-  }
-  function _newBar(id,label,h,dual){
-    if(typeof Chart === "undefined") return null;
-    const el=_ensureCanvas(id,h); if(!el) return null;
-    try{ const old=Chart.getChart(el); if(old) old.destroy(); }catch(_e){}
-    const datasets = dual ? [{label:"Servicios afectados",data:[]},{label:"Usuarios por servicios",data:[]}] : [{label:label,data:[]}];
-    return new Chart(el,{type:"bar",data:{labels:[],datasets},options:{responsive:true,maintainAspectRatio:false,animation:false,plugins:{legend:{display:true}},scales:{x:{ticks:{autoSkip:false,maxRotation:45,minRotation:0}},y:{beginAtZero:true,ticks:{precision:0}}}}});
-  }
-  function _ensureCharts(){
-    dashChartEvento = _newBar("dashChartEvento","Emergencias",360,false) || dashChartEvento;
-    dashChartRegion = _newBar("dashChartRegion","Emergencias",360,false) || dashChartRegion;
-    dashChartUsuariosProg = _newBar("dashChartUsuariosProg","Usuarios afectados",260,false) || dashChartUsuariosProg;
-    dashChartServiciosProg = _newBar("dashChartServiciosProg","Servicios afectados",260,true) || dashChartServiciosProg;
-    dashChartAfectProg = _newBar("dashChartAfectProg","Usuarios fallecidos",260,false) || dashChartAfectProg;
-  }
-  function _setChart(ch,labels,values,label){
-    if(!ch) return;
-    ch.data.labels=labels;
-    if(!ch.data.datasets || !ch.data.datasets[0]) ch.data.datasets=[{label:label||"",data:[]}];
-    if(label) ch.data.datasets[0].label=label;
-    ch.data.datasets[0].data=values;
-    ch.update();
-    try{ch.resize();}catch(_e){}
-  }
-  function _renderHistogramas(data){
-    data=Array.isArray(data)?data:_filtered();
-    const byEv={}, byDep={};
-    data.forEach(e=>{ const ev=String(e?.peligro||"Sin dato").trim()||"Sin dato"; const dep=String(e?.departamento||"Sin dato").trim()||"Sin dato"; byEv[ev]=(byEv[ev]||0)+1; byDep[dep]=(byDep[dep]||0)+1; });
-    const evEntries=Object.entries(byEv).sort((a,b)=>(b[1]-a[1])||a[0].localeCompare(b[0],"es"));
-    const depEntries=Object.entries(byDep).sort((a,b)=>(b[1]-a[1])||a[0].localeCompare(b[0],"es"));
-    _setChart(dashChartEvento,evEntries.map(x=>x[0]),evEntries.map(x=>x[1]),"Emergencias");
-    _setChart(dashChartRegion,depEntries.map(x=>x[0]),depEntries.map(x=>x[1]),"Emergencias");
-    const eTot=document.getElementById("dashTotalEmergenciasEvento"); if(eTot) eTot.textContent=String(data.length);
-    const rTot=document.getElementById("dashTotalEmergenciasRegion"); if(rTot) rTot.textContent=String(data.length);
-  }
-  function _renderImpacto(data,groupBy){
-    data=Array.isArray(data)?data:_filtered();
-    groupBy=groupBy || ((typeof __dashGetImpactoGroupBy==="function")?__dashGetImpactoGroupBy():"programa");
-    try{ if(typeof __dashSetImpactoLabels==="function") __dashSetImpactoLabels(groupBy); }catch(_e){}
-    const progs=(Array.isArray(programas)&&programas.length)?programas:["Contigo","CUNA MAS","FONCODES","JUNTOS","PAIS","PENSION 65","PCA","ALIMENTACION ESCOLAR"];
-    let labels=[],u=[],s=[],ups=[],f=[];
-    if(groupBy==="programa"){
-      labels=progs.map(p=>String(p).replace("CUNA MAS","CUNA MÁS").replace("PENSION 65","PENSIÓN 65").replace("ALIMENTACION ESCOLAR","ALIMENTACIÓN ESCOLAR"));
-      u=labels.map(()=>0); s=labels.map(()=>0); ups=labels.map(()=>0); f=labels.map(()=>0);
-      data.forEach(e=>{ const dm=_rpDanios(e); progs.forEach((p,i)=>{ const d=_programData(dm,p); u[i]+=d.usuariosAfectados; s[i]+=d.serviciosAfectados; ups[i]+=d.usuariosPorServicios; f[i]+=d.usuariosFallecidos; }); });
-    }else{
-      const map={};
-      data.forEach(e=>{ const k=String((groupBy==="evento"?e?.peligro:e?.departamento)||"Sin dato").trim()||"Sin dato"; const t=_sumDanios(_rpDanios(e)); if(!map[k]) map[k]={u:0,s:0,ups:0,f:0}; map[k].u+=t.usuarios; map[k].s+=t.servicios; map[k].ups+=t.ups; map[k].f+=t.fallecidos; });
-      const entries=Object.entries(map).map(([k,v])=>({k,...v})).sort((a,b)=>(b.u-a.u)||(b.s-a.s)||a.k.localeCompare(b.k,"es"));
-      labels=entries.map(x=>x.k); u=entries.map(x=>x.u); s=entries.map(x=>x.s); ups=entries.map(x=>x.ups); f=entries.map(x=>x.f);
-    }
-    const totalU=u.reduce((a,b)=>a+b,0), totalS=s.reduce((a,b)=>a+b,0), totalUPS=ups.reduce((a,b)=>a+b,0), totalF=f.reduce((a,b)=>a+b,0);
-    [["dashTotalUsuarios",totalU],["dashTotalServicios",totalS],["dashTotalUsuariosPorServicios",totalUPS],["dashTotalFallecidos",totalF]].forEach(([id,val])=>{ const el=document.getElementById(id); if(el) el.textContent=String(val); });
-    _setChart(dashChartUsuariosProg,labels,u,"Usuarios afectados");
-    if(dashChartServiciosProg){ dashChartServiciosProg.data.labels=labels; dashChartServiciosProg.data.datasets=[{label:"Servicios afectados",data:s},{label:"Usuarios por servicios",data:ups}]; dashChartServiciosProg.update(); try{dashChartServiciosProg.resize();}catch(_e){} }
-    _setChart(dashChartAfectProg,labels,f,"Usuarios fallecidos");
-  }
-  function _renderAfectaMidisTable(data){
-    const tbody=document.getElementById("dashAfectaMidisTbody"); if(tbody) tbody.innerHTML="";
-    data=Array.isArray(data)?data:_filtered();
-    const list=data.filter(_affected).sort((a,b)=>String(b.fechaPeligro||"").localeCompare(String(a.fechaPeligro||"")) || String(b.codigo||"").localeCompare(String(a.codigo||"")));
-    try{ __dashPagerMidis.size=(typeof __dashReadPageSize==="function")?__dashReadPageSize("dashAfectaMidisPageSize",__dashPagerMidis.size||10):(__dashPagerMidis.size||10); }catch(_e){}
-    let page={slice:list.slice(0,__dashPagerMidis.size||10)};
-    try{ page=(typeof __dashSliceForPager==="function")?__dashSliceForPager(list,__dashPagerMidis):page; }catch(_e){}
-    try{ if(typeof __dashUpdatePagerUI==="function") __dashUpdatePagerUI(__dashPagerMidis,list.length,"dashAfectaMidisPageInfo","dashAfectaMidisPrev","dashAfectaMidisNext"); }catch(_e){}
-    if(!tbody) return;
-    if(!list.length){ tbody.innerHTML='<tr><td colspan="10" class="text-muted small">Sin emergencias con afectación MIDIS para el filtro seleccionado.</td></tr>'; return; }
-    page.slice.forEach(e=>{ const st=(typeof __dashGetStatus==="function")?__dashGetStatus(e):{name:e?.cerrada?"Cerrada":"Abierta",color:e?.cerrada?"#198754":"#dc3545"}; const t=_sumDanios(_rpDanios(e)); tbody.innerHTML += `<tr><td>${_esc(e.codigo||"")}</td><td><span class="badge" style="background:${st.color}"> </span> ${_esc(st.name)}</td><td>${_esc(e.peligro||"")}</td><td>${_esc(e.departamento||"")}</td><td>${_esc(e.provincia||"")}</td><td>${_esc(e.distrito||"")}</td><td>${_esc(e.fechaPeligro||"")}</td><td>${t.usuarios}</td><td>${t.servicios}</td><td class="text-center"><button type="button" class="btn btn-sm btn-outline-primary" title="Ver RP/RC" onclick='__openVerByCodigo(${JSON.stringify(String(e.codigo||""))})'>👁</button></td></tr>`; });
-  }
-  function _renderAll(data){
-    try{ __dashLastFiltered=data; }catch(_e){}
-    try{ if(typeof __dashMapPopulateDepartamento==="function") __dashMapPopulateDepartamento(data); }catch(_e){}
-    try{ if(typeof __dashMapPopulatePeligro==="function") __dashMapPopulatePeligro(data); }catch(_e){}
-    let mapData=data; try{ if(typeof __dashMapApplyDepartamentoFilter==="function") mapData=__dashMapApplyDepartamentoFilter(data); }catch(_e){}
-    try{ if(typeof __dashRenderMap==="function") __dashRenderMap(mapData); }catch(_e){}
-    try{ if(typeof __dashMapRenderDepartamentoResumen==="function") __dashMapRenderDepartamentoResumen(data); }catch(_e){}
-    try{ if(typeof __dashRenderActivasHoy==="function") __dashRenderActivasHoy(); }catch(_e){}
-    _renderHistogramas(data);
-    _renderImpacto(data,(typeof __dashGetImpactoGroupBy==="function")?__dashGetImpactoGroupBy():"programa");
-    _renderAfectaMidisTable(data);
-    setTimeout(()=>{ try{ if(dashMap) dashMap.invalidateSize(); [dashChartEvento,dashChartRegion,dashChartUsuariosProg,dashChartServiciosProg,dashChartAfectProg].forEach(ch=>{try{ch&&ch.resize&&ch.resize();}catch(_e){}}); }catch(_e){} },250);
-  }
-  window.__dashGetEmergencias=__dashGetEmergencias=function(){return _loadAll();};
-  window.__dashCurrentDaniosMidis=function(e){return _rpDanios(e);};
-  window.__dashSumDanios=function(dm){return _sumDanios(dm);};
-  window.__dashTotalesMidis=function(dm){const t=_sumDanios(dm); return {usuarios:t.usuarios,servicios:t.servicios,fallecidos:t.fallecidos,ups:t.ups,modulo:t.modulo};};
-  window.__dashAfectaMidis=__dashAfectaMidis=function(e){return _affected(e);};
-  window.__dashGetFiltered=__dashGetFiltered=function(){return _filtered();};
-  window.__dashRenderHistogramas=__dashRenderHistogramas=function(data){_ensureCharts(); _renderHistogramas(data);};
-  window.__dashRenderImpacto=__dashRenderImpacto=function(data,groupBy){_ensureCharts(); _renderImpacto(data,groupBy);};
-  window.__dashRenderAfectaMidisTable=__dashRenderAfectaMidisTable=function(data){_renderAfectaMidisTable(data);};
-  window.dashboardRefresh=dashboardRefresh=async function(opts){
-    opts=opts||{};
-    try{ if(typeof __dashInitIfNeeded==="function") __dashInitIfNeeded(); }catch(_e){}
-    _ensureCharts();
-    let data=_filtered();
-    _renderAll(data);
-    const changed=await _hydrateDashboardDetails(data);
-    if(changed){ data=_filtered(); _renderAll(data); }
-  };
-  document.addEventListener("DOMContentLoaded",function(){
-    [400,1500,3500].forEach(ms=>setTimeout(()=>{try{dashboardRefresh({force:true});}catch(_e){}},ms));
-    document.getElementById("dashBtnAplicar")?.addEventListener("click",()=>setTimeout(()=>{try{dashboardRefresh({force:true});}catch(_e){}},50));
-    document.getElementById("dashSoloMidis")?.addEventListener("change",()=>setTimeout(()=>{try{dashboardRefresh({force:true});}catch(_e){}},50));
-    document.querySelectorAll('input[name="dashImpactoClasif"]').forEach(el=>el.addEventListener("change",()=>setTimeout(()=>{try{dashboardRefresh({force:true});}catch(_e){}},50)));
-    document.getElementById("dashPillEvento")?.addEventListener("shown.bs.tab",()=>setTimeout(()=>{try{dashboardRefresh({force:true});}catch(_e){}},150));
-    document.getElementById("dashPillRegion")?.addEventListener("shown.bs.tab",()=>setTimeout(()=>{try{dashboardRefresh({force:true});}catch(_e){}},150));
-  });
-})();
-
 </script>
 
 <script>
@@ -11916,105 +10372,20 @@ function __syncIsSummaryOnly(em){
   return !!(em && (em.__summaryOnly === true || em.__needsDetail === true));
 }
 
-function __hasOwnField(obj, field){
-  try{ return !!(obj && Object.prototype.hasOwnProperty.call(obj, field)); }catch(e){ return false; }
-}
-
-function __detailFieldValue(em){
-  for(let i=1;i<arguments.length;i++){
-    const k = arguments[i];
-    try{
-      const v = em ? em[k] : null;
-      if(v === null || v === undefined) continue;
-      const s = String(v).trim();
-      if(s !== "") return s;
-    }catch(e){}
-  }
-  return "";
-}
-
-function __hasAnyAccionPreliminar(em){
-  try{
-    if(!em) return false;
-    if(Array.isArray(em.accionesPreliminar)) return true;
-    if(Array.isArray(em.accionesRP)) return true;
-    if(Array.isArray(em.accionesRPTabla)) return true;
-    if(__hasOwnField(em, "accionesPreliminar")) return true;
-    if(__hasOwnField(em, "accionesRP")) return true;
-  }catch(e){}
-  return false;
-}
-
-function __hasAnyDaniosOtros(em){
-  try{
-    return __hasOwnField(em, "daniosOtros") || __hasOwnField(em, "daniosOtrosSectores") || __hasOwnField(em, "daniosOtrosRP");
-  }catch(e){ return false; }
-}
-
-function __isFullEmergenciaSufficient(em){
-  try{
-    if(!em || !em.codigo) return false;
-    if(__syncIsSummaryOnly(em)) return false;
-    if(em.__detailHydratedAt) return true;
-
-    const hasGlobal = !!__detailFieldValue(em, "numeroGlobal", "numeroReporte", "numGlobalRP", "numeroGlobalRP", "nroGlobal", "nGlobal");
-    const hasFecha = !!__detailFieldValue(em, "fechaHora", "fechaRegistro", "createdAt", "updatedAt");
-    const hasHechos = !!__detailFieldValue(em, "hechos", "descripcionHechos");
-    const hasElaborado = !!__detailFieldValue(em, "elaboradoPor", "rpEnviadoPor", "createdBy", "createdByEmail", "ownerEmail");
-    const hasDaniosOtros = __hasAnyDaniosOtros(em);
-    const hasAcciones = __hasAnyAccionPreliminar(em);
-
-    return !!(hasGlobal && hasFecha && hasHechos && hasElaborado && hasDaniosOtros && hasAcciones);
-  }catch(e){ return false; }
-}
-
-function __showDetailLoadingModal(){
-  try{
-    const cont = document.getElementById("contenidoVerEmergencia");
-    if(cont){
-      cont.innerHTML = '<div class="alert alert-info mb-0 ver-detail-loading"><span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span><span><strong>Cargando detalle completo...</strong><br><span class="small">Consultando la información completa del registro en D1.</span></span></div>';
-    }
-    const modalEl = document.getElementById("modalVerEmergencia");
-    if(modalEl && window.bootstrap){
-      __initVerModalStabilityOnce();
-      __showVerModalSafe();
-    }
-  }catch(e){}
-}
-
-function __prependPartialDetailNotice(){
-  try{
-    const cont = document.getElementById("contenidoVerEmergencia");
-    if(!cont) return;
-    const div = document.createElement("div");
-    div.className = "alert alert-warning py-2 small";
-    div.innerHTML = "<strong>Detalle parcial pendiente de sincronización.</strong> Se muestra la copia local disponible; cuando haya conexión o termine la sincronización se cargará el detalle completo.";
-    cont.prepend(div);
-  }catch(e){}
-}
-
 async function __syncFetchDetail(codigo){
   const code = String(codigo || "").trim();
   if(!code) throw new Error("codigo_invalido");
   if(!__isApiConfigured()) throw new Error('server_not_configured');
   if(!navigator.onLine) throw new Error('offline');
-  if(window.__DETAIL_FETCH_PROMISES__ && window.__DETAIL_FETCH_PROMISES__[code]) return window.__DETAIL_FETCH_PROMISES__[code];
   const token = __tokenGet();
-  const p = (async ()=>{
-    const apiPromise = __api('/sync/detail?codigo=' + encodeURIComponent(code), { method:'GET', token: token });
-    const timeoutPromise = new Promise((_, reject)=>setTimeout(()=>reject(new Error('detail_timeout')), 15000));
-    const out = await Promise.race([apiPromise, timeoutPromise]);
-    if(out.res && out.res.status === 401) throw new Error('unauthorized');
-    if(out.res && out.res.status === 404) throw new Error('not_found');
-    if(!out.res || !out.res.ok){
-      const err = out.data && out.data.error ? out.data.error : 'detail_failed';
-      throw new Error(err);
-    }
-    return out.data && out.data.record ? out.data.record : null;
-  })();
-  window.__DETAIL_FETCH_PROMISES__[code] = p;
-  try{ return await p; }
-  finally{ try{ delete window.__DETAIL_FETCH_PROMISES__[code]; }catch(_e){} }
+  const out = await __api('/sync/detail?codigo=' + encodeURIComponent(code), { method:'GET', token: token });
+  if(out.res && out.res.status === 401) throw new Error('unauthorized');
+  if(out.res && out.res.status === 404) throw new Error('not_found');
+  if(!out.res || !out.res.ok){
+    const err = out.data && out.data.error ? out.data.error : 'detail_failed';
+    throw new Error(err);
+  }
+  return out.data && out.data.record ? out.data.record : null;
 }
 
 async function __ensureFullEmergencia(objOrCodigo){
@@ -12023,20 +10394,14 @@ async function __ensureFullEmergencia(objOrCodigo){
   let arr = Array.isArray(emergencias) ? emergencias : __loadEmergencias();
   let idx = arr.findIndex(e => String(e && e.codigo ? e.codigo : '').trim() === code);
   let cur = idx >= 0 ? arr[idx] : (typeof objOrCodigo === 'object' ? objOrCodigo : null);
-
-  // V234: no confiar en una copia local aparentemente completa si le faltan campos clave del RP.
-  // Si falta N° Global, fecha, hechos, elaborado por, daños en otros sectores o acciones preliminares,
-  // se trae el detalle real desde D1 mediante /sync/detail.
-  if(cur && __isFullEmergenciaSufficient(cur)) return cur;
-
+  if(cur && !__syncIsSummaryOnly(cur) && cur.codigo) return cur;
   const rec = await __syncFetchDetail(code);
   if(!rec || !rec.payload) return cur;
   const payload = JSON.parse(JSON.stringify(rec.payload || {}));
   try{ payload.estado_sync = 'Sincronizado'; }catch(_e){}
   try{ payload.__serverHash = String(rec.hash || ''); }catch(_e){}
   try{ payload.__serverUpdatedAt = String(rec.updated_at || ''); }catch(_e){}
-  try{ payload.__detailHydratedAt = __nowIso(); }catch(_e){}
-  try{ payload.__summaryOnly = false; delete payload.__needsDetail; delete payload.__detailPartialNotice; }catch(_e){}
+  try{ payload.__summaryOnly = false; delete payload.__needsDetail; }catch(_e){}
   if(idx >= 0) arr[idx] = payload;
   else { arr.push(payload); idx = arr.length - 1; }
   emergencias = arr;
@@ -12048,42 +10413,13 @@ async function __ensureFullEmergencia(objOrCodigo){
   return payload;
 }
 
-async function __withFullEmergencia(objOrCodigo, cb, opts){
-  const options = opts || {};
-  const code = String((typeof objOrCodigo === 'string') ? objOrCodigo : (objOrCodigo && objOrCodigo.codigo) || '').trim();
-  let local = null;
+async function __withFullEmergencia(objOrCodigo, cb){
   try{
-    const arr = Array.isArray(emergencias) ? emergencias : __loadEmergencias();
-    local = arr.find(e => String(e && e.codigo ? e.codigo : '').trim() === code) || (typeof objOrCodigo === 'object' ? objOrCodigo : null);
-  }catch(_e){}
-
-  if(options.loadingModal && window.__VER_MODAL_OPENING__ && window.__VER_MODAL_CODE__ === code){
-    return;
-  }
-
-  try{
-    if(options.loadingModal){
-      window.__VER_MODAL_OPENING__ = true;
-      window.__VER_MODAL_CODE__ = code;
-      __setVerButtonsBusy(true);
-    }
-    if(options.loadingModal && (!local || !__isFullEmergenciaSufficient(local))){
-      __showDetailLoadingModal();
-    }
     const full = await __ensureFullEmergencia(objOrCodigo);
     if(!full){ alert('No se pudo cargar el detalle del registro.'); return; }
     return await cb(full);
   }catch(e){
-    if(options.loadingModal && local){
-      try{ await cb(local); __prependPartialDetailNotice(); }catch(_e){}
-      return;
-    }
     alert('No se pudo cargar el detalle desde D1: ' + ((e && e.message) ? e.message : e));
-  }finally{
-    if(options.loadingModal){
-      window.__VER_MODAL_OPENING__ = false;
-      __setVerButtonsBusy(false);
-    }
   }
 }
 
@@ -13355,7 +11691,7 @@ function __excelParseElab(em){
   }catch(e){ return null; }
 }
 
-async function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO, peligrosSeleccionados){
+function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO, peligrosSeleccionados){
   try{
     if(!window.XLSX){
       alert("No se pudo cargar la librería de Excel (XLSX). Verifique su conexión a internet.");
@@ -13381,103 +11717,6 @@ async function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO, peligrosS
     const etiquetaPeligros = filtrarPorPeligro ? peligrosFiltro.join(", ") : "Todos los peligros";
 
     const __ACCION_PRELIMINAR_BASE = "El COE MIDIS solicita al equipo territorial realizar el monitoreo de la emergencia a fin de determinar si existe afectación a usuarios o servicios de los programas nacionales. El COE MIDIS mantiene el seguimiento continuo del evento a través de los Espacios de Monitoreo y Seguimiento Sectorial (EMSS), a fin de consolidar información estratégica para la toma de decisiones y acciones sectoriales de respuesta.";
-
-    // FIX v231: en la Lista ahora se trabaja con metadatos (/sync/list) y el payload completo
-    // solo se trae bajo demanda. Para que Excel no salga con columnas vacías, antes de armar
-    // el libro se hidratan los registros filtrados con /sync/detail cuando haga falta.
-    const __firstExcelText = (...vals)=>{
-      for(const v of vals){
-        if(v === null || v === undefined) continue;
-        if(Array.isArray(v) || (typeof v === "object")) continue;
-        const s = String(v).trim();
-        if(s) return s;
-      }
-      return "";
-    };
-
-    const __coalesceExcelObject = (...vals)=>{
-      for(let v of vals){
-        if(typeof v === "string"){
-          try{ v = JSON.parse(v); }catch(_e){}
-        }
-        if(v && typeof v === "object") return v;
-      }
-      return null;
-    };
-
-    // FIX v239: Exportar Excel no debe quedarse esperando por hidratación secuencial.
-    // Se identifica mejor cuándo un registro requiere /sync/detail y se hidrata en paralelo controlado.
-    const __hasExcelUsefulText = (...vals)=> !!__firstExcelText(...vals);
-    const __hasExcelUsefulObj = (...vals)=>{
-      const o = __coalesceExcelObject(...vals);
-      if(!o || typeof o !== "object") return false;
-      try{
-        return Object.keys(o).some(k=>{
-          const v = o[k];
-          if(v === null || v === undefined) return false;
-          if(typeof v !== "object") return String(v).trim() !== "";
-          return Object.values(v).some(x=> Number(x||0) !== 0 || String(x||"").trim() !== "");
-        });
-      }catch(_e){ return true; }
-    };
-
-    const __needsExcelDetail = (em)=>{
-      try{
-        if(!em || !em.codigo) return false;
-        if(em.__detailHydratedAt) return false;
-        if(typeof __syncIsSummaryOnly === "function" && __syncIsSummaryOnly(em)) return true;
-        if(em.__summaryOnly || em.__needsDetail) return true;
-
-        const hasHechos = __hasExcelUsefulText(em.hechos, em.hecho, em.descripcionHechos, em.detalleHechos, em.descripcion);
-        const hasDaniosOtros = __hasExcelUsefulText(em.daniosOtros, em.dañosOtros, em.danosOtros, em.daniosOtrosSectores, em.danosOtrosSectores, em.afectacionOtrosSectores);
-        const hasDaniosMidis = __hasExcelUsefulObj(em.daniosMIDIS, em.dañosMIDIS, em.danosMIDIS, em.daniosSector, em.daniosSectorMidis, em.daniosSectorDesarrollo);
-        const hasAccPre = !!(em.accionesPreliminar || em.accionesPreliminares || em.accionesRP || em.accionesPreliminarRP || em.accionesSectorPreliminar);
-        const hasRcFull = Array.isArray(em.rcReportes) && em.rcReportes.some(rc => rc && !rc.__summaryOnly && (rc.acciones || rc.accionesRC || rc.accionesComplementario || rc.accionesComplementarias || rc.accionesComp || rc.daniosMIDIS || rc.dañosMIDIS || rc.danosMIDIS));
-
-        // Si faltan campos largos que deberían venir del payload completo, se consulta detalle.
-        return !(hasHechos && (hasDaniosOtros || hasDaniosMidis || hasAccPre || hasRcFull));
-      }catch(e){ return false; }
-    };
-
-    const __hydrateExcelItems = async (selected)=>{
-      const arr = Array.isArray(selected) ? selected : [];
-      const queue = [];
-      for(let i=0; i<arr.length; i++){
-        const em = arr[i];
-        if(em && em.codigo && __needsExcelDetail(em)) queue.push({i, codigo: em.codigo});
-      }
-      if(queue.length === 0) return 0;
-
-      const btnProgress = document.getElementById("btnDoExportExcelLista");
-      const oldTxtProgress = btnProgress ? btnProgress.textContent : "";
-      let done = 0, fullCount = 0;
-      const concurrency = Math.min(8, queue.length);
-      let cursor = 0;
-
-      const worker = async ()=>{
-        while(cursor < queue.length){
-          const job = queue[cursor++];
-          try{
-            if(btnProgress) btnProgress.textContent = `Cargando detalle ${done + 1}/${queue.length}...`;
-            if(typeof __ensureFullEmergencia === "function"){
-              const full = await __ensureFullEmergencia(job.codigo);
-              if(full){ arr[job.i] = full; fullCount++; }
-            }
-          }catch(_e){
-            // Si un detalle falla, no se detiene toda la exportación; se exporta lo disponible.
-          }finally{
-            done++;
-          }
-        }
-      };
-
-      try{
-        await Promise.all(Array.from({length: concurrency}, worker));
-      }finally{
-        if(btnProgress) btnProgress.textContent = oldTxtProgress || "Exportar";
-      }
-      return fullCount;
-    };
 
     const __fmtAcciones = (a)=>{
       let arr = a;
@@ -13616,7 +11855,6 @@ async function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO, peligrosS
     const resumenMap = new Map();
     const globalTotals = { emergencias:0, departamentos:new Set(), ua:0, sa:0, ups:0, uf:0, ma:0 };
 
-    let selectedEmergencias = [];
     (Array.isArray(emergencias) ? emergencias : []).forEach(em=>{
       try{
         if(typeof __isDeleted === "function" && __isDeleted(em)) return;
@@ -13626,33 +11864,12 @@ async function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO, peligrosS
         if(!elabDate) return;
         if(elabDate < desde || elabDate > hasta) return;
         if(filtrarPorPeligro && !peligrosSet.has(String(em.peligro||"").trim().toLowerCase())) return;
-        selectedEmergencias.push(em);
-      }catch(_e){}
-    });
 
-    if(selectedEmergencias.length === 0){
-      alert("No se encontraron emergencias en ese rango y peligro seleccionado (según la fecha de elaboración).\n\nVerifique la fecha inicial, fecha final y el filtro de peligros.");
-      return;
-    }
-
-    await __hydrateExcelItems(selectedEmergencias);
-
-    selectedEmergencias.forEach(em=>{
-      try{
-        if(typeof __isDeleted === "function" && __isDeleted(em)) return;
-        if(__isSeguimientoRecord(em)) return;
-
-        const elabDate = __getElabDateOnly(em);
-        if(!elabDate) return;
-        if(elabDate < desde || elabDate > hasta) return;
-        if(filtrarPorPeligro && !peligrosSet.has(String(em.peligro||"").trim().toLowerCase())) return;
-
-        const danosOtros = __firstExcelText(em.daniosOtros, em.dañosOtros, em.danosOtros, em.daniosOtrosSectores, em.danosOtrosSectores, em.afectacionOtrosSectores);
-        const danosObj = __coalesceExcelObject(em.daniosMIDIS, em.dañosMIDIS, em.danosMIDIS, em.daniosSector, em.daniosSectorMidis, em.daniosSectorDesarrollo);
-        const danosInfo  = __fmtDaniosMIDIS(danosObj);
+        const danosOtros = String(em.daniosOtros || "");
+        const danosInfo  = __fmtDaniosMIDIS(em.daniosMIDIS);
         const danosMIDIS = danosInfo.text;
-        __addDaniosPorPrograma(danosObj);
-        const accPre     = __fmtAccionesPreliminar(em.accionesPreliminar ?? em.accionesPreliminares ?? em.accionesRP ?? em.accionesPreliminarRP ?? em.accionesSectorPreliminar);
+        __addDaniosPorPrograma(em.daniosMIDIS);
+        const accPre     = __fmtAccionesPreliminar(em.accionesPreliminar);
         const accComp    = __fmtAccionesComplementario(em);
 
         const row = [
@@ -13662,7 +11879,7 @@ async function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO, peligrosS
           String(em.departamento||""),
           String(em.provincia||""),
           String(em.distrito||""),
-          __firstExcelText(em.hechos, em.hecho, em.descripcionHechos, em.detalleHechos, em.descripcion),
+          String(em.hechos||""),
           danosOtros,
           danosMIDIS,
           accPre,
@@ -13928,7 +12145,7 @@ try{
       }
 
       if(btnDo){
-        btnDo.addEventListener("click", async ()=>{
+        btnDo.addEventListener("click", ()=>{
           const d = (iDesde && iDesde.value) ? iDesde.value : "";
           const h = (iHasta && iHasta.value) ? iHasta.value : "";
           if(!d || !h){
@@ -13940,16 +12157,8 @@ try{
             alert("Seleccione al menos un peligro o marque Todos los peligros.");
             return;
           }
-          const oldTxt = btnDo.textContent;
-          try{
-            btnDo.disabled = true;
-            btnDo.textContent = "Exportando...";
-            await __exportExcelListaEmergenciasByElab(d, h, peligros);
-            try{ modal.hide(); }catch(_e){}
-          }finally{
-            btnDo.disabled = false;
-            btnDo.textContent = oldTxt || "Exportar";
-          }
+          __exportExcelListaEmergenciasByElab(d, h, peligros);
+          try{ modal.hide(); }catch(_e){}
         });
       }
     }
