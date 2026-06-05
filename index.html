@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <!-- BUILD: 2026-02-20 autopull-cooldown-v206-fix-sync-v3 -->
-<script>window.__BUILD_ID='2026-02-20 autopull-cooldown-v206-fix-sync-v3-sync-lock-v233-export-excel-lista';console.log('BUILD',window.__BUILD_ID);</script>
+<script>window.__BUILD_ID='2026-02-20 autopull-cooldown-v206-fix-sync-v3-sync-lock-v234-export-excel-lista';console.log('BUILD',window.__BUILD_ID);</script>
 
 <!-- build: VER_PRINT_RC_ALWAYS_VISIBLE v4 2026-01-11 -->
 <meta charset="UTF-8" />
@@ -18,7 +18,7 @@ body { background: #f5f5f5; }
 .card { margin-top: 1rem; }
 .table td input { width: 100%; }
 .hidden { display: none; }
-/* ======= VERSION 233 05/06/2026 - fix export Excel Lista ======= */
+/* ======= VERSION 234 05/06/2026 - fix export Excel Lista campos completos ======= */
 /* ======= VER (Listado de Emergencias): Formato de visualización/impresión ======= */
 .ver-report-wrap{ font-family: Calibri, Arial, sans-serif; font-size: 11pt; color:#111; }
 .ver-report-title{ font-family: Calibri, Arial, sans-serif; font-size:15pt; font-weight:700; color:#1F4E79; margin:0 0 6px 0; }
@@ -12120,9 +12120,9 @@ async function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO, peligrosS
 
     const __ACCION_PRELIMINAR_BASE = "El COE MIDIS solicita al equipo territorial realizar el monitoreo de la emergencia a fin de determinar si existe afectación a usuarios o servicios de los programas nacionales. El COE MIDIS mantiene el seguimiento continuo del evento a través de los Espacios de Monitoreo y Seguimiento Sectorial (EMSS), a fin de consolidar información estratégica para la toma de decisiones y acciones sectoriales de respuesta.";
 
-    // FIX v231: en la Lista ahora se trabaja con metadatos (/sync/list) y el payload completo
-    // solo se trae bajo demanda. Para que Excel no salga con columnas vacías, antes de armar
-    // el libro se hidratan los registros filtrados con /sync/detail cuando haga falta.
+    // FIX v234: la Lista usa resúmenes de /sync/list. Para exportar campos largos
+    // (Hechos, daños y acciones) se debe usar payload completo. Si el rango es amplio,
+    // se evita consultar /sync/detail registro por registro y se usa un snapshot completo.
     const __firstExcelText = (...vals)=>{
       for(const v of vals){
         if(v === null || v === undefined) continue;
@@ -12133,27 +12133,57 @@ async function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO, peligrosS
       return "";
     };
 
+    const __excelParseMaybeJson = (v)=>{
+      if(typeof v === "string"){
+        const s = v.trim();
+        if(!s) return v;
+        if((s.startsWith("{") && s.endsWith("}")) || (s.startsWith("[") && s.endsWith("]"))){
+          try{ return JSON.parse(s); }catch(_e){ return v; }
+        }
+      }
+      return v;
+    };
+
     const __coalesceExcelObject = (...vals)=>{
       for(let v of vals){
-        if(typeof v === "string"){
-          try{ v = JSON.parse(v); }catch(_e){}
-        }
-        if(v && typeof v === "object") return v;
+        v = __excelParseMaybeJson(v);
+        if(v && typeof v === "object" && !Array.isArray(v)) return v;
       }
       return null;
+    };
+
+    const __excelArray = (v)=>{
+      v = __excelParseMaybeJson(v);
+      return Array.isArray(v) ? v : [];
+    };
+
+    const __lastExcelRC = (em)=>{
+      try{
+        const rcs = __excelArray(em && (em.rcReportes ?? em.rcReportesJson ?? em.rcReportesJSON));
+        for(let i=rcs.length-1; i>=0; i--){
+          const rc = rcs[i];
+          if(rc && typeof rc === "object" && rc.__summaryOnly !== true) return rc;
+        }
+        return null;
+      }catch(_e){ return null; }
     };
 
     const __needsExcelDetail = (em)=>{
       try{
         if(!em) return false;
         if(typeof __syncIsSummaryOnly === "function" && __syncIsSummaryOnly(em)) return true;
-        return !(
-          __firstExcelText(em.hechos, em.hecho, em.descripcionHechos, em.detalleHechos) ||
-          __firstExcelText(em.daniosOtros, em.dañosOtros, em.danosOtros, em.daniosOtrosSectores, em.danosOtrosSectores) ||
+        const lastRC = __lastExcelRC(em);
+        const hasRp = !!(
+          __firstExcelText(em.hechos, em.hecho, em.descripcionHechos, em.detalleHechos, em.descripcion) ||
+          __firstExcelText(em.daniosOtros, em.dañosOtros, em.danosOtros, em.daniosOtrosSectores, em.danosOtrosSectores, em.afectacionOtrosSectores) ||
           __coalesceExcelObject(em.daniosMIDIS, em.dañosMIDIS, em.danosMIDIS, em.daniosSector, em.daniosSectorMidis, em.daniosSectorDesarrollo) ||
-          em.accionesPreliminar || em.accionesRP || em.accionesPreliminares || em.acciones ||
-          (Array.isArray(em.rcReportes) && em.rcReportes.some(rc => rc && !rc.__summaryOnly && (rc.acciones || rc.accionesRC || rc.accionesComplementario || rc.accionesComplementarias || rc.accionesComp || rc.daniosMIDIS)))
+          em.accionesPreliminar || em.accionesPreliminares || em.accionesRP || em.accionesPreliminarRP || em.accionesSectorPreliminar
         );
+        const hasRc = !!(lastRC && (
+          lastRC.daniosMIDIS || lastRC.dañosMIDIS || lastRC.danosMIDIS ||
+          lastRC.acciones || lastRC.accionesRC || lastRC.accionesComplementario || lastRC.accionesComplementarias || lastRC.accionesComp
+        ));
+        return !(hasRp || hasRc);
       }catch(e){ return false; }
     };
 
@@ -12169,35 +12199,119 @@ async function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO, peligrosS
       ]).finally(()=>{ try{ clearTimeout(timer); }catch(_e){} });
     };
 
+    const __excelCanApi = ()=>{
+      try{ return !!(__isApiConfigured && __isApiConfigured() && navigator.onLine && (!currentUser || currentUser.role !== __ROLES.CONS || __tokenGet)); }catch(_e){ return false; }
+    };
+
+    const __excelFetchSnapshotMap = async ()=>{
+      const map = new Map();
+      if(!__excelCanApi() || typeof __api !== "function") return map;
+      const token = (typeof __tokenGet === "function") ? __tokenGet() : null;
+      const limit = 5000;
+      let since = "1970-01-01T00:00:00.000Z";
+      let guard = 0;
+      while(guard < 8){
+        const out = await __excelWithTimeout(
+          __api("/sync/pull?since=" + encodeURIComponent(since) + "&limit=" + limit, { method:"GET", token: token }),
+          25000,
+          "timeout_snapshot_excel"
+        );
+        if(out.res && out.res.status === 401) throw new Error("unauthorized");
+        if(!out.res || !out.res.ok) throw new Error((out.data && out.data.error) ? out.data.error : "pull_failed");
+        const recs = (out.data && Array.isArray(out.data.records)) ? out.data.records : [];
+        if(recs.length === 0) break;
+        let maxUpdated = since;
+        for(const r of recs){
+          const code = String(r && r.codigo ? r.codigo : "").trim();
+          const payload = r && r.payload ? JSON.parse(JSON.stringify(r.payload)) : null;
+          if(code && payload){
+            try{ payload.__serverHash = String(r.hash || r.payload_hash || ""); }catch(_e){}
+            try{ payload.__serverUpdatedAt = String(r.updated_at || ""); }catch(_e){}
+            try{ payload.__serverCreatedAt = String(r.created_at || ""); }catch(_e){}
+            try{ payload.__summaryOnly = false; delete payload.__needsDetail; }catch(_e){}
+            const prev = map.get(code);
+            if(!prev || String(payload.__serverUpdatedAt || "") >= String(prev.__serverUpdatedAt || "")) map.set(code, payload);
+          }
+          const upd = String(r && r.updated_at ? r.updated_at : "");
+          if(upd && upd > maxUpdated) maxUpdated = upd;
+        }
+        if(recs.length < limit) break;
+        if(maxUpdated === since) break;
+        since = maxUpdated;
+        guard++;
+        await __excelSleep(0);
+      }
+      return map;
+    };
+
+    const __replaceLocalWithFull = (code, full)=>{
+      try{
+        if(!code || !full) return;
+        const arrLocal = Array.isArray(emergencias) ? emergencias : [];
+        const idxLocal = arrLocal.findIndex(x=>String(x && x.codigo ? x.codigo : "").trim() === code);
+        if(idxLocal >= 0) arrLocal[idxLocal] = full;
+        if(typeof __saveEmergencias === "function") __saveEmergencias();
+      }catch(_e){}
+    };
+
     const __hydrateExcelItems = async (selected)=>{
       const arr = Array.isArray(selected) ? selected : [];
+      const needed = [];
+      arr.forEach((em, i)=>{ if(em && em.codigo && __needsExcelDetail(em)) needed.push(i); });
+      if(!needed.length) return 0;
+
       let fullCount = 0;
-      const detailTimeoutMs = 6500;
-      const maxTotalMs = 25000;
-      const startedAt = Date.now();
 
-      for(let i=0; i<arr.length; i++){
-        const em = arr[i];
-        if(!em || !em.codigo || !__needsExcelDetail(em)) continue;
-
-        // Evita que la exportación quede congelada si /sync/detail demora o no responde.
-        if((Date.now() - startedAt) > maxTotalMs){
-          console.warn("Export Excel Lista: se alcanzó el tiempo máximo de hidratación; se exportará lo ya disponible.");
-          break;
-        }
-
+      // Rangos amplios: una sola consulta con payload completo evita N llamadas lentas a /sync/detail.
+      if(needed.length >= 25){
         try{
-          if(typeof __ensureFullEmergencia === "function"){
-            const full = await __excelWithTimeout(__ensureFullEmergencia(em.codigo), detailTimeoutMs, "timeout_detail_" + em.codigo);
-            if(full){ arr[i] = full; fullCount++; }
-            // Cede el hilo al navegador para no congelar la interfaz en rangos amplios.
-            if(i % 10 === 0) await __excelSleep(0);
+          const snap = await __excelFetchSnapshotMap();
+          if(snap && snap.size){
+            needed.forEach(i=>{
+              const code = String(arr[i]?.codigo || "").trim();
+              const full = snap.get(code);
+              if(full){ arr[i] = full; __replaceLocalWithFull(code, full); fullCount++; }
+            });
           }
         }catch(_e){
-          // Si un detalle falla o demora, no se bloquea toda la exportación; se exporta lo disponible.
-          console.warn("Export Excel Lista: no se pudo hidratar detalle", em.codigo, _e);
+          console.warn("Export Excel Lista: snapshot completo no disponible; se usará detalle por registro.", _e);
         }
       }
+
+      const pending = needed.filter(i=>__needsExcelDetail(arr[i]));
+      const detailTimeoutMs = 8500;
+      const concurrency = 6;
+      let cursor = 0;
+
+      const worker = async ()=>{
+        while(cursor < pending.length){
+          const i = pending[cursor++];
+          const em = arr[i];
+          const code = String(em && em.codigo ? em.codigo : "").trim();
+          if(!code) continue;
+          try{
+            let full = null;
+            const cached = window.__EXCEL_DETAIL_CACHE__ && window.__EXCEL_DETAIL_CACHE__[code];
+            if(cached && cached.hash && cached.hash === String(em.__serverHash || "") && cached.payload){
+              full = cached.payload;
+            }else if(typeof __ensureFullEmergencia === "function"){
+              full = await __excelWithTimeout(__ensureFullEmergencia(code), detailTimeoutMs, "timeout_detail_" + code);
+            }
+            if(full){
+              arr[i] = full;
+              fullCount++;
+              try{
+                window.__EXCEL_DETAIL_CACHE__ = window.__EXCEL_DETAIL_CACHE__ || {};
+                window.__EXCEL_DETAIL_CACHE__[code] = { hash:String(full.__serverHash || em.__serverHash || ""), payload:full };
+              }catch(_e){}
+            }
+          }catch(_e){
+            console.warn("Export Excel Lista: no se pudo hidratar detalle", code, _e);
+          }
+          if(cursor % 10 === 0) await __excelSleep(0);
+        }
+      };
+      await Promise.all(Array.from({length: Math.min(concurrency, pending.length)}, ()=>worker()));
       return fullCount;
     };
 
@@ -12237,26 +12351,34 @@ async function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO, peligrosS
       }).filter(Boolean).join("\n");
     };
 
-    const __fmtDaniosMIDIS = (src)=>{
-      let o = src;
-      if(typeof o === "string"){
-        try{ o = JSON.parse(o); }catch(_e){}
+    const __numExcel = (...vals)=>{
+      for(const v of vals){
+        if(v === null || v === undefined || v === "") continue;
+        const n = Number(String(v).replace(",", "."));
+        if(!isNaN(n)) return n;
       }
-      if(!o || typeof o !== "object") return { text:"", totals:{ua:0,sa:0,ups:0,uf:0,ma:0} };
-      const progs = (Array.isArray(programas) && programas.length) ? programas : Object.keys(o);
+      return 0;
+    };
+
+    const __fmtDaniosMIDIS = (src)=>{
+      let o = __excelParseMaybeJson(src);
+      if(!o || typeof o !== "object" || Array.isArray(o)) return { text:"", totals:{ua:0,sa:0,ups:0,uf:0,ma:0} };
+      const baseProgs = (Array.isArray(programas) && programas.length) ? programas : [];
+      const dynamicProgs = Object.keys(o || {});
+      const progs = Array.from(new Set(baseProgs.concat(dynamicProgs))).filter(Boolean);
       const lines = [];
       const totals = {ua:0,sa:0,ups:0,uf:0,ma:0};
+      const objKeys = Object.keys(o || {});
       progs.forEach(p=>{
         const name = String(p||"").trim();
         if(!name) return;
-        const keyUp = name.toUpperCase();
-        const keyLo = name.toLowerCase();
-        const d = (o && (o[name] || o[keyUp] || o[keyLo])) ? (o[name] || o[keyUp] || o[keyLo]) : {};
-        const ua  = Number(d?.usuariosAfectados || 0);
-        const sa  = Number(d?.serviciosAfectados || 0);
-        const ups = Number(d?.usuariosPorServicios || 0);
-        const uf  = Number(d?.usuariosFallecidos || 0);
-        const ma  = Number(d?.moduloAfectado || 0);
+        const key = objKeys.find(k=>String(k||"").trim().toLowerCase() === name.toLowerCase()) || name;
+        const d = (o && o[key] && typeof o[key] === "object") ? o[key] : {};
+        const ua  = __numExcel(d.usuariosAfectados, d.usuarios_afectados, d.ua, d.UA);
+        const sa  = __numExcel(d.serviciosAfectados, d.servicios_afectados, d.sa, d.SA);
+        const ups = __numExcel(d.usuariosPorServicios, d.usuarios_por_servicios, d.uas, d.ups, d.UPS, d.UAS);
+        const uf  = __numExcel(d.usuariosFallecidos, d.fallecidos, d.uf, d.UF);
+        const ma  = __numExcel(d.moduloAfectado, d.modulo_afectado, d.ma, d.MA);
         totals.ua += ua; totals.sa += sa; totals.ups += ups; totals.uf += uf; totals.ma += ma;
         if((ua + sa + ups + uf + ma) <= 0) return;
         lines.push(`${name}: UA=${ua}, SA=${sa}, UPS=${ups}, UF=${uf}, MA=${ma}`);
@@ -12265,20 +12387,33 @@ async function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO, peligrosS
     };
 
     const __fmtAccionesComplementario = (em)=>{
-      let rcs = em?.rcReportes;
-      if(typeof rcs === "string"){
-        try{ rcs = JSON.parse(rcs); }catch(_e){}
+      const rc = __lastExcelRC(em);
+      if(!rc) return "";
+      let a = (typeof __dashGetAccionesComplementarioFromRC==="function")
+        ? __dashGetAccionesComplementarioFromRC(rc)
+        : (rc && (rc.acciones ?? rc.accionesRC ?? rc.accionesComplementario ?? rc.accionesComplementarias ?? rc.accionesComp ?? rc.accionesSectorComplementario));
+      return __fmtAcciones(a);
+    };
+
+    const __getExcelDaniosMIDIS = (em)=>{
+      const rc = __lastExcelRC(em);
+      if(rc){
+        const rcDanios = __coalesceExcelObject(rc.daniosMIDIS, rc.dañosMIDIS, rc.danosMIDIS, rc.daniosSector, rc.daniosSectorMidis, rc.daniosSectorDesarrollo);
+        if(rcDanios) return rcDanios;
       }
-      if(!Array.isArray(rcs) || !rcs.length) return "";
-      const all = [];
-      rcs.forEach(rc=>{
-        let a = (typeof __dashGetAccionesComplementarioFromRC==="function")
-          ? __dashGetAccionesComplementarioFromRC(rc)
-          : (rc && (rc.acciones ?? rc.accionesRC ?? rc.accionesComplementario ?? rc.accionesComplementarias ?? rc.accionesComp));
-        const t = __fmtAcciones(a);
-        if(String(t||"").trim()) all.push(String(t).trim());
-      });
-      return all.join("\n");
+      return __coalesceExcelObject(em.daniosMIDIS, em.dañosMIDIS, em.danosMIDIS, em.daniosSector, em.daniosSectorMidis, em.daniosSectorDesarrollo);
+    };
+
+    const __getExcelDaniosOtros = (em)=>{
+      const rc = __lastExcelRC(em);
+      return __firstExcelText(
+        rc && (rc.daniosOtros ?? rc.dañosOtros ?? rc.danosOtros ?? rc.daniosOtrosSectores ?? rc.danosOtrosSectores ?? rc.afectacionOtrosSectores),
+        em.daniosOtros, em.dañosOtros, em.danosOtros, em.daniosOtrosSectores, em.danosOtrosSectores, em.afectacionOtrosSectores
+      );
+    };
+
+    const __getExcelHechos = (em)=>{
+      return __firstExcelText(em.hechos, em.hecho, em.descripcionHechos, em.detalleHechos, em.descripcion, em.resumenHechos);
     };
 
     const __getElabDateOnly = (em)=>{
@@ -12301,15 +12436,11 @@ async function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO, peligrosS
     };
 
     const __getDanioPrograma = (src, programa)=>{
-      let o = src;
-      if(typeof o === "string"){
-        try{ o = JSON.parse(o); }catch(_e){}
-      }
-      if(!o || typeof o !== "object") return {};
+      let o = __excelParseMaybeJson(src);
+      if(!o || typeof o !== "object" || Array.isArray(o)) return {};
       const name = String(programa||"").trim();
-      const keyUp = name.toUpperCase();
-      const keyLo = name.toLowerCase();
-      return (o[name] || o[keyUp] || o[keyLo] || {});
+      const key = Object.keys(o).find(k=>String(k||"").trim().toLowerCase() === name.toLowerCase()) || name;
+      return (o[key] && typeof o[key] === "object") ? o[key] : {};
     };
 
     const programaMap = new Map();
@@ -12326,11 +12457,11 @@ async function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO, peligrosS
         if(!programaMap.has(name)) programaMap.set(name, { programa:name, ua:0, sa:0, ups:0, uf:0, ma:0 });
         const d = __getDanioPrograma(src, name);
         const agg = programaMap.get(name);
-        agg.ua  += Number(d?.usuariosAfectados || 0);
-        agg.sa  += Number(d?.serviciosAfectados || 0);
-        agg.ups += Number(d?.usuariosPorServicios || 0);
-        agg.uf  += Number(d?.usuariosFallecidos || 0);
-        agg.ma  += Number(d?.moduloAfectado || 0);
+        agg.ua  += __numExcel(d?.usuariosAfectados, d?.usuarios_afectados, d?.ua, d?.UA);
+        agg.sa  += __numExcel(d?.serviciosAfectados, d?.servicios_afectados, d?.sa, d?.SA);
+        agg.ups += __numExcel(d?.usuariosPorServicios, d?.usuarios_por_servicios, d?.uas, d?.ups, d?.UPS, d?.UAS);
+        agg.uf  += __numExcel(d?.usuariosFallecidos, d?.fallecidos, d?.uf, d?.UF);
+        agg.ma  += __numExcel(d?.moduloAfectado, d?.modulo_afectado, d?.ma, d?.MA);
       });
     };
 
@@ -12369,12 +12500,12 @@ async function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO, peligrosS
         if(elabDate < desde || elabDate > hasta) return;
         if(filtrarPorPeligro && !peligrosSet.has(String(em.peligro||"").trim().toLowerCase())) return;
 
-        const danosOtros = __firstExcelText(em.daniosOtros, em.dañosOtros, em.danosOtros, em.daniosOtrosSectores, em.danosOtrosSectores, em.afectacionOtrosSectores);
-        const danosObj = __coalesceExcelObject(em.daniosMIDIS, em.dañosMIDIS, em.danosMIDIS, em.daniosSector, em.daniosSectorMidis, em.daniosSectorDesarrollo);
+        const danosOtros = __getExcelDaniosOtros(em);
+        const danosObj = __getExcelDaniosMIDIS(em);
         const danosInfo  = __fmtDaniosMIDIS(danosObj);
         const danosMIDIS = danosInfo.text;
         __addDaniosPorPrograma(danosObj);
-        const accPre     = __fmtAccionesPreliminar(em.accionesPreliminar ?? em.accionesPreliminares ?? em.accionesRP ?? em.accionesPreliminarRP ?? em.accionesSectorPreliminar);
+        const accPre     = __fmtAccionesPreliminar(em.accionesPreliminar ?? em.accionesPreliminares ?? em.accionesRP ?? em.accionesPreliminarRP ?? em.accionesSectorPreliminar ?? em.accionesSector);
         const accComp    = __fmtAccionesComplementario(em);
 
         const row = [
@@ -12384,7 +12515,7 @@ async function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO, peligrosS
           String(em.departamento||""),
           String(em.provincia||""),
           String(em.distrito||""),
-          __firstExcelText(em.hechos, em.hecho, em.descripcionHechos, em.detalleHechos, em.descripcion),
+          __getExcelHechos(em),
           danosOtros,
           danosMIDIS,
           accPre,
