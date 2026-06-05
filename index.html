@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <!-- BUILD: 2026-02-20 autopull-cooldown-v206-fix-sync-v3 -->
-<script>window.__BUILD_ID='2026-02-20 autopull-cooldown-v206-fix-sync-v3-sync-lock-v238-dashboard-impacto-midis-async-detail';console.log('BUILD',window.__BUILD_ID);</script>
+<script>window.__BUILD_ID='2026-02-20 autopull-cooldown-v206-fix-sync-v3-sync-lock-v240-rp-submit-confirm-d1';console.log('BUILD',window.__BUILD_ID);</script>
 
 <!-- build: VER_PRINT_RC_ALWAYS_VISIBLE v4 2026-01-11 -->
 <meta charset="UTF-8" />
@@ -18,7 +18,7 @@ body { background: #f5f5f5; }
 .card { margin-top: 1rem; }
 .table td input { width: 100%; }
 .hidden { display: none; }
-/* ======= VERSION 238 05/06/2026 - fix async Dashboard Impacto MIDIS ======= */
+/* ======= VERSION 241 05/06/2026 - fix RP approve fresh detail/sync ======= */
 /* ======= VER (Listado de Emergencias): Formato de visualización/impresión ======= */
 .ver-report-wrap{ font-family: Calibri, Arial, sans-serif; font-size: 11pt; color:#111; }
 .ver-report-title{ font-family: Calibri, Arial, sans-serif; font-size:15pt; font-weight:700; color:#1F4E79; margin:0 0 6px 0; }
@@ -3166,9 +3166,15 @@ function __renderAprobaciones(){
       const ref = JSON.parse(b.getAttribute("data-apr"));
       const code = String(ref && ref.codigo ? ref.codigo : '').trim();
       if(!code) return;
-      const target = (Array.isArray(emergencias)?emergencias:[]).find(x=>String(x && x.codigo ? x.codigo : '').trim()===code) || null;
+      let target = (Array.isArray(emergencias)?emergencias:[]).find(x=>String(x && x.codigo ? x.codigo : '').trim()===code) || null;
+      try{
+        if(ref && ref.kind === "rp" && __isApiConfigured && __isApiConfigured() && navigator.onLine){
+          const fresh = await __forceServerFullEmergencia(code, { required:true });
+          if(fresh) target = fresh;
+        }
+      }catch(_e){}
       const snapshot = target ? JSON.parse(JSON.stringify(target)) : null;
-      try{ if(__isApiConfigured && __isApiConfigured() && navigator.onLine){ await __syncPullAuto(); } }catch(_e){}
+      try{ if(__isApiConfigured && __isApiConfigured() && navigator.onLine && !(ref && ref.kind === "rp")){ await __syncPullAuto(); } }catch(_e){}
       __aprobar(ref);
       __saveEmergencias();
       __renderAprobaciones();
@@ -3179,6 +3185,26 @@ function __renderAprobaciones(){
         pendingMessage: 'Aprobación guardada en local. Pendiente de sincronizar.',
         failurePrefix: 'No se pudo confirmar la aprobación en servidor'
       });
+      if(ref && ref.kind === "rp" && res && !res.ok){
+        try{
+          const fresh = await __forceServerFullEmergencia(code, { required:true });
+          if(fresh){
+            // Si el conflicto fue por hash vencido y el servidor aún mantiene el RP Pendiente, reintentar una sola vez sobre la versión oficial.
+            if(res.conflict && String(fresh.rpAprobEstado || "") === "Pendiente"){
+              const retrySnapshot = JSON.parse(JSON.stringify(fresh));
+              __aprobar({kind:"rp", codigo:code});
+              __saveEmergencias();
+              res = await __syncCommitCodigo(code, retrySnapshot, {
+                successMessage: 'Aprobación confirmada en servidor.',
+                pendingMessage: 'Aprobación guardada en local. Pendiente de sincronizar.',
+                failurePrefix: 'No se pudo confirmar la aprobación en servidor'
+              });
+            }
+            cargarTablaEmergencias?.();
+            dashboardRefresh?.();
+          }
+        }catch(_e){}
+      }
       __renderAprobaciones();
       if(res && res.message) alert(res.message);
     });
@@ -3770,7 +3796,7 @@ function __syncApplyServerRecord(codigo, rec){
   const arr = Array.isArray(emergencias) ? emergencias : __loadEmergencias();
   const payload = JSON.parse(JSON.stringify(rec.payload || {}));
   try{ payload.estado_sync = 'Sincronizado'; }catch(_e){}
-  try{ payload.__serverHash = String(rec.hash || ''); }catch(_e){}
+  try{ payload.__serverHash = String(rec.hash || rec.payload_hash || rec.payloadHash || rec.server_hash || ''); }catch(_e){}
   try{ payload.__serverUpdatedAt = String(rec.updated_at || ''); }catch(_e){}
 
   const idx = arr.findIndex(e => String(e && e.codigo ? e.codigo : '').trim() === code);
@@ -3780,8 +3806,7 @@ function __syncApplyServerRecord(codigo, rec){
   emergencias = arr;
 
   const map = __getHashMap();
-  if(rec.hash) map[code] = String(rec.hash);
-  else delete map[code];
+  { const __h = String(rec.hash || rec.payload_hash || rec.payloadHash || rec.server_hash || ''); if(__h) map[code] = __h; else delete map[code]; }
   __setHashMap(map);
 
   try{ __saveEmergencias(); }catch(e){}
@@ -4111,10 +4136,23 @@ document.addEventListener("DOMContentLoaded", ()=>{
   });
 
   // Aprobaciones modal
-  document.getElementById("btnAprob")?.addEventListener("click", ()=>{
-    __renderAprobaciones();
-    const modal = new bootstrap.Modal(document.getElementById("modalAprob"));
-    modal.show();
+  // FIX v241: antes de listar pendientes, el Administrador fuerza lectura vigente desde D1.
+  document.getElementById("btnAprob")?.addEventListener("click", async ()=>{
+    const btn = document.getElementById("btnAprob");
+    const oldTxt = btn ? btn.textContent : "";
+    try{
+      if(btn){ btn.disabled = true; btn.textContent = "Actualizando..."; }
+      if(__isApiConfigured && __isApiConfigured() && navigator.onLine){
+        await __syncPullAuto({ force:true });
+      }
+    }catch(e){
+      console.warn("No se pudo actualizar pendientes desde D1 antes de abrir Aprobaciones.", e);
+    }finally{
+      try{ __renderAprobaciones(); }catch(e){}
+      const modal = new bootstrap.Modal(document.getElementById("modalAprob"));
+      modal.show();
+      if(btn){ btn.disabled = false; btn.textContent = oldTxt || "Aprobaciones"; }
+    }
   });
 
   // Envíos a aprobación
@@ -5236,74 +5274,202 @@ document.getElementById("btnGuardarRP").onclick = async () => {
 document.getElementById("btnGuardarAprobarRPAdmin")?.addEventListener("click", async () => {
   if(!(__isAdmin && __isAdmin())) return;
 
-  try{
-    if(__isApiConfigured && __isApiConfigured() && navigator.onLine){
-      await __syncPullAuto();
-    }
-  }catch(e){}
-
-  const codigo = (document.getElementById("codigoRP")?.value || "").trim();
-  const prev = codigo ? ((Array.isArray(emergencias)?emergencias:[]).find(e=>String(e && e.codigo ? e.codigo : '').trim()===codigo) || null) : null;
-  const snapshot = prev ? JSON.parse(JSON.stringify(prev)) : null;
-
-  const saved = __saveRP({submit:false});
-  if(!saved) return;
-
-  const code = (document.getElementById("codigoRP")?.value || "").trim();
-  if(!code){ alert("No hay RP cargado."); return; }
-
-  const em = emergencias.find(e=>String(e && e.codigo ? e.codigo : '').trim()===code);
-  if(!em){ alert("No se encontró la emergencia."); return; }
-
-  if(em.rpAprobEstado !== "Pendiente" && em.rpAprobEstado !== "Aprobado"){
-    em.rpAprobEstado = "Pendiente";
-    __ensureRPGlobalNumber(em);
-    em.rpEnviadoPor  = __rpEnviadoPorValue(em) || __getCurrentUserName();
-    em.rpEnviadoPorEmail = currentUser ? currentUser.email : (em.rpEnviadoPorEmail || null);
-    em.rpEnviadoEn   = __rpEnviadoEnValue(em) || __nowIso();
-    __audit("ENVIAR_RP_APROBACION", "emergencia", em.codigo, null);
+  const btn = document.getElementById("btnGuardarAprobarRPAdmin");
+  const oldTxt = btn ? btn.textContent : "";
+  if(btn){
+    btn.disabled = true;
+    btn.textContent = "Validando...";
   }
 
-  if(em.rpAprobEstado === "Pendiente"){
-    __aprobar({kind:"rp", codigo: code});
-  }
-
-  __saveEmergencias();
-  cargarTablaEmergencias();
-
-  const res = await __syncCommitCodigo(code, snapshot, {
-    successMessage: 'Reporte Preliminar guardado y aprobado en servidor.',
-    pendingMessage: 'Reporte Preliminar aprobado en local. Pendiente de sincronizar.',
-    failurePrefix: 'No se pudo confirmar la aprobación del RP en servidor'
-  });
+  let code = "";
+  let snapshot = null;
 
   try{
-    const fresh = emergencias.find(e=>String(e && e.codigo ? e.codigo : '').trim()===code);
-    const apr = document.getElementById("aprobadoRP");
-    if(apr && fresh) apr.value = fresh.rpAprobadoPor || __getApproverName();
-    if(res.ok && !res.pending) __lockRPFormAdminApproved?.();
-  }catch(e){}
+    code = (document.getElementById("codigoRP")?.value || "").trim();
 
-  alert(res.message || 'Operación finalizada.');
-});
-;
+    // Si ya existe código, traer primero la versión oficial completa.
+    // No se repinta el formulario aquí para no perder cambios que el Admin acaba de ingresar.
+    if(code && __isApiConfigured && __isApiConfigured() && navigator.onLine){
+      const fresh = await __forceServerFullEmergencia(code, { required:true });
+      if(fresh){
+        snapshot = JSON.parse(JSON.stringify(fresh));
 
-// Botón Registrador: guarda y envía a aprobación (1 solo botón)
-document.getElementById("btnGuardarEnviarRP").onclick = async () => {
-  try{
-    if(__isApiConfigured && __isApiConfigured() && navigator.onLine){
-      await __syncPullAuto();
+        if(String(fresh.rpAprobEstado || "") === "Aprobado"){
+          abrirRP(fresh);
+          alert("Este RP ya figura como aprobado en el servidor. Se cargó la versión vigente.");
+          return;
+        }
+      }
     }
-  }catch(e){}
 
-  const saved = __saveRP({submit:true});
-  if(saved){
+    if(btn) btn.textContent = "Grabando...";
+
+    if(!snapshot && code){
+      const prev = (Array.isArray(emergencias)?emergencias:[]).find(e=>String(e && e.codigo ? e.codigo : '').trim()===code) || null;
+      snapshot = prev ? JSON.parse(JSON.stringify(prev)) : null;
+    }
+
+    const saved = __saveRP({submit:false});
+    if(!saved) return;
+
+    code = (document.getElementById("codigoRP")?.value || "").trim();
+    if(!code){ alert("No hay RP cargado."); return; }
+
+    const em = emergencias.find(e=>String(e && e.codigo ? e.codigo : '').trim()===code);
+    if(!em){ alert("No se encontró la emergencia."); return; }
+
+    if(!snapshot) snapshot = JSON.parse(JSON.stringify(em));
+
+    if(em.rpAprobEstado !== "Pendiente" && em.rpAprobEstado !== "Aprobado"){
+      em.rpAprobEstado = "Pendiente";
+      __ensureRPGlobalNumber(em);
+      em.rpEnviadoPor  = __rpEnviadoPorValue(em) || __getCurrentUserName();
+      em.rpEnviadoPorEmail = currentUser ? currentUser.email : (em.rpEnviadoPorEmail || null);
+      em.rpEnviadoEn   = __rpEnviadoEnValue(em) || __nowIso();
+      __audit("ENVIAR_RP_APROBACION", "emergencia", em.codigo, null);
+    }
+
+    if(em.rpAprobEstado === "Pendiente"){
+      __aprobar({kind:"rp", codigo: code});
+    }
+
+    __saveEmergencias();
+    cargarTablaEmergencias();
+
+    if(btn) btn.textContent = "Sincronizando...";
+
+    const res = await __syncCommitCodigo(code, snapshot, {
+      successMessage: 'Reporte Preliminar guardado y aprobado en servidor.',
+      pendingMessage: 'Reporte Preliminar aprobado en local. Pendiente de sincronizar.',
+      failurePrefix: 'No se pudo confirmar la aprobación del RP en servidor'
+    });
+
     try{
-      if(__isApiConfigured && __isApiConfigured() && navigator.onLine){
-        await __syncPush();
+      let fresh = emergencias.find(e=>String(e && e.codigo ? e.codigo : '').trim()===code) || null;
+
+      // Si hubo conflicto/rechazo/error, recargar versión oficial y repintar el RP para no dejar el botón gris con estado falso.
+      if(res && !res.ok && __isApiConfigured && __isApiConfigured() && navigator.onLine){
+        try{ fresh = await __forceServerFullEmergencia(code, { required:true }); }catch(_e){}
+      }
+
+      if(fresh){
+        const apr = document.getElementById("aprobadoRP");
+        if(apr) apr.value = fresh.rpAprobadoPor || fresh.aprobadoPor || __getApproverName();
+
+        if(res && res.ok && !res.pending){
+          abrirRP(fresh);
+          __lockRPFormAdminApproved?.();
+        }else if(res && !res.ok){
+          abrirRP(fresh);
+        }else{
+          __syncRPAdminApproveButtonState(fresh);
+        }
       }
     }catch(e){}
-    alert("RP guardado y enviado a aprobación.");
+
+    alert(res.message || 'Operación finalizada.');
+  }catch(e){
+    const msg = (e && e.message) ? e.message : String(e);
+    alert("No se pudo grabar y aprobar el RP: " + msg);
+    try{
+      if(code && __isApiConfigured && __isApiConfigured() && navigator.onLine){
+        const fresh = await __forceServerFullEmergencia(code, { required:true });
+        if(fresh) abrirRP(fresh);
+      }
+    }catch(_e){}
+  }finally{
+    if(btn){
+      btn.textContent = oldTxt || "Grabar y aprobar RP";
+      try{
+        const codeNow = (document.getElementById("codigoRP")?.value || "").trim();
+        const rec = (Array.isArray(emergencias)?emergencias:[]).find(e=>String(e && e.codigo ? e.codigo : '').trim()===codeNow) || null;
+        __syncRPAdminApproveButtonState(rec);
+      }catch(e){ btn.disabled = false; }
+    }
+  }
+});
+
+
+// Botón Registrador: guarda y envía a aprobación (1 solo botón)
+// FIX v240: no mostrar "enviado" hasta confirmar subida del código en D1.
+document.getElementById("btnGuardarEnviarRP").onclick = async () => {
+  const btn = document.getElementById("btnGuardarEnviarRP");
+  const oldTxt = btn ? btn.textContent : "";
+  let codigo = (document.getElementById("codigoRP")?.value || "").trim();
+  let snapshot = null;
+
+  try{
+    if(btn){ btn.disabled = true; btn.textContent = "Validando..."; }
+
+    // Si el RP ya existe, tomar como base la versión oficial completa para evitar enviar sobre hash viejo.
+    if(codigo && __isApiConfigured && __isApiConfigured() && navigator.onLine){
+      try{
+        const fresh = await __forceServerFullEmergencia(codigo, { required:false });
+        if(fresh) snapshot = JSON.parse(JSON.stringify(fresh));
+      }catch(e){
+        console.warn("No se pudo traer detalle vigente antes de enviar RP.", e);
+      }
+    }else if(__isApiConfigured && __isApiConfigured() && navigator.onLine){
+      try{ await __syncPullAuto(); }catch(e){}
+    }
+
+    if(!snapshot && codigo){
+      const prev = (Array.isArray(emergencias)?emergencias:[]).find(e=>String(e && e.codigo ? e.codigo : '').trim()===codigo) || null;
+      if(prev) snapshot = JSON.parse(JSON.stringify(prev));
+    }
+
+    if(btn) btn.textContent = "Guardando...";
+    const saved = __saveRP({submit:true});
+    if(!saved){
+      if(btn){ btn.disabled = false; btn.textContent = oldTxt || "Grabar y enviar a aprobación"; }
+      return;
+    }
+
+    codigo = String(saved.codigo || (document.getElementById("codigoRP")?.value || "")).trim();
+    if(!codigo){
+      alert("RP guardado localmente, pero no se obtuvo el código para sincronizar con el servidor.");
+      return;
+    }
+
+    if(btn) btn.textContent = "Sincronizando...";
+    const res = await __syncCommitCodigo(codigo, snapshot, {
+      successMessage: "RP enviado a aprobación y confirmado en servidor.",
+      pendingMessage: "RP guardado localmente. Pendiente de sincronizar con el servidor. El Administrador aún no lo verá hasta que se confirme en D1.",
+      failurePrefix: "No se pudo enviar el RP al servidor"
+    });
+
+    try{
+      if(res && res.ok && !res.pending){
+        const fresh = (Array.isArray(emergencias)?emergencias:[]).find(e=>String(e && e.codigo ? e.codigo : '').trim()===codigo) || saved;
+        if(fresh) abrirRP(fresh);
+        try{ __lockRPForm(true); }catch(e){}
+        const b = document.getElementById("btnGuardarEnviarRP");
+        if(b) b.disabled = true;
+      }else if(res && !res.ok){
+        // Si hubo conflicto/rechazo/error, repintar con la versión vigente para no dejar pantalla falsa.
+        let fresh = null;
+        try{
+          if(__isApiConfigured && __isApiConfigured() && navigator.onLine){
+            fresh = await __forceServerFullEmergencia(codigo, { required:false });
+          }
+        }catch(_e){}
+        if(fresh) abrirRP(fresh);
+        else if(snapshot) abrirRP(snapshot);
+      }
+    }catch(e){}
+
+    alert((res && res.message) ? res.message : "Operación finalizada.");
+  }catch(e){
+    const msg = (e && e.message) ? e.message : String(e);
+    alert("RP guardado localmente, pero no se pudo enviar al servidor. El Administrador aún no lo verá. Detalle: " + msg);
+  }finally{
+    if(btn){
+      btn.textContent = oldTxt || "Grabar y enviar a aprobación";
+      const codeNow = (document.getElementById("codigoRP")?.value || "").trim();
+      const rec = (Array.isArray(emergencias)?emergencias:[]).find(e=>String(e && e.codigo ? e.codigo : '').trim()===codeNow) || null;
+      const locked = !!(rec && (String(rec.rpAprobEstado||"") === "Pendiente" || String(rec.rpAprobEstado||"") === "Aprobado"));
+      btn.disabled = locked;
+    }
   }
 };
 
@@ -7039,7 +7205,7 @@ function cargarTablaEmergencias() {
         btnRP.title = "Emergencia cerrada: RP bloqueado";
       }
       if (!btnRP.disabled) {
-        btnRP.onclick = () => __withFullEmergencia(e, (full)=>abrirRP(full));
+        btnRP.onclick = () => __withFreshFullEmergencia(e, (full)=>abrirRP(full));
       }
     }
 
@@ -7051,7 +7217,7 @@ function cargarTablaEmergencias() {
     // Admin-only: Modificar / Eliminar
     const btnEditRP = tr.querySelector(".btnEditRP");
     if(btnEditRP && __isAdmin && __isAdmin()){
-      btnEditRP.onclick = () => __withFullEmergencia(e, (full)=>__abrirRPAdminEditarDesdeListado(full));
+      btnEditRP.onclick = () => __withFreshFullEmergencia(e, (full)=>__abrirRPAdminEditarDesdeListado(full));
     }
     const btnEditRC = tr.querySelector(".btnEditRC");
     if(btnEditRC && __isAdmin && __isAdmin()){
@@ -7467,11 +7633,12 @@ try{
   }
 }catch(e){}
 
-    // Botón aprobar (admin) habilitado solo si RP está pendiente
+    // Botones de aprobación Admin: estado limpio según el RP real cargado
   const btnApr = document.getElementById("btnAprobarRPAdmin");
   if(btnApr){
     btnApr.disabled = !(__isAdmin() && obj.rpAprobEstado === "Pendiente");
   }
+  try{ __syncRPAdminApproveButtonState(obj); }catch(e){}
 
   // Admin: si el RP ya está aprobado, bloquear todos los campos (solo Retornar activo)
   try{
@@ -9975,7 +10142,7 @@ async function __syncCommitCodigo(codigo, snapshot, opts){
       return { ok:false, conflict:hasConflict, denied:hasDenied, message: cfg.failurePrefix + (hasConflict ? ' (conflicto).' : ' (rechazo).') };
     }
 
-    try{ await __syncPullAuto(); }catch(_e){}
+    try{ await __syncPullAuto({ force:true }); }catch(_e){}
     return { ok:true, message: cfg.successMessage, acked: push && push.acked ? push.acked : [] };
   }catch(e){
     __restoreCodigoSnapshot(code, snapshot);
@@ -11021,18 +11188,90 @@ async function __ensureFullEmergencia(objOrCodigo){
   if(!rec || !rec.payload) return cur;
   const payload = JSON.parse(JSON.stringify(rec.payload || {}));
   try{ payload.estado_sync = 'Sincronizado'; }catch(_e){}
-  try{ payload.__serverHash = String(rec.hash || ''); }catch(_e){}
+  try{ payload.__serverHash = String(rec.hash || rec.payload_hash || rec.payloadHash || rec.server_hash || ''); }catch(_e){}
   try{ payload.__serverUpdatedAt = String(rec.updated_at || ''); }catch(_e){}
   try{ payload.__summaryOnly = false; delete payload.__needsDetail; }catch(_e){}
   if(idx >= 0) arr[idx] = payload;
   else { arr.push(payload); idx = arr.length - 1; }
   emergencias = arr;
   const map = __getHashMap();
-  if(rec.hash) map[code] = String(rec.hash);
+  { const __h = String(rec.hash || rec.payload_hash || rec.payloadHash || rec.server_hash || ''); if(__h) map[code] = __h; }
   __setHashMap(map);
   __saveEmergencias();
   try{ if(emergenciaSeleccionada && String(emergenciaSeleccionada.codigo||'').trim() === code) emergenciaSeleccionada = payload; }catch(_e){}
   return payload;
+}
+
+// FIX v239: para aprobar RP no basta con la copia resumida/local.
+// Esta función fuerza detalle vigente del servidor cuando hay conexión y conserva hash/updatedAt.
+async function __forceServerFullEmergencia(objOrCodigo, opts){
+  const cfg = Object.assign({ required:false }, opts || {});
+  const code = String((typeof objOrCodigo === 'string') ? objOrCodigo : (objOrCodigo && objOrCodigo.codigo) || '').trim();
+  if(!code) return objOrCodigo || null;
+
+  if(__isApiConfigured && __isApiConfigured() && navigator.onLine){
+    try{
+      const rec = await __syncFetchDetail(code);
+      if(rec && rec.payload){
+        let arr = Array.isArray(emergencias) ? emergencias : __loadEmergencias();
+        const payload = JSON.parse(JSON.stringify(rec.payload || {}));
+        try{ payload.estado_sync = 'Sincronizado'; }catch(_e){}
+        try{ payload.__serverHash = String(rec.hash || rec.payload_hash || rec.payloadHash || rec.server_hash || ''); }catch(_e){}
+        try{ payload.__serverUpdatedAt = String(rec.updated_at || ''); }catch(_e){}
+        try{ payload.__summaryOnly = false; delete payload.__needsDetail; }catch(_e){}
+
+        const idx = arr.findIndex(e => String(e && e.codigo ? e.codigo : '').trim() === code);
+        if(idx >= 0) arr[idx] = payload;
+        else arr.push(payload);
+        emergencias = arr;
+
+        const map = __getHashMap();
+        { const __h = String(rec.hash || rec.payload_hash || rec.payloadHash || rec.server_hash || ''); if(__h) map[code] = __h; else delete map[code]; }
+        __setHashMap(map);
+        __saveEmergencias();
+
+        try{
+          if(emergenciaSeleccionada && String(emergenciaSeleccionada.codigo||'').trim() === code){
+            emergenciaSeleccionada = payload;
+          }
+        }catch(_e){}
+        return payload;
+      }
+    }catch(e){
+      if(cfg.required) throw e;
+      console.warn("No se pudo traer detalle vigente del servidor para", code, e);
+    }
+  }
+
+  return await __ensureFullEmergencia(objOrCodigo);
+}
+
+async function __withFreshFullEmergencia(objOrCodigo, cb){
+  try{
+    const full = await __forceServerFullEmergencia(objOrCodigo);
+    if(!full){ alert('No se pudo cargar el detalle vigente del registro.'); return; }
+    return await cb(full);
+  }catch(e){
+    alert('No se pudo cargar el detalle vigente desde D1: ' + ((e && e.message) ? e.message : e));
+  }
+}
+
+function __syncRPAdminApproveButtonState(obj){
+  try{
+    const btn = document.getElementById("btnGuardarAprobarRPAdmin");
+    if(!btn) return;
+    const isAdm = (__isAdmin && __isAdmin());
+    btn.classList.toggle("d-none", !isAdm);
+
+    const st = String((obj && obj.rpAprobEstado) || "Borrador").trim();
+    const closed = !!(obj && obj.cerrada);
+    const canApprove = !!(isAdm && !closed && st !== "Aprobado");
+
+    btn.disabled = !canApprove;
+    btn.title = canApprove
+      ? "Grabar cambios y aprobar RP con la versión vigente del servidor."
+      : (st === "Aprobado" ? "RP ya aprobado." : (closed ? "Emergencia cerrada." : "No disponible."));
+  }catch(e){}
 }
 
 async function __withFullEmergencia(objOrCodigo, cb){
