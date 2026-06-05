@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <!-- BUILD: 2026-02-20 autopull-cooldown-v206-fix-sync-v3 -->
-<script>window.__BUILD_ID='2026-02-20 autopull-cooldown-v206-fix-sync-v3-sync-lock-v232-dashmap-fecha-peligro';console.log('BUILD',window.__BUILD_ID);</script>
+<script>window.__BUILD_ID='2026-02-20 autopull-cooldown-v206-fix-sync-v3-sync-lock-v233-export-excel-lista';console.log('BUILD',window.__BUILD_ID);</script>
 
 <!-- build: VER_PRINT_RC_ALWAYS_VISIBLE v4 2026-01-11 -->
 <meta charset="UTF-8" />
@@ -18,7 +18,7 @@ body { background: #f5f5f5; }
 .card { margin-top: 1rem; }
 .table td input { width: 100%; }
 .hidden { display: none; }
-/* ======= VERSION 232 02/06/2026 - dashmap filtros fecha peligro ======= */
+/* ======= VERSION 233 05/06/2026 - fix export Excel Lista ======= */
 /* ======= VER (Listado de Emergencias): Formato de visualización/impresión ======= */
 .ver-report-wrap{ font-family: Calibri, Arial, sans-serif; font-size: 11pt; color:#111; }
 .ver-report-title{ font-family: Calibri, Arial, sans-serif; font-size:15pt; font-weight:700; color:#1F4E79; margin:0 0 6px 0; }
@@ -12097,18 +12097,18 @@ async function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO, peligrosS
   try{
     if(!window.XLSX){
       alert("No se pudo cargar la librería de Excel (XLSX). Verifique su conexión a internet.");
-      return;
+      return false;
     }
 
     const desde = String(desdeISO || "").trim();
     const hasta = String(hastaISO || "").trim();
     if(!/^\d{4}-\d{2}-\d{2}$/.test(desde) || !/^\d{4}-\d{2}-\d{2}$/.test(hasta)){
       alert("Seleccione un rango de fechas válido.");
-      return;
+      return false;
     }
     if(hasta < desde){
       alert("La fecha final no puede ser menor que la fecha inicial.");
-      return;
+      return false;
     }
 
     const peligrosFiltro = (Array.isArray(peligrosSeleccionados) ? peligrosSeleccionados : [])
@@ -12157,19 +12157,45 @@ async function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO, peligrosS
       }catch(e){ return false; }
     };
 
+    const __excelSleep = (ms)=>new Promise(resolve=>setTimeout(resolve, ms));
+
+    const __excelWithTimeout = (promise, ms, label)=>{
+      let timer = null;
+      return Promise.race([
+        promise,
+        new Promise((_, reject)=>{
+          timer = setTimeout(()=>reject(new Error(label || "timeout")), ms);
+        })
+      ]).finally(()=>{ try{ clearTimeout(timer); }catch(_e){} });
+    };
+
     const __hydrateExcelItems = async (selected)=>{
       const arr = Array.isArray(selected) ? selected : [];
       let fullCount = 0;
+      const detailTimeoutMs = 6500;
+      const maxTotalMs = 25000;
+      const startedAt = Date.now();
+
       for(let i=0; i<arr.length; i++){
         const em = arr[i];
         if(!em || !em.codigo || !__needsExcelDetail(em)) continue;
+
+        // Evita que la exportación quede congelada si /sync/detail demora o no responde.
+        if((Date.now() - startedAt) > maxTotalMs){
+          console.warn("Export Excel Lista: se alcanzó el tiempo máximo de hidratación; se exportará lo ya disponible.");
+          break;
+        }
+
         try{
           if(typeof __ensureFullEmergencia === "function"){
-            const full = await __ensureFullEmergencia(em.codigo);
+            const full = await __excelWithTimeout(__ensureFullEmergencia(em.codigo), detailTimeoutMs, "timeout_detail_" + em.codigo);
             if(full){ arr[i] = full; fullCount++; }
+            // Cede el hilo al navegador para no congelar la interfaz en rangos amplios.
+            if(i % 10 === 0) await __excelSleep(0);
           }
         }catch(_e){
-          // Si un detalle falla, no se detiene toda la exportación; se exporta lo disponible.
+          // Si un detalle falla o demora, no se bloquea toda la exportación; se exporta lo disponible.
+          console.warn("Export Excel Lista: no se pudo hidratar detalle", em.codigo, _e);
         }
       }
       return fullCount;
@@ -12327,8 +12353,8 @@ async function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO, peligrosS
     });
 
     if(selectedEmergencias.length === 0){
-      alert("No se encontraron emergencias en ese rango y peligro seleccionado (según la fecha de elaboración).\n\nVerifique la fecha inicial, fecha final y el filtro de peligros.");
-      return;
+      alert("No se encontraron emergencias para exportar con el rango de fechas y peligro seleccionado.\n\nVerifique la fecha inicial, fecha final y el filtro de peligros.");
+      return false;
     }
 
     await __hydrateExcelItems(selectedEmergencias);
@@ -12396,8 +12422,8 @@ async function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO, peligrosS
     });
 
     if(items.length === 0){
-      alert("No se encontraron emergencias en ese rango y peligro seleccionado (según la fecha de elaboración).\n\nVerifique la fecha inicial, fecha final y el filtro de peligros.");
-      return;
+      alert("No se encontraron emergencias para exportar con el rango de fechas y peligro seleccionado.\n\nVerifique la fecha inicial, fecha final y el filtro de peligros.");
+      return false;
     }
 
     items.sort((a,b)=>{
@@ -12505,9 +12531,11 @@ async function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO, peligrosS
 
     const fname = `Lista_Emergencias_${desde.replace(/-/g,"")}_${hasta.replace(/-/g,"")}.xlsx`;
     XLSX.writeFile(wb, fname);
+    return true;
   }catch(e){
     console.error(e);
-    alert("Ocurrió un error al exportar a Excel.");
+    alert("Ocurrió un error al exportar a Excel: " + (e && e.message ? e.message : e));
+    return false;
   }
 }
 
@@ -12640,8 +12668,11 @@ try{
           try{
             btnDo.disabled = true;
             btnDo.textContent = "Exportando...";
-            await __exportExcelListaEmergenciasByElab(d, h, peligros);
-            try{ modal.hide(); }catch(_e){}
+            const ok = await __exportExcelListaEmergenciasByElab(d, h, peligros);
+            if(ok) try{ modal.hide(); }catch(_e){}
+          }catch(err){
+            console.error(err);
+            alert("No se pudo exportar a Excel." + (err && err.message ? "\n" + err.message : ""));
           }finally{
             btnDo.disabled = false;
             btnDo.textContent = oldTxt || "Exportar";
