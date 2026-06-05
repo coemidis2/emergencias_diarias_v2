@@ -18,7 +18,7 @@ body { background: #f5f5f5; }
 .card { margin-top: 1rem; }
 .table td input { width: 100%; }
 .hidden { display: none; }
-/* ======= VERSION 219 27/05/2026 16:00 hrs - sync startup fix======= */
+/* ======= VERSION 221 29/05/2026 14:40 hrs - sync startup fix + throttling sync/dashboard======= */
 /* ======= VER (Listado de Emergencias): Formato de visualización/impresión ======= */
 .ver-report-wrap{ font-family: Calibri, Arial, sans-serif; font-size: 11pt; color:#111; }
 .ver-report-title{ font-family: Calibri, Arial, sans-serif; font-size:15pt; font-weight:700; color:#1F4E79; margin:0 0 6px 0; }
@@ -270,7 +270,7 @@ body { background: #f5f5f5; }
 
 </style>
 
- <script src="./patch_cf_sync.js?v=20260527_syncfix"></script>
+ <script src="./patch_cf_sync.js?v=20260529_listdetail"></script>
 <script>
   window.__API_CFG = window.__API_CFG || {};
   // Fallback: si no existe patch_cf_sync.js o no define baseUrl, usa este valor
@@ -1097,7 +1097,7 @@ body { background: #f5f5f5; }
             </div>
 
       
-<small class="text-muted">Se actualiza automáticamente cada 10 segundos y al ingresar a esta pestaña.</small>
+<small class="text-muted">Usa la información ya cargada en memoria y se actualiza al ingresar a la pestaña o cuando cambian los filtros.</small>
     </div>
   </div>
 </div>
@@ -3558,41 +3558,14 @@ async function __syncFetchServerRecordByCodigo(codigo){
   if(!navigator.onLine) throw new Error("offline");
 
   const token = __tokenGet();
-  const limit = 5000;
-  let since = '1970-01-01T00:00:00.000Z';
-  let guard = 0;
-  let found = null;
-
-  while(guard < 25){
-    const out = await __api('/sync/pull?since=' + encodeURIComponent(since) + '&limit=' + limit, { method:'GET', token: token });
-    if(out.res && out.res.status === 401) throw new Error('unauthorized');
-    if(!out.res || !out.res.ok){
-      const err = out.data && out.data.error ? out.data.error : 'pull_failed';
-      throw new Error(err);
-    }
-
-    const recs = (out.data && Array.isArray(out.data.records)) ? out.data.records : [];
-    if(recs.length === 0) break;
-
-    let maxUpdated = since;
-    for(const r of recs){
-      const upd = String(r && r.updated_at ? r.updated_at : '');
-      if(upd && upd > maxUpdated) maxUpdated = upd;
-      const rc = String(r && r.codigo ? r.codigo : '').trim();
-      if(rc === code){
-        if(!found || String(r && r.updated_at ? r.updated_at : '') >= String(found && found.updated_at ? found.updated_at : '')){
-          found = r;
-        }
-      }
-    }
-
-    if(recs.length < limit) break;
-    if(maxUpdated === since) break;
-    since = maxUpdated;
-    guard++;
+  const out = await __api('/sync/detail?codigo=' + encodeURIComponent(code), { method:'GET', token: token });
+  if(out.res && out.res.status === 401) throw new Error('unauthorized');
+  if(out.res && out.res.status === 404) return null;
+  if(!out.res || !out.res.ok){
+    const err = out.data && out.data.error ? out.data.error : 'detail_failed';
+    throw new Error(err);
   }
-
-  return found;
+  return out.data && out.data.record ? out.data.record : null;
 }
 
 function __syncApplyServerRecord(codigo, rec){
@@ -6520,7 +6493,7 @@ async function __cerrarEmergenciasSeleccionadas(){
       __histPush(em, "CIERRE_DIRECTO_ADMIN_BULK", { bulk:true });
       __touch(em);
       __saveEmergencias();
-      try{ dashboardRefresh(); }catch(_e){}
+      try{ dashboardRefresh({force:true}); }catch(_e){}
       const res = await __syncCommitCodigo(code, snapshot, {
         successMessage: "Emergencia cerrada en servidor.",
         pendingMessage: "Emergencia cerrada en local. Pendiente de sincronizar.",
@@ -6548,7 +6521,7 @@ async function __cerrarEmergenciasSeleccionadas(){
     }
   }catch(e){}
   try{ cargarTablaEmergencias(); }catch(e){}
-  try{ dashboardRefresh(); }catch(e){}
+  try{ dashboardRefresh({force:true}); }catch(e){}
   __bulkToggleCloseActionBtn();
 
   let msg = `Cierre por bloques finalizado.\n\nConfirmados: ${ok}`;
@@ -6934,7 +6907,7 @@ async function __adminDeleteEmergencia(codigo){
     __saveEmergencias();
     try{ if(emergenciaSeleccionada && String(emergenciaSeleccionada.codigo||"").trim()===cod) emergenciaSeleccionada = null; }catch(e){}
     try{ cargarTablaEmergencias(); }catch(e){}
-    try{ dashboardRefresh(); }catch(e){}
+    try{ dashboardRefresh({force:true}); }catch(e){}
     try{ __calcPending(); }catch(e){}
 
     const syncRes = await __syncCommitCodigo(cod, snapshot, {
@@ -8954,7 +8927,46 @@ function __dashRenderAfectaMidisTable(data){
   });
 }
 
-function dashboardRefresh(){
+// ======= OPTIMIZACIÓN V219: Dashboard usa la data ya hidratada en memoria =======
+// Evita renderizados repetidos cuando no cambió la data ni los filtros.
+let __DASH_LAST_RENDER_MS = 0;
+let __DASH_LAST_RENDER_SIG = "";
+function __dashBuildRenderSignature(){
+  try{
+    const arr = Array.isArray(emergencias) ? emergencias : [];
+    let maxUpd = "";
+    for(const e of arr){
+      const u = String((e && (e.updatedAt || e.__serverUpdatedAt || e.fechaRegistro || e.fechaHora)) || "");
+      if(u > maxUpd) maxUpd = u;
+    }
+    const ids = ["dashTipoFecha","dashDesde","dashHasta","dashSoloMidis"];
+    const f = ids.map(id=>{
+      const el = document.getElementById(id);
+      if(!el) return "";
+      if(el.type === "checkbox") return el.checked ? "1" : "0";
+      return String(el.value || "");
+    }).join("|");
+    let impacto = "";
+    try{ impacto = __dashGetImpactoGroupBy ? __dashGetImpactoGroupBy() : ""; }catch(_e){}
+    return [arr.length, maxUpd, f, impacto, Array.from(__dashMapStatusEnabled || []).sort().join(",")].join("||");
+  }catch(e){
+    return String(Date.now());
+  }
+}
+
+function dashboardRefresh(opts){
+  opts = opts || {};
+  const force = !!opts.force;
+  const sig = __dashBuildRenderSignature();
+  const now = Date.now();
+  // Timer/local refresh: si no cambió nada, no recalcula cada pocos segundos.
+  if(!force && sig === __DASH_LAST_RENDER_SIG && (now - __DASH_LAST_RENDER_MS) < 60000){
+    try{ setTimeout(()=>{ if(dashMap) dashMap.invalidateSize(); }, 150); }catch(_e){}
+    return;
+  }
+  __DASH_LAST_RENDER_SIG = sig;
+  __DASH_LAST_RENDER_MS = now;
+
   __dashInitIfNeeded();
   const data = __dashGetFiltered();
   __dashLastFiltered = data;
@@ -8995,11 +9007,11 @@ document.addEventListener("DOMContentLoaded", ()=>{
     const hoy = __dashTodayPeruYMD() || new Date().toISOString().slice(0,10);
     document.getElementById("dashDesde").value = hoy;
     document.getElementById("dashHasta").value = hoy;
-    dashboardRefresh();
+    dashboardRefresh({force:true});
   });
 
-  if(btnAplicar) btnAplicar.addEventListener("click", dashboardRefresh);
-  if(soloMidis) soloMidis.addEventListener("change", dashboardRefresh);
+  if(btnAplicar) btnAplicar.addEventListener("click", ()=>dashboardRefresh({force:true}));
+  if(soloMidis) soloMidis.addEventListener("change", ()=>dashboardRefresh({force:true}));
 
   if(btnWordActivas) btnWordActivas.addEventListener("click", __dashExportActivasHoyExcel);
 
@@ -9015,23 +9027,23 @@ document.addEventListener("DOMContentLoaded", ()=>{
 
   // Cambio de clasificación para los 3 gráficos de impacto MIDIS
   document.querySelectorAll('input[name="dashImpactoClasif"]').forEach(el=>{
-    el.addEventListener("change", dashboardRefresh);
+    el.addEventListener("change", ()=>dashboardRefresh({force:true}));
   });
 
-  // refresco cada 10s si la pestaña está activa
+  // Refresco local moderado si la pestaña está activa. No consulta D1; solo usa la data en memoria.
   setInterval(()=>{
     const isActive = document.querySelector('a[href="#dashTab"]')?.classList.contains("active");
     if(isActive) dashboardRefresh();
-  }, 10000);
+  }, 60000);
 
   // refresco al entrar al dashboard
   document.querySelector('a[href="#dashTab"]')?.addEventListener("shown.bs.tab", ()=>{
-    dashboardRefresh();
+    dashboardRefresh({force:true});
   });
 
   // refresco al cambiar evento/región (pills)
-  document.getElementById("dashPillEvento")?.addEventListener("shown.bs.tab", dashboardRefresh);
-  document.getElementById("dashPillRegion")?.addEventListener("shown.bs.tab", dashboardRefresh);
+  document.getElementById("dashPillEvento")?.addEventListener("shown.bs.tab", ()=>dashboardRefresh({force:true}));
+  document.getElementById("dashPillRegion")?.addEventListener("shown.bs.tab", ()=>dashboardRefresh({force:true}));
 });
 </script>
 
@@ -9150,7 +9162,7 @@ function __restoreCodigoSnapshot(codigo, snapshot){
     emergencias = arr;
     __saveEmergencias();
     try{ cargarTablaEmergencias(); }catch(_e){}
-    try{ dashboardRefresh(); }catch(_e){}
+    try{ dashboardRefresh({force:true}); }catch(_e){}
     try{ __calcPending(); }catch(_e){}
   }catch(e){}
 }
@@ -9251,7 +9263,7 @@ function __syncResetIncrementalCursorForFullPull(){
 function __syncRefreshViewsAfterHydrate(){
   try{ __recalcularCorrelativos(); }catch(e){}
   try{ cargarTablaEmergencias(); }catch(e){}
-  try{ dashboardRefresh && dashboardRefresh(); }catch(e){}
+  try{ dashboardRefresh && dashboardRefresh({force:true}); }catch(e){}
   try{ __renderAprobaciones && __renderAprobaciones(); }catch(e){}
   try{ __calcPending && __calcPending(); }catch(e){}
 }
@@ -10139,36 +10151,110 @@ async function __syncPull(since){
   let pulledAll = [];
   let guard = 0;
 
-  while(guard < 25){
-    const out = await __api('/sync/pull?since=' + encodeURIComponent(s) + '&limit=' + limit, { method:'GET', token: token });
-    if(out.res && out.res.status === 401) throw new Error('unauthorized');
-    if(!out.res || !out.res.ok){
-      const err = out.data && out.data.error ? out.data.error : 'pull_failed';
-      throw new Error(err);
+  // Modo optimizado: cuando ya existe data local, primero consulta /sync/list (sin payload_json)
+  // y solo baja /sync/detail para códigos nuevos o con hash cambiado.
+  // Si es arranque limpio / rehidratación completa, mantiene /sync/pull para no romper dashboard/listados.
+  const localBase = Array.isArray(emergencias) ? emergencias : __loadEmergencias();
+  const localCount = Array.isArray(localBase) ? localBase.length : 0;
+  const fullHydration = (localCount === 0 || String(s || '') === __syncEpoch());
+
+  if(fullHydration){
+    while(guard < 25){
+      const out = await __api('/sync/pull?since=' + encodeURIComponent(s) + '&limit=' + limit, { method:'GET', token: token });
+      if(out.res && out.res.status === 401) throw new Error('unauthorized');
+      if(!out.res || !out.res.ok){
+        const err = out.data && out.data.error ? out.data.error : 'pull_failed';
+        throw new Error(err);
+      }
+
+      const pulled = out.data && Array.isArray(out.data.records) ? out.data.records : [];
+      if(pulled.length === 0) break;
+      pulledAll = pulledAll.concat(pulled);
+
+      let maxUpdatedBatch = s;
+      for(const r of pulled){
+        const upd = String(r && r.updated_at ? r.updated_at : "");
+        if(upd && upd > maxUpdatedBatch) maxUpdatedBatch = upd;
+      }
+      if(pulled.length < limit) { s = maxUpdatedBatch; break; }
+      if(maxUpdatedBatch === s) break;
+      s = maxUpdatedBatch;
+      guard++;
     }
-
-    const pulled = out.data && Array.isArray(out.data.records) ? out.data.records : [];
-    if(pulled.length === 0) break;
-
-    pulledAll = pulledAll.concat(pulled);
-
-    // calcular maxUpdated de este lote
-    let maxUpdatedBatch = s;
-    for(const r of pulled){
-      const upd = String(r && r.updated_at ? r.updated_at : "");
-      if(upd && upd > maxUpdatedBatch) maxUpdatedBatch = upd;
+  }else{
+    const localIdx = {};
+    for(let i=0;i<localBase.length;i++){
+      const c = String(localBase[i] && localBase[i].codigo ? localBase[i].codigo : '').trim();
+      if(c) localIdx[c] = localBase[i];
     }
+    const map0 = __getHashMap();
 
-    // si vino menos del límite, ya terminamos
-    if(pulled.length < limit) { s = maxUpdatedBatch; break; }
+    while(guard < 25){
+      let out = await __api('/sync/list?since=' + encodeURIComponent(s) + '&limit=' + limit, { method:'GET', token: token });
 
-    // si no avanzó since, cortar para evitar bucle
-    if(maxUpdatedBatch === s) break;
+      // Compatibilidad: si el Worker aún no tiene /sync/list, usar /sync/pull tradicional.
+      if(out.res && out.res.status === 404){
+        out = await __api('/sync/pull?since=' + encodeURIComponent(s) + '&limit=' + limit, { method:'GET', token: token });
+        if(out.res && out.res.status === 401) throw new Error('unauthorized');
+        if(!out.res || !out.res.ok){
+          const err = out.data && out.data.error ? out.data.error : 'pull_failed';
+          throw new Error(err);
+        }
+        const pulled = out.data && Array.isArray(out.data.records) ? out.data.records : [];
+        if(pulled.length === 0) break;
+        pulledAll = pulledAll.concat(pulled);
+        let maxUpdatedBatch = s;
+        for(const r of pulled){
+          const upd = String(r && r.updated_at ? r.updated_at : "");
+          if(upd && upd > maxUpdatedBatch) maxUpdatedBatch = upd;
+        }
+        if(pulled.length < limit) { s = maxUpdatedBatch; break; }
+        if(maxUpdatedBatch === s) break;
+        s = maxUpdatedBatch;
+        guard++;
+        continue;
+      }
 
-    s = maxUpdatedBatch;
-    guard++;
+      if(out.res && out.res.status === 401) throw new Error('unauthorized');
+      if(!out.res || !out.res.ok){
+        const err = out.data && out.data.error ? out.data.error : 'list_failed';
+        throw new Error(err);
+      }
+
+      const metas = out.data && Array.isArray(out.data.records) ? out.data.records : [];
+      if(metas.length === 0) break;
+
+      let maxUpdatedBatch = s;
+      for(const m of metas){
+        const codigo = String(m && m.codigo ? m.codigo : '').trim();
+        const serverHash = String((m && (m.hash || m.payload_hash)) || '');
+        const upd = String(m && m.updated_at ? m.updated_at : '');
+        if(upd && upd > maxUpdatedBatch) maxUpdatedBatch = upd;
+        if(!codigo) continue;
+
+        const localRec = localIdx[codigo] || null;
+        const knownHash = String(map0[codigo] || (localRec && localRec.__serverHash) || '');
+        if(localRec && serverHash && knownHash === serverHash){
+          try{ localRec.__serverHash = serverHash; localRec.__serverUpdatedAt = upd; localRec.estado_sync = 'Sincronizado'; }catch(_e){}
+          continue;
+        }
+
+        const detail = await __api('/sync/detail?codigo=' + encodeURIComponent(codigo), { method:'GET', token: token });
+        if(detail.res && detail.res.status === 401) throw new Error('unauthorized');
+        if(detail.res && detail.res.status === 404) continue;
+        if(!detail.res || !detail.res.ok){
+          const err = detail.data && detail.data.error ? detail.data.error : 'detail_failed';
+          throw new Error(err);
+        }
+        if(detail.data && detail.data.record) pulledAll.push(detail.data.record);
+      }
+
+      if(metas.length < limit) { s = maxUpdatedBatch; break; }
+      if(maxUpdatedBatch === s) break;
+      s = maxUpdatedBatch;
+      guard++;
+    }
   }
-
   const pulled = pulledAll;
   if(pulled.length === 0){
     return { ok:true, records: [], newSince: (since || __getLastPull()) };
@@ -10375,7 +10461,7 @@ async function __syncPullAuto(opts){
     if(!currentUser && !__tokenGet()){ __updateSyncUI(0); return; }
 
     // Auto-pull guard (anti-bucle / anti-ráfaga). El arranque inicial puede saltarse esta barrera.
-    window.__PULL_AUTO_MIN_GAP_MS = window.__PULL_AUTO_MIN_GAP_MS || 20000; // 20s
+    window.__PULL_AUTO_MIN_GAP_MS = window.__PULL_AUTO_MIN_GAP_MS || 60000; // 60s: reduce lecturas repetidas a D1
     const now = Date.now();
     const last = window.__PULL_AUTO_LAST || 0;
     if(window.__PULL_AUTO_INFLIGHT) return;
@@ -11737,7 +11823,7 @@ try{
     window.__LISTA_AUTOPULL_TIMER = setInterval(()=>{
       const isActive = document.querySelector('a[href="#listaTab"]')?.classList.contains("active");
       if(isActive) __syncPullAuto();
-    }, 15000);
+    }, 60000);
   }
 }catch(e){}
 
