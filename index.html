@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <!-- BUILD: 2026-02-20 autopull-cooldown-v206-fix-sync-v3 -->
-<script>window.__BUILD_ID='2026-02-20 autopull-cooldown-v206-fix-sync-v3-sync-lock-v242-dashboard-excel-eventos';console.log('BUILD',window.__BUILD_ID);</script>
+<script>window.__BUILD_ID='2026-02-20 autopull-cooldown-v206-fix-sync-v3-sync-lock-v243-dashboard-impacto-excel-sync';console.log('BUILD',window.__BUILD_ID);</script>
 
 <!-- build: VER_PRINT_RC_ALWAYS_VISIBLE v4 2026-01-11 -->
 <meta charset="UTF-8" />
@@ -18,9 +18,9 @@ body { background: #f5f5f5; }
 .card { margin-top: 1rem; }
 .table td input { width: 100%; }
 .hidden { display: none; }
-/* ======= VERSION 242 04/06/2026 - Estabilidad modal Ver: evita cuelgue por instancias/backdrops duplicados ======= */
+/* ======= VERSION 243 05/06/2026 - Estabilidad modal Ver: evita cuelgue por instancias/backdrops duplicados ======= */
 .ver-detail-loading{display:flex;align-items:center;gap:.5rem;}
-/* ======= VERSION 242 04/06/2026 - Detalle emergencia: N° Global saneado ======= */
+/* ======= VERSION 243 05/06/2026 - Detalle emergencia: N° Global saneado ======= */
 /* ======= VER (Listado de Emergencias): Formato de visualización/impresión ======= */
 .ver-report-wrap{ font-family: Calibri, Arial, sans-serif; font-size: 11pt; color:#111; }
 .ver-report-title{ font-family: Calibri, Arial, sans-serif; font-size:15pt; font-weight:700; color:#1F4E79; margin:0 0 6px 0; }
@@ -10502,6 +10502,246 @@ document.addEventListener("DOMContentLoaded", ()=>{
     [500,1800,3500].forEach(ms=>setTimeout(()=>{try{dashboardRefresh({force:true});}catch(_e){}},ms));
     document.getElementById("dashPillEvento")?.addEventListener("shown.bs.tab", ()=>setTimeout(()=>{try{dashboardRefresh({force:true});}catch(_e){}},150));
     document.getElementById("dashPillRegion")?.addEventListener("shown.bs.tab", ()=>setTimeout(()=>{try{dashboardRefresh({force:true});}catch(_e){}},150));
+  });
+})();
+
+
+// ======= VERSION 243: Dashboard - impacto MIDIS alineado con Excel e hidratación de detalle =======
+// Alcance: solo Dashboard. Corrige totales/histogramas para que usen la misma base que Exportar Excel.
+(function(){
+  function _norm(v){
+    try{return String(v||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").trim().toUpperCase().replace(/\s+/g," ");}
+    catch(_e){return String(v||"").trim().toUpperCase();}
+  }
+  function _num(v){ const n=Number(v||0); return Number.isFinite(n)?n:0; }
+  function _esc(v){
+    try{ if(typeof __dashHtmlEscape === "function") return __dashHtmlEscape(v); }catch(_e){}
+    return String(v ?? "").replace(/[&<>'"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;","\"":"&quot;"}[c]));
+  }
+  function _isDeleted(e){ try{return (typeof __isDeleted==="function") ? __isDeleted(e) : false;}catch(_e){return false;} }
+  function _isSeguimientoRecord(em){
+    try{
+      const vals=[em?.tipo,em?.modulo,em?.origen,em?.source,em?.vista,em?.seccion].map(v=>String(v||"").toLowerCase());
+      return vals.some(v=>v.includes("seguimiento"));
+    }catch(_e){return false;}
+  }
+  function _programKey(k){
+    const n=_norm(k);
+    if(n.includes("CUNA")) return "CUNA MAS";
+    if(n.includes("PENSION")) return "PENSION 65";
+    if(n.includes("ALIMENTACION")) return "ALIMENTACION ESCOLAR";
+    if(n.includes("CONTIGO")) return "CONTIGO";
+    if(n.includes("FONCODES")) return "FONCODES";
+    if(n.includes("JUNTOS")) return "JUNTOS";
+    if(n.includes("PAIS")) return "PAIS";
+    if(n==="PCA" || n.includes("COMPLEMENTACION")) return "PCA";
+    return n || "SIN DATO";
+  }
+  function _coalesceObject(){
+    for(let i=0;i<arguments.length;i++){
+      let v=arguments[i];
+      if(typeof v === "string"){
+        try{ v=JSON.parse(v); }catch(_e){}
+      }
+      if(v && typeof v === "object" && !Array.isArray(v)) return v;
+    }
+    return {};
+  }
+  function _rpDanios(e){
+    return _coalesceObject(e?.daniosMIDIS, e?.dañosMIDIS, e?.danosMIDIS, e?.daniosSector, e?.daniosSectorMidis, e?.daniosSectorDesarrollo);
+  }
+  function _programData(dm, prog){
+    const wanted=_programKey(prog);
+    const out={usuariosAfectados:0, serviciosAfectados:0, usuariosPorServicios:0, usuariosFallecidos:0, moduloAfectado:0};
+    Object.keys(dm||{}).forEach(k=>{
+      if(_programKey(k)!==wanted) return;
+      const d=dm[k]||{};
+      out.usuariosAfectados += _num(d.usuariosAfectados);
+      out.serviciosAfectados += _num(d.serviciosAfectados);
+      out.usuariosPorServicios += _num(d.usuariosPorServicios);
+      out.usuariosFallecidos += _num(d.usuariosFallecidos);
+      out.moduloAfectado += _num(d.moduloAfectado);
+    });
+    return out;
+  }
+  function _sumDanios(dm){
+    const progs=(Array.isArray(programas)&&programas.length)?programas:Object.keys(dm||{});
+    const t={usuarios:0, servicios:0, ups:0, fallecidos:0, modulo:0};
+    progs.forEach(p=>{ const d=_programData(dm,p); t.usuarios+=d.usuariosAfectados; t.servicios+=d.serviciosAfectados; t.ups+=d.usuariosPorServicios; t.fallecidos+=d.usuariosFallecidos; t.modulo+=d.moduloAfectado; });
+    return t;
+  }
+  function _parseDateOnlyValue(raw){
+    const s=String(raw||"").trim();
+    if(!s) return null;
+    let m=s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if(m) return new Date(Number(m[1]), Number(m[2])-1, Number(m[3]));
+    m=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+    if(m) return new Date(Number(m[3]), Number(m[2])-1, Number(m[1]));
+    try{
+      if(typeof __rpParseDateTimePeru === "function"){
+        const d=__rpParseDateTimePeru(s);
+        if(d && !isNaN(d.getTime())) return new Date(d.getFullYear(),d.getMonth(),d.getDate());
+      }
+    }catch(_e){}
+    const d2=new Date(s);
+    return isNaN(d2.getTime()) ? null : new Date(d2.getFullYear(),d2.getMonth(),d2.getDate());
+  }
+  function _fechaElabDate(e){ return _parseDateOnlyValue(e?.fechaHora || e?.fechaElaboracion || e?.fechaRegistro || e?.createdAt || e?.__serverCreatedAt); }
+  function _fechaEventoDate(e){ return _parseDateOnlyValue(e?.fechaPeligro); }
+  function _getDateForFilter(e,tipo){ return (tipo === "registro") ? _fechaElabDate(e) : _fechaEventoDate(e); }
+  function _inRange(d,desde,hasta){ if(!desde && !hasta) return true; if(!d) return false; if(desde && d<desde) return false; if(hasta && d>hasta) return false; return true; }
+  function _loadAll(){ try{return (Array.isArray(emergencias)?emergencias:[]).filter(e=>e && !_isDeleted(e) && !_isSeguimientoRecord(e));}catch(_e){return [];} }
+  function _affected(e){ const t=_sumDanios(_rpDanios(e)); return (t.usuarios>0 || t.servicios>0 || t.ups>0 || t.fallecidos>0 || t.modulo>0); }
+  function _filtered(){
+    const tipo=document.getElementById("dashTipoFecha")?.value || "evento";
+    const desde=_parseDateOnlyValue(document.getElementById("dashDesde")?.value);
+    const hasta=_parseDateOnlyValue(document.getElementById("dashHasta")?.value);
+    const solo=!!document.getElementById("dashSoloMidis")?.checked;
+    return _loadAll().filter(e=>_inRange(_getDateForFilter(e,tipo),desde,hasta) && (solo ? _affected(e) : true));
+  }
+  function _needsDashDetail(e){
+    if(!e || !e.codigo) return false;
+    const dm=_rpDanios(e);
+    const hasDanios = dm && typeof dm === "object" && Object.keys(dm).length>0;
+    const hasText = !!String(e.hechos || e.daniosOtros || e.accionesPreliminar || "").trim();
+    return !hasDanios || !hasText;
+  }
+  async function _hydrateDashboardDetails(data){
+    if(typeof __ensureFullEmergencia !== "function") return false;
+    if(!navigator.onLine) return false;
+    const arr=Array.isArray(data)?data:[];
+    const jobs=arr.filter(_needsDashDetail).map(e=>String(e.codigo||"").trim()).filter(Boolean);
+    if(!jobs.length) return false;
+    let changed=false, cursor=0;
+    const workers=Array.from({length:Math.min(8,jobs.length)}, async()=>{
+      while(cursor<jobs.length){
+        const code=jobs[cursor++];
+        try{
+          const full=await __ensureFullEmergencia(code);
+          if(full && full.codigo){
+            const idx=(Array.isArray(emergencias)?emergencias:[]).findIndex(x=>String(x?.codigo||"").trim()===code);
+            if(idx>=0) emergencias[idx]=full;
+            changed=true;
+          }
+        }catch(_e){}
+      }
+    });
+    await Promise.all(workers);
+    try{ if(changed && typeof __saveEmergencias === "function") __saveEmergencias(); }catch(_e){}
+    return changed;
+  }
+  function _ensureCanvas(id,h){
+    const el=document.getElementById(id); if(!el) return null;
+    el.style.display="block"; el.style.width="100%"; el.style.height=h+"px"; el.style.maxHeight=h+"px";
+    if(el.parentElement){ el.parentElement.style.minHeight=(h+20)+"px"; el.parentElement.style.position="relative"; }
+    return el;
+  }
+  function _newBar(id,label,h,dual){
+    if(typeof Chart === "undefined") return null;
+    const el=_ensureCanvas(id,h); if(!el) return null;
+    try{ const old=Chart.getChart(el); if(old) old.destroy(); }catch(_e){}
+    const datasets = dual ? [{label:"Servicios afectados",data:[]},{label:"Usuarios por servicios",data:[]}] : [{label:label,data:[]}];
+    return new Chart(el,{type:"bar",data:{labels:[],datasets},options:{responsive:true,maintainAspectRatio:false,animation:false,plugins:{legend:{display:true}},scales:{x:{ticks:{autoSkip:false,maxRotation:45,minRotation:0}},y:{beginAtZero:true,ticks:{precision:0}}}}});
+  }
+  function _ensureCharts(){
+    dashChartEvento = _newBar("dashChartEvento","Emergencias",360,false) || dashChartEvento;
+    dashChartRegion = _newBar("dashChartRegion","Emergencias",360,false) || dashChartRegion;
+    dashChartUsuariosProg = _newBar("dashChartUsuariosProg","Usuarios afectados",260,false) || dashChartUsuariosProg;
+    dashChartServiciosProg = _newBar("dashChartServiciosProg","Servicios afectados",260,true) || dashChartServiciosProg;
+    dashChartAfectProg = _newBar("dashChartAfectProg","Usuarios fallecidos",260,false) || dashChartAfectProg;
+  }
+  function _setChart(ch,labels,values,label){
+    if(!ch) return;
+    ch.data.labels=labels;
+    if(!ch.data.datasets || !ch.data.datasets[0]) ch.data.datasets=[{label:label||"",data:[]}];
+    if(label) ch.data.datasets[0].label=label;
+    ch.data.datasets[0].data=values;
+    ch.update();
+    try{ch.resize();}catch(_e){}
+  }
+  function _renderHistogramas(data){
+    data=Array.isArray(data)?data:_filtered();
+    const byEv={}, byDep={};
+    data.forEach(e=>{ const ev=String(e?.peligro||"Sin dato").trim()||"Sin dato"; const dep=String(e?.departamento||"Sin dato").trim()||"Sin dato"; byEv[ev]=(byEv[ev]||0)+1; byDep[dep]=(byDep[dep]||0)+1; });
+    const evEntries=Object.entries(byEv).sort((a,b)=>(b[1]-a[1])||a[0].localeCompare(b[0],"es"));
+    const depEntries=Object.entries(byDep).sort((a,b)=>(b[1]-a[1])||a[0].localeCompare(b[0],"es"));
+    _setChart(dashChartEvento,evEntries.map(x=>x[0]),evEntries.map(x=>x[1]),"Emergencias");
+    _setChart(dashChartRegion,depEntries.map(x=>x[0]),depEntries.map(x=>x[1]),"Emergencias");
+    const eTot=document.getElementById("dashTotalEmergenciasEvento"); if(eTot) eTot.textContent=String(data.length);
+    const rTot=document.getElementById("dashTotalEmergenciasRegion"); if(rTot) rTot.textContent=String(data.length);
+  }
+  function _renderImpacto(data,groupBy){
+    data=Array.isArray(data)?data:_filtered();
+    groupBy=groupBy || ((typeof __dashGetImpactoGroupBy==="function")?__dashGetImpactoGroupBy():"programa");
+    try{ if(typeof __dashSetImpactoLabels==="function") __dashSetImpactoLabels(groupBy); }catch(_e){}
+    const progs=(Array.isArray(programas)&&programas.length)?programas:["Contigo","CUNA MAS","FONCODES","JUNTOS","PAIS","PENSION 65","PCA","ALIMENTACION ESCOLAR"];
+    let labels=[],u=[],s=[],ups=[],f=[];
+    if(groupBy==="programa"){
+      labels=progs.map(p=>String(p).replace("CUNA MAS","CUNA MÁS").replace("PENSION 65","PENSIÓN 65").replace("ALIMENTACION ESCOLAR","ALIMENTACIÓN ESCOLAR"));
+      u=labels.map(()=>0); s=labels.map(()=>0); ups=labels.map(()=>0); f=labels.map(()=>0);
+      data.forEach(e=>{ const dm=_rpDanios(e); progs.forEach((p,i)=>{ const d=_programData(dm,p); u[i]+=d.usuariosAfectados; s[i]+=d.serviciosAfectados; ups[i]+=d.usuariosPorServicios; f[i]+=d.usuariosFallecidos; }); });
+    }else{
+      const map={};
+      data.forEach(e=>{ const k=String((groupBy==="evento"?e?.peligro:e?.departamento)||"Sin dato").trim()||"Sin dato"; const t=_sumDanios(_rpDanios(e)); if(!map[k]) map[k]={u:0,s:0,ups:0,f:0}; map[k].u+=t.usuarios; map[k].s+=t.servicios; map[k].ups+=t.ups; map[k].f+=t.fallecidos; });
+      const entries=Object.entries(map).map(([k,v])=>({k,...v})).sort((a,b)=>(b.u-a.u)||(b.s-a.s)||a.k.localeCompare(b.k,"es"));
+      labels=entries.map(x=>x.k); u=entries.map(x=>x.u); s=entries.map(x=>x.s); ups=entries.map(x=>x.ups); f=entries.map(x=>x.f);
+    }
+    const totalU=u.reduce((a,b)=>a+b,0), totalS=s.reduce((a,b)=>a+b,0), totalUPS=ups.reduce((a,b)=>a+b,0), totalF=f.reduce((a,b)=>a+b,0);
+    [["dashTotalUsuarios",totalU],["dashTotalServicios",totalS],["dashTotalUsuariosPorServicios",totalUPS],["dashTotalFallecidos",totalF]].forEach(([id,val])=>{ const el=document.getElementById(id); if(el) el.textContent=String(val); });
+    _setChart(dashChartUsuariosProg,labels,u,"Usuarios afectados");
+    if(dashChartServiciosProg){ dashChartServiciosProg.data.labels=labels; dashChartServiciosProg.data.datasets=[{label:"Servicios afectados",data:s},{label:"Usuarios por servicios",data:ups}]; dashChartServiciosProg.update(); try{dashChartServiciosProg.resize();}catch(_e){} }
+    _setChart(dashChartAfectProg,labels,f,"Usuarios fallecidos");
+  }
+  function _renderAfectaMidisTable(data){
+    const tbody=document.getElementById("dashAfectaMidisTbody"); if(tbody) tbody.innerHTML="";
+    data=Array.isArray(data)?data:_filtered();
+    const list=data.filter(_affected).sort((a,b)=>String(b.fechaPeligro||"").localeCompare(String(a.fechaPeligro||"")) || String(b.codigo||"").localeCompare(String(a.codigo||"")));
+    try{ __dashPagerMidis.size=(typeof __dashReadPageSize==="function")?__dashReadPageSize("dashAfectaMidisPageSize",__dashPagerMidis.size||10):(__dashPagerMidis.size||10); }catch(_e){}
+    let page={slice:list.slice(0,__dashPagerMidis.size||10)};
+    try{ page=(typeof __dashSliceForPager==="function")?__dashSliceForPager(list,__dashPagerMidis):page; }catch(_e){}
+    try{ if(typeof __dashUpdatePagerUI==="function") __dashUpdatePagerUI(__dashPagerMidis,list.length,"dashAfectaMidisPageInfo","dashAfectaMidisPrev","dashAfectaMidisNext"); }catch(_e){}
+    if(!tbody) return;
+    if(!list.length){ tbody.innerHTML='<tr><td colspan="10" class="text-muted small">Sin emergencias con afectación MIDIS para el filtro seleccionado.</td></tr>'; return; }
+    page.slice.forEach(e=>{ const st=(typeof __dashGetStatus==="function")?__dashGetStatus(e):{name:e?.cerrada?"Cerrada":"Abierta",color:e?.cerrada?"#198754":"#dc3545"}; const t=_sumDanios(_rpDanios(e)); tbody.innerHTML += `<tr><td>${_esc(e.codigo||"")}</td><td><span class="badge" style="background:${st.color}"> </span> ${_esc(st.name)}</td><td>${_esc(e.peligro||"")}</td><td>${_esc(e.departamento||"")}</td><td>${_esc(e.provincia||"")}</td><td>${_esc(e.distrito||"")}</td><td>${_esc(e.fechaPeligro||"")}</td><td>${t.usuarios}</td><td>${t.servicios}</td><td class="text-center"><button type="button" class="btn btn-sm btn-outline-primary" title="Ver RP/RC" onclick='__openVerByCodigo(${JSON.stringify(String(e.codigo||""))})'>👁</button></td></tr>`; });
+  }
+  function _renderAll(data){
+    try{ __dashLastFiltered=data; }catch(_e){}
+    try{ if(typeof __dashMapPopulateDepartamento==="function") __dashMapPopulateDepartamento(data); }catch(_e){}
+    try{ if(typeof __dashMapPopulatePeligro==="function") __dashMapPopulatePeligro(data); }catch(_e){}
+    let mapData=data; try{ if(typeof __dashMapApplyDepartamentoFilter==="function") mapData=__dashMapApplyDepartamentoFilter(data); }catch(_e){}
+    try{ if(typeof __dashRenderMap==="function") __dashRenderMap(mapData); }catch(_e){}
+    try{ if(typeof __dashMapRenderDepartamentoResumen==="function") __dashMapRenderDepartamentoResumen(data); }catch(_e){}
+    try{ if(typeof __dashRenderActivasHoy==="function") __dashRenderActivasHoy(); }catch(_e){}
+    _renderHistogramas(data);
+    _renderImpacto(data,(typeof __dashGetImpactoGroupBy==="function")?__dashGetImpactoGroupBy():"programa");
+    _renderAfectaMidisTable(data);
+    setTimeout(()=>{ try{ if(dashMap) dashMap.invalidateSize(); [dashChartEvento,dashChartRegion,dashChartUsuariosProg,dashChartServiciosProg,dashChartAfectProg].forEach(ch=>{try{ch&&ch.resize&&ch.resize();}catch(_e){}}); }catch(_e){} },250);
+  }
+  window.__dashGetEmergencias=__dashGetEmergencias=function(){return _loadAll();};
+  window.__dashCurrentDaniosMidis=function(e){return _rpDanios(e);};
+  window.__dashSumDanios=function(dm){return _sumDanios(dm);};
+  window.__dashTotalesMidis=function(dm){const t=_sumDanios(dm); return {usuarios:t.usuarios,servicios:t.servicios,fallecidos:t.fallecidos,ups:t.ups,modulo:t.modulo};};
+  window.__dashAfectaMidis=__dashAfectaMidis=function(e){return _affected(e);};
+  window.__dashGetFiltered=__dashGetFiltered=function(){return _filtered();};
+  window.__dashRenderHistogramas=__dashRenderHistogramas=function(data){_ensureCharts(); _renderHistogramas(data);};
+  window.__dashRenderImpacto=__dashRenderImpacto=function(data,groupBy){_ensureCharts(); _renderImpacto(data,groupBy);};
+  window.__dashRenderAfectaMidisTable=__dashRenderAfectaMidisTable=function(data){_renderAfectaMidisTable(data);};
+  window.dashboardRefresh=dashboardRefresh=async function(opts){
+    opts=opts||{};
+    try{ if(typeof __dashInitIfNeeded==="function") __dashInitIfNeeded(); }catch(_e){}
+    _ensureCharts();
+    let data=_filtered();
+    _renderAll(data);
+    const changed=await _hydrateDashboardDetails(data);
+    if(changed){ data=_filtered(); _renderAll(data); }
+  };
+  document.addEventListener("DOMContentLoaded",function(){
+    [400,1500,3500].forEach(ms=>setTimeout(()=>{try{dashboardRefresh({force:true});}catch(_e){}},ms));
+    document.getElementById("dashBtnAplicar")?.addEventListener("click",()=>setTimeout(()=>{try{dashboardRefresh({force:true});}catch(_e){}},50));
+    document.getElementById("dashSoloMidis")?.addEventListener("change",()=>setTimeout(()=>{try{dashboardRefresh({force:true});}catch(_e){}},50));
+    document.querySelectorAll('input[name="dashImpactoClasif"]').forEach(el=>el.addEventListener("change",()=>setTimeout(()=>{try{dashboardRefresh({force:true});}catch(_e){}},50)));
+    document.getElementById("dashPillEvento")?.addEventListener("shown.bs.tab",()=>setTimeout(()=>{try{dashboardRefresh({force:true});}catch(_e){}},150));
+    document.getElementById("dashPillRegion")?.addEventListener("shown.bs.tab",()=>setTimeout(()=>{try{dashboardRefresh({force:true});}catch(_e){}},150));
   });
 })();
 
