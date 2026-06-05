@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <!-- BUILD: 2026-02-20 autopull-cooldown-v206-fix-sync-v3 -->
-<script>window.__BUILD_ID='2026-02-20 autopull-cooldown-v206-fix-sync-v3-sync-lock-v233-dashmap-ojito';console.log('BUILD',window.__BUILD_ID);</script>
+<script>window.__BUILD_ID='2026-02-20 autopull-cooldown-v206-fix-sync-v3-sync-lock-v232-dashmap-fecha-peligro';console.log('BUILD',window.__BUILD_ID);</script>
 
 <!-- build: VER_PRINT_RC_ALWAYS_VISIBLE v4 2026-01-11 -->
 <meta charset="UTF-8" />
@@ -18,7 +18,7 @@ body { background: #f5f5f5; }
 .card { margin-top: 1rem; }
 .table td input { width: 100%; }
 .hidden { display: none; }
-/* ======= VERSION 233 02/06/2026 - dashmap resumen ojito RP/RC ======= */
+/* ======= VERSION 232 02/06/2026 - dashmap filtros fecha peligro ======= */
 /* ======= VER (Listado de Emergencias): Formato de visualización/impresión ======= */
 .ver-report-wrap{ font-family: Calibri, Arial, sans-serif; font-size: 11pt; color:#111; }
 .ver-report-title{ font-family: Calibri, Arial, sans-serif; font-size:15pt; font-weight:700; color:#1F4E79; margin:0 0 6px 0; }
@@ -897,11 +897,10 @@ body { background: #f5f5f5; }
                 <th>Peligro</th>
                 <th class="text-end">Total usuarios afectados</th>
                 <th class="text-end">Total servicios afectados</th>
-                <th class="text-center" style="width:54px">Ver</th>
               </tr>
             </thead>
             <tbody id="dashMapDeptTbody">
-              <tr><td colspan="6" class="text-muted small">Sin datos para mostrar.</td></tr>
+              <tr><td colspan="5" class="text-muted small">Sin datos para mostrar.</td></tr>
             </tbody>
           </table>
         </div>
@@ -8711,7 +8710,7 @@ function __dashMapRenderDepartamentoResumen(data){
   }
 
   if(!total){
-    tbody.innerHTML = '<tr><td colspan="6" class="text-muted small">Sin emergencias para el filtro seleccionado.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="5" class="text-muted small">Sin emergencias para el filtro seleccionado.</td></tr>';
     if(pageInfo) pageInfo.textContent = "0 a 0 de 0 registros";
     if(btnPrev) btnPrev.disabled = true;
     if(btnNext) btnNext.disabled = true;
@@ -8730,31 +8729,9 @@ function __dashMapRenderDepartamentoResumen(data){
       <td>${__dashHtmlEscape(e?.peligro || "")}</td>
       <td class="text-end">${Number(t.usuarios || 0)}</td>
       <td class="text-end">${Number(t.servicios || 0)}</td>
-      <td class="text-center"><button type="button" class="btn btn-sm btn-outline-secondary dashMapDeptVer" data-codigo="${__dashHtmlEscape(e?.codigo || "")}" title="Ver detalle RP/RC">👁</button></td>
     </tr>`;
   }).join("");
   tbody.innerHTML = rows;
-
-  try{
-    tbody.querySelectorAll(".dashMapDeptVer").forEach(btn=>{
-      btn.addEventListener("click", ()=>{
-        const code = String(btn.getAttribute("data-codigo") || "").trim();
-        if(!code) return;
-        const local = (Array.isArray(emergencias) ? emergencias : []).find(x => String(x && x.codigo ? x.codigo : "").trim() === code) || null;
-        if(typeof __withFullEmergencia === "function"){
-          __withFullEmergencia(local || code, (full)=>{
-            verEmergencia(full);
-            try{ if(typeof __getRCList === "function" && __getRCList(full).length > 0 && typeof __scrollVerToLastRC === "function") __scrollVerToLastRC(); }catch(_e){}
-          });
-        }else if(local && typeof verEmergencia === "function"){
-          verEmergencia(local);
-          try{ if(typeof __getRCList === "function" && __getRCList(local).length > 0 && typeof __scrollVerToLastRC === "function") __scrollVerToLastRC(); }catch(_e){}
-        }else{
-          alert("No se encontró la emergencia: " + code);
-        }
-      });
-    });
-  }catch(_e){}
 
   if(pageInfo) pageInfo.textContent = `${start + 1} a ${end} de ${total} registros`;
   if(btnPrev) btnPrev.disabled = (__dashMapDeptPager.page <= 1);
