@@ -18,7 +18,7 @@ body { background: #f5f5f5; }
 .card { margin-top: 1rem; }
 .table td input { width: 100%; }
 .hidden { display: none; }
-/* ======= VERSION 241 05/06/2026 - fix RP approve fresh detail/sync ======= */
+/* ======= VERSION 242 05/06/2026 - fix RP approve fresh detail/sync ======= */
 /* ======= VER (Listado de Emergencias): Formato de visualización/impresión ======= */
 .ver-report-wrap{ font-family: Calibri, Arial, sans-serif; font-size: 11pt; color:#111; }
 .ver-report-title{ font-family: Calibri, Arial, sans-serif; font-size:15pt; font-weight:700; color:#1F4E79; margin:0 0 6px 0; }
@@ -3166,47 +3166,41 @@ function __renderAprobaciones(){
       const ref = JSON.parse(b.getAttribute("data-apr"));
       const code = String(ref && ref.codigo ? ref.codigo : '').trim();
       if(!code) return;
-      let target = (Array.isArray(emergencias)?emergencias:[]).find(x=>String(x && x.codigo ? x.codigo : '').trim()===code) || null;
+      b.disabled = true;
+      const oldTxt = b.textContent;
       try{
-        if(ref && ref.kind === "rp" && __isApiConfigured && __isApiConfigured() && navigator.onLine){
-          const fresh = await __forceServerFullEmergencia(code, { required:true });
-          if(fresh) target = fresh;
-        }
-      }catch(_e){}
-      const snapshot = target ? JSON.parse(JSON.stringify(target)) : null;
-      try{ if(__isApiConfigured && __isApiConfigured() && navigator.onLine && !(ref && ref.kind === "rp")){ await __syncPullAuto(); } }catch(_e){}
-      __aprobar(ref);
-      __saveEmergencias();
-      __renderAprobaciones();
-      cargarTablaEmergencias?.();
-      dashboardRefresh?.();
-      const res = await __syncCommitCodigo(code, snapshot, {
-        successMessage: 'Aprobación confirmada en servidor.',
-        pendingMessage: 'Aprobación guardada en local. Pendiente de sincronizar.',
-        failurePrefix: 'No se pudo confirmar la aprobación en servidor'
-      });
-      if(ref && ref.kind === "rp" && res && !res.ok){
-        try{
-          const fresh = await __forceServerFullEmergencia(code, { required:true });
-          if(fresh){
-            // Si el conflicto fue por hash vencido y el servidor aún mantiene el RP Pendiente, reintentar una sola vez sobre la versión oficial.
-            if(res.conflict && String(fresh.rpAprobEstado || "") === "Pendiente"){
-              const retrySnapshot = JSON.parse(JSON.stringify(fresh));
-              __aprobar({kind:"rp", codigo:code});
-              __saveEmergencias();
-              res = await __syncCommitCodigo(code, retrySnapshot, {
-                successMessage: 'Aprobación confirmada en servidor.',
-                pendingMessage: 'Aprobación guardada en local. Pendiente de sincronizar.',
-                failurePrefix: 'No se pudo confirmar la aprobación en servidor'
-              });
-            }
-            cargarTablaEmergencias?.();
-            dashboardRefresh?.();
+        b.textContent = "Aprobando...";
+        if(ref && ref.kind === "rp"){
+          const res = await __aprobarRPServidorAtomico(code, { source:'modal' });
+          if(res && res.payload){
+            try{ if(emergenciaSeleccionada && String(emergenciaSeleccionada.codigo||'').trim() === code) abrirRP(res.payload); }catch(_e){}
           }
-        }catch(_e){}
+          try{ cargarTablaEmergencias?.(); }catch(_e){}
+          try{ dashboardRefresh?.({force:true}); }catch(_e){}
+          try{ __renderAprobaciones(); }catch(_e){}
+          alert((res && res.message) ? res.message : 'Operación finalizada.');
+          return;
+        }
+
+        const target = (Array.isArray(emergencias)?emergencias:[]).find(x=>String(x && x.codigo ? x.codigo : '').trim()===code) || null;
+        const snapshot = target ? JSON.parse(JSON.stringify(target)) : null;
+        try{ if(__isApiConfigured && __isApiConfigured() && navigator.onLine){ await __syncPullAuto({force:true}); } }catch(_e){}
+        __aprobar(ref);
+        __saveEmergencias();
+        __renderAprobaciones();
+        cargarTablaEmergencias?.();
+        dashboardRefresh?.();
+        const res = await __syncCommitCodigo(code, snapshot, {
+          successMessage: 'Aprobación confirmada en servidor.',
+          pendingMessage: 'Aprobación guardada en local. Pendiente de sincronizar.',
+          failurePrefix: 'No se pudo confirmar la aprobación en servidor'
+        });
+        __renderAprobaciones();
+        if(res && res.message) alert(res.message);
+      }finally{
+        b.disabled = false;
+        b.textContent = oldTxt || "Aprobar";
       }
-      __renderAprobaciones();
-      if(res && res.message) alert(res.message);
     });
   });
   tbody.querySelectorAll("[data-obs]").forEach(b=>{
@@ -3796,7 +3790,7 @@ function __syncApplyServerRecord(codigo, rec){
   const arr = Array.isArray(emergencias) ? emergencias : __loadEmergencias();
   const payload = JSON.parse(JSON.stringify(rec.payload || {}));
   try{ payload.estado_sync = 'Sincronizado'; }catch(_e){}
-  try{ payload.__serverHash = String(rec.hash || rec.payload_hash || rec.payloadHash || rec.server_hash || ''); }catch(_e){}
+  try{ payload.__serverHash = String(rec.hash || ''); }catch(_e){}
   try{ payload.__serverUpdatedAt = String(rec.updated_at || ''); }catch(_e){}
 
   const idx = arr.findIndex(e => String(e && e.codigo ? e.codigo : '').trim() === code);
@@ -3806,7 +3800,8 @@ function __syncApplyServerRecord(codigo, rec){
   emergencias = arr;
 
   const map = __getHashMap();
-  { const __h = String(rec.hash || rec.payload_hash || rec.payloadHash || rec.server_hash || ''); if(__h) map[code] = __h; else delete map[code]; }
+  if(rec.hash) map[code] = String(rec.hash);
+  else delete map[code];
   __setHashMap(map);
 
   try{ __saveEmergencias(); }catch(e){}
@@ -4136,7 +4131,7 @@ document.addEventListener("DOMContentLoaded", ()=>{
   });
 
   // Aprobaciones modal
-  // FIX v241: antes de listar pendientes, el Administrador fuerza lectura vigente desde D1.
+  // FIX v240: antes de listar pendientes, el Administrador jala la versión vigente desde D1.
   document.getElementById("btnAprob")?.addEventListener("click", async ()=>{
     const btn = document.getElementById("btnAprob");
     const oldTxt = btn ? btn.textContent : "";
@@ -4163,28 +4158,13 @@ document.addEventListener("DOMContentLoaded", ()=>{
     if(!__isAdmin()) return;
     const codigo = (document.getElementById("codigoRP")?.value || "").trim();
     if(!codigo){ alert("No hay RP cargado."); return; }
-    const em = emergencias.find(e=>e.codigo===codigo);
-    if(!em){ alert("No se encontró la emergencia."); return; }
-    if(em.rpAprobEstado !== "Pendiente"){
-      alert("El RP no está en estado 'Por aprobar'. Primero debe enviarse a aprobación.");
-      return;
-    }
-    const snapshot = JSON.parse(JSON.stringify(em));
-    __aprobar({kind:"rp", codigo});
-    __saveEmergencias();
-    cargarTablaEmergencias();
-    const res = await __syncCommitCodigo(codigo, snapshot, {
-      successMessage: 'RP aprobado en servidor.',
-      pendingMessage: 'RP aprobado en local. Pendiente de sincronizar.',
-      failurePrefix: 'No se pudo confirmar la aprobación del RP en servidor'
-    });
+    const res = await __aprobarRPServidorAtomico(codigo, { source:'form-direct' });
     try{
-      const fresh = emergencias.find(e=>e.codigo===codigo);
-      const apr = document.getElementById("aprobadoRP");
-      if(apr && fresh) apr.value = fresh.rpAprobadoPor || __getApproverName();
-      const btnApr = document.getElementById("btnAprobarRPAdmin");
-      if(btnApr) btnApr.disabled = !!(res.ok && !res.pending);
-      if(res.ok && !res.pending) __lockRPFormAdminApproved?.();
+      if(res && res.payload){
+        abrirRP(res.payload);
+        if(res.ok && !res.pending) __lockRPFormAdminApproved?.();
+        else __syncRPAdminApproveButtonState(res.payload);
+      }
     }catch(e){}
     alert(res.message || 'Operación finalizada.');
   });
@@ -5278,102 +5258,51 @@ document.getElementById("btnGuardarAprobarRPAdmin")?.addEventListener("click", a
   const oldTxt = btn ? btn.textContent : "";
   if(btn){
     btn.disabled = true;
-    btn.textContent = "Validando...";
+    btn.textContent = "Grabando...";
   }
 
   let code = "";
-  let snapshot = null;
-
   try{
-    code = (document.getElementById("codigoRP")?.value || "").trim();
-
-    // Si ya existe código, traer primero la versión oficial completa.
-    // No se repinta el formulario aquí para no perder cambios que el Admin acaba de ingresar.
-    if(code && __isApiConfigured && __isApiConfigured() && navigator.onLine){
-      const fresh = await __forceServerFullEmergencia(code, { required:true });
-      if(fresh){
-        snapshot = JSON.parse(JSON.stringify(fresh));
-
-        if(String(fresh.rpAprobEstado || "") === "Aprobado"){
-          abrirRP(fresh);
-          alert("Este RP ya figura como aprobado en el servidor. Se cargó la versión vigente.");
-          return;
-        }
-      }
-    }
-
-    if(btn) btn.textContent = "Grabando...";
-
-    if(!snapshot && code){
-      const prev = (Array.isArray(emergencias)?emergencias:[]).find(e=>String(e && e.codigo ? e.codigo : '').trim()===code) || null;
-      snapshot = prev ? JSON.parse(JSON.stringify(prev)) : null;
-    }
-
     const saved = __saveRP({submit:false});
     if(!saved) return;
 
     code = (document.getElementById("codigoRP")?.value || "").trim();
     if(!code){ alert("No hay RP cargado."); return; }
 
-    const em = emergencias.find(e=>String(e && e.codigo ? e.codigo : '').trim()===code);
-    if(!em){ alert("No se encontró la emergencia."); return; }
+    const localRec = (Array.isArray(emergencias)?emergencias:[]).find(e=>String(e && e.codigo ? e.codigo : '').trim()===code) || null;
+    if(!localRec){ alert("No se encontró la emergencia."); return; }
 
-    if(!snapshot) snapshot = JSON.parse(JSON.stringify(em));
-
-    if(em.rpAprobEstado !== "Pendiente" && em.rpAprobEstado !== "Aprobado"){
-      em.rpAprobEstado = "Pendiente";
-      __ensureRPGlobalNumber(em);
-      em.rpEnviadoPor  = __rpEnviadoPorValue(em) || __getCurrentUserName();
-      em.rpEnviadoPorEmail = currentUser ? currentUser.email : (em.rpEnviadoPorEmail || null);
-      em.rpEnviadoEn   = __rpEnviadoEnValue(em) || __nowIso();
-      __audit("ENVIAR_RP_APROBACION", "emergencia", em.codigo, null);
+    if(String(localRec.rpAprobEstado || "") !== "Pendiente"){
+      localRec.rpAprobEstado = "Pendiente";
+      __ensureRPGlobalNumber(localRec);
+      localRec.rpEnviadoPor  = __rpEnviadoPorValue(localRec) || __getCurrentUserName();
+      localRec.rpEnviadoPorEmail = currentUser ? currentUser.email : (localRec.rpEnviadoPorEmail || null);
+      localRec.rpEnviadoEn   = __rpEnviadoEnValue(localRec) || __nowIso();
+      try{ __audit("ENVIAR_RP_APROBACION", "emergencia", localRec.codigo, null); }catch(_e){}
+      try{ __histPush(localRec, "RP_ENVIADO_APROBACION", null); }catch(_e){}
+      try{ __touch(localRec); }catch(_e){}
+      __saveEmergencias();
     }
 
-    if(em.rpAprobEstado === "Pendiente"){
-      __aprobar({kind:"rp", codigo: code});
-    }
-
-    __saveEmergencias();
-    cargarTablaEmergencias();
-
-    if(btn) btn.textContent = "Sincronizando...";
-
-    const res = await __syncCommitCodigo(code, snapshot, {
-      successMessage: 'Reporte Preliminar guardado y aprobado en servidor.',
-      pendingMessage: 'Reporte Preliminar aprobado en local. Pendiente de sincronizar.',
-      failurePrefix: 'No se pudo confirmar la aprobación del RP en servidor'
-    });
+    if(btn) btn.textContent = "Aprobando...";
+    const res = await __aprobarRPServidorAtomico(code, { localOverride: localRec, source:'form-save-approve' });
 
     try{
-      let fresh = emergencias.find(e=>String(e && e.codigo ? e.codigo : '').trim()===code) || null;
-
-      // Si hubo conflicto/rechazo/error, recargar versión oficial y repintar el RP para no dejar el botón gris con estado falso.
-      if(res && !res.ok && __isApiConfigured && __isApiConfigured() && navigator.onLine){
-        try{ fresh = await __forceServerFullEmergencia(code, { required:true }); }catch(_e){}
-      }
-
+      let fresh = res && res.payload ? res.payload : ((Array.isArray(emergencias)?emergencias:[]).find(e=>String(e && e.codigo ? e.codigo : '').trim()===code) || null);
       if(fresh){
-        const apr = document.getElementById("aprobadoRP");
-        if(apr) apr.value = fresh.rpAprobadoPor || fresh.aprobadoPor || __getApproverName();
-
-        if(res && res.ok && !res.pending){
-          abrirRP(fresh);
-          __lockRPFormAdminApproved?.();
-        }else if(res && !res.ok){
-          abrirRP(fresh);
-        }else{
-          __syncRPAdminApproveButtonState(fresh);
-        }
+        abrirRP(fresh);
+        if(res && res.ok && !res.pending) __lockRPFormAdminApproved?.();
+        else __syncRPAdminApproveButtonState(fresh);
       }
     }catch(e){}
 
-    alert(res.message || 'Operación finalizada.');
+    alert((res && res.message) ? res.message : 'Operación finalizada.');
   }catch(e){
     const msg = (e && e.message) ? e.message : String(e);
     alert("No se pudo grabar y aprobar el RP: " + msg);
     try{
       if(code && __isApiConfigured && __isApiConfigured() && navigator.onLine){
-        const fresh = await __forceServerFullEmergencia(code, { required:true });
+        const fresh = await __forceServerFullEmergencia(code, { required:false });
         if(fresh) abrirRP(fresh);
       }
     }catch(_e){}
@@ -10051,13 +9980,18 @@ const __SYNC_KEYS = {
 // === SYNC helpers: payload limpio y hash consistente con el servidor ===
 function __syncCleanPayload(obj){
   const x = JSON.parse(JSON.stringify(obj || {}));
-  // Campos locales (UI) que NO deben ir al servidor ni al hash
+  // Campos locales (UI/sync/resumen) que NO deben ir al servidor ni al hash
   delete x.estado_sync;
   delete x.sync_denied_at;
   delete x.sync_denied_reason;
   delete x.__serverUpdatedAt;
   delete x.__serverHash;
   delete x.__serverCreatedAt;
+  delete x.__summaryOnly;
+  delete x.__needsDetail;
+  delete x.__needsExcelDetail;
+  delete x.__detailLoading;
+  delete x.__detailPromise;
   return x;
 }
 async function __syncHash(obj){
@@ -10152,6 +10086,185 @@ async function __syncCommitCodigo(codigo, snapshot, opts){
   }
 }
 
+
+
+// FIX v242: aprobación RP atómica contra D1 usando el hash oficial del servidor.
+function __syncUpdateLocalFromPayload(code, payload, hash, updatedAt){
+  try{
+    const codigo = String(code || '').trim();
+    if(!codigo || !payload) return null;
+    const arr = Array.isArray(emergencias) ? emergencias : __loadEmergencias();
+    const cleanPayload = JSON.parse(JSON.stringify(payload || {}));
+    try{ cleanPayload.estado_sync = 'Sincronizado'; }catch(_e){}
+    try{ cleanPayload.__serverHash = String(hash || ''); }catch(_e){}
+    try{ cleanPayload.__serverUpdatedAt = String(updatedAt || ''); }catch(_e){}
+    try{ cleanPayload.__summaryOnly = false; delete cleanPayload.__needsDetail; delete cleanPayload.__needsExcelDetail; }catch(_e){}
+    const idx = arr.findIndex(e => String(e && e.codigo ? e.codigo : '').trim() === codigo);
+    if(idx >= 0) arr[idx] = cleanPayload;
+    else arr.push(cleanPayload);
+    emergencias = arr;
+    const map = __getHashMap();
+    if(hash) map[codigo] = String(hash); else delete map[codigo];
+    __setHashMap(map);
+    __saveEmergencias();
+    try{
+      if(emergenciaSeleccionada && String(emergenciaSeleccionada.codigo || '').trim() === codigo){
+        emergenciaSeleccionada = cleanPayload;
+      }
+    }catch(_e){}
+    return cleanPayload;
+  }catch(e){ return null; }
+}
+
+function __syncAppendCodigoIssue(kind, code, items, reasonFallback, localPayload, serverPayload){
+  try{
+    const codigo = String(code || '').trim();
+    const list = Array.isArray(items) ? items : [];
+    const normalized = list.length ? list.map(it=>{
+      if(typeof it === 'string') return { codigo, reason: reasonFallback || kind };
+      return Object.assign({}, it || {}, { codigo: String((it && (it.codigo || it.code || it.id)) || codigo).trim() || codigo });
+    }) : [{ codigo, reason: reasonFallback || kind }];
+    const addStages = normalized.map(it=>{
+      const out = Object.assign({}, it || {});
+      try{ out.local_stage = out.local_stage || (typeof __segStage === 'function' ? __segStage(localPayload || {}) : ''); }catch(_e){}
+      try{ out.server_stage = out.server_stage || (typeof __segStage === 'function' ? __segStage(serverPayload || {}) : ''); }catch(_e){}
+      try{ if(serverPayload) out.server_payload = serverPayload; }catch(_e){}
+      return out;
+    });
+    const entry = { at: __nowIso(), conflicts: [], denied: [], errors: [] };
+    if(kind === 'conflicts' || kind === 'conflict') entry.conflicts = addStages;
+    else if(kind === 'denied') entry.denied = addStages;
+    else entry.errors = addStages;
+    if(typeof __syncConfAppend === 'function') __syncConfAppend(entry);
+    try{ if(typeof __renderSyncConflictsTable === 'function') __renderSyncConflictsTable(); }catch(_e){}
+  }catch(e){}
+}
+
+function __applyRPAprobacionToPayload(payload){
+  const em = JSON.parse(JSON.stringify(payload || {}));
+  em.rpAprobEstado = 'Aprobado';
+  em.rpAprobadoPor = (typeof __getApproverName === 'function') ? __getApproverName() : __getCurrentUserName();
+  em.rpAprobadoPorEmail = currentUser ? currentUser.email : null;
+  em.rpAprobadoEn = __nowIso();
+  em.rpObs = null;
+  em.aprobadoPor = em.rpAprobadoPor;
+  em.aprobadoPorEmail = em.rpAprobadoPorEmail;
+  try{ __histPush(em, 'RP_APROBADO', null); }catch(_e){}
+  try{ __touch(em); }catch(_e){
+    em.updatedAt = __nowIso();
+    if(currentUser) em.updatedByEmail = currentUser.email;
+  }
+  return em;
+}
+
+async function __syncPushCodigoAtomic(code, payload, baseHash, createdAt){
+  const codigo = String(code || '').trim();
+  if(!codigo) throw new Error('codigo_invalido');
+  const token = __tokenGet();
+  const clean = __syncCleanPayload(payload || {});
+  const h = await __sha256(JSON.stringify(clean));
+  const now = __nowIso();
+  const rec = {
+    codigo: codigo,
+    payload: clean,
+    hash: h,
+    if_match: String(baseHash || ''),
+    created_at: createdAt || payload.createdAt || payload.fechaRegistro || now,
+    updated_at: now,
+    device_id: __getDeviceId()
+  };
+  const out = await __api('/sync/push', { method:'POST', token: token, body:{ records:[rec] } });
+  if(out.res && out.res.status === 401) throw new Error('unauthorized');
+  if(!out.res || !out.res.ok){
+    const err = out.data && out.data.error ? out.data.error : 'push_failed';
+    throw new Error(err);
+  }
+  const acked = out.data && Array.isArray(out.data.acked) ? out.data.acked : [];
+  const conflicts = out.data && Array.isArray(out.data.conflicts) ? out.data.conflicts : [];
+  const denied = out.data && Array.isArray(out.data.denied) ? out.data.denied : [];
+  return { ok: acked.includes(codigo), acked, conflicts, denied, hash:h, updated_at: now, payload: clean };
+}
+
+async function __aprobarRPServidorAtomico(codigo, opts){
+  const cfg = Object.assign({ localOverride:null, source:'form' }, opts || {});
+  const code = String(codigo || '').trim();
+  if(!code) return { ok:false, message:'Código inválido.' };
+
+  if(!(__isApiConfigured && __isApiConfigured()) || !navigator.onLine){
+    return { ok:false, pending:true, message:'No hay conexión con D1. El RP no fue aprobado en servidor.' };
+  }
+
+  let serverRec = null;
+  let serverPayload = null;
+  let serverHash = '';
+  try{
+    serverRec = await __syncFetchDetail(code);
+    if(!serverRec || !serverRec.payload) throw new Error('detail_empty');
+    serverPayload = JSON.parse(JSON.stringify(serverRec.payload || {}));
+    serverHash = String(serverRec.hash || '');
+    __syncUpdateLocalFromPayload(code, serverPayload, serverHash, serverRec.updated_at || '');
+  }catch(e){
+    const msg = (e && e.message) ? e.message : String(e);
+    __syncAppendCodigoIssue('errors', code, [{ codigo:code, reason:'detail_failed', message:msg }], 'detail_failed', null, null);
+    return { ok:false, message:'No se pudo leer la versión vigente del servidor (' + msg + ').' };
+  }
+
+  if(String(serverPayload.rpAprobEstado || '') === 'Aprobado'){
+    const fresh = __syncUpdateLocalFromPayload(code, serverPayload, serverHash, serverRec.updated_at || '');
+    return { ok:true, already:true, payload:fresh, message:'El RP ya figura aprobado en servidor.' };
+  }
+
+  if(String(serverPayload.rpAprobEstado || '') !== 'Pendiente'){
+    const fresh = __syncUpdateLocalFromPayload(code, serverPayload, serverHash, serverRec.updated_at || '');
+    return { ok:false, payload:fresh, message:'El RP no está Por aprobar en servidor. Se cargó la versión vigente.' };
+  }
+
+  let baseForApproval = JSON.parse(JSON.stringify(serverPayload));
+  if(cfg.localOverride){
+    const localClean = __syncCleanPayload(cfg.localOverride);
+    baseForApproval = Object.assign({}, baseForApproval, localClean, {
+      codigo: code,
+      createdAt: baseForApproval.createdAt || localClean.createdAt,
+      createdByEmail: baseForApproval.createdByEmail || localClean.createdByEmail,
+      ownerEmail: baseForApproval.ownerEmail || localClean.ownerEmail,
+      rpAprobEstado: 'Pendiente',
+      rpEnviadoPor: baseForApproval.rpEnviadoPor || localClean.rpEnviadoPor,
+      rpEnviadoPorEmail: baseForApproval.rpEnviadoPorEmail || localClean.rpEnviadoPorEmail,
+      rpEnviadoEn: baseForApproval.rpEnviadoEn || localClean.rpEnviadoEn
+    });
+  }
+
+  const approvedPayload = __applyRPAprobacionToPayload(baseForApproval);
+
+  try{
+    const push = await __syncPushCodigoAtomic(code, approvedPayload, serverHash, serverRec.created_at || serverPayload.createdAt || serverPayload.fechaRegistro || '');
+    if(push.ok){
+      const saved = __syncUpdateLocalFromPayload(code, push.payload, push.hash, push.updated_at);
+      try{ await __syncPullAuto({ force:true }); }catch(_e){}
+      try{ cargarTablaEmergencias(); }catch(_e){}
+      try{ dashboardRefresh({force:true}); }catch(_e){}
+      try{ __calcPending(); }catch(_e){}
+      try{ __renderAprobaciones(); }catch(_e){}
+      return { ok:true, payload:saved, message:'RP aprobado y confirmado en servidor.' };
+    }
+
+    const hasConflict = __syncListHasCodigo(push.conflicts, code);
+    const hasDenied = __syncListHasCodigo(push.denied, code);
+    if(hasConflict) __syncAppendCodigoIssue('conflicts', code, push.conflicts, 'both_modified', approvedPayload, serverPayload);
+    if(hasDenied) __syncAppendCodigoIssue('denied', code, push.denied, 'denied', approvedPayload, serverPayload);
+    const fresh = __syncUpdateLocalFromPayload(code, serverPayload, serverHash, serverRec.updated_at || '');
+    try{ cargarTablaEmergencias(); }catch(_e){}
+    try{ __renderAprobaciones(); }catch(_e){}
+    return { ok:false, conflict:hasConflict, denied:hasDenied, payload:fresh, message:'No se pudo confirmar la aprobación del RP en servidor' + (hasConflict ? ' (conflicto).' : (hasDenied ? ' (rechazo).' : '.')) };
+  }catch(e){
+    const msg = (e && e.message) ? e.message : String(e);
+    __syncAppendCodigoIssue('errors', code, [{ codigo:code, reason:msg }], msg, approvedPayload, serverPayload);
+    const fresh = __syncUpdateLocalFromPayload(code, serverPayload, serverHash, serverRec.updated_at || '');
+    try{ cargarTablaEmergencias(); }catch(_e){}
+    try{ __renderAprobaciones(); }catch(_e){}
+    return { ok:false, error:msg, payload:fresh, message:'No se pudo confirmar la aprobación del RP en servidor (' + msg + ').' };
+  }
+}
 
 function __isApiConfigured(){
   const u = (__API_CFG && __API_CFG.baseUrl) ? String(__API_CFG.baseUrl).trim() : "";
@@ -11188,14 +11301,14 @@ async function __ensureFullEmergencia(objOrCodigo){
   if(!rec || !rec.payload) return cur;
   const payload = JSON.parse(JSON.stringify(rec.payload || {}));
   try{ payload.estado_sync = 'Sincronizado'; }catch(_e){}
-  try{ payload.__serverHash = String(rec.hash || rec.payload_hash || rec.payloadHash || rec.server_hash || ''); }catch(_e){}
+  try{ payload.__serverHash = String(rec.hash || ''); }catch(_e){}
   try{ payload.__serverUpdatedAt = String(rec.updated_at || ''); }catch(_e){}
   try{ payload.__summaryOnly = false; delete payload.__needsDetail; }catch(_e){}
   if(idx >= 0) arr[idx] = payload;
   else { arr.push(payload); idx = arr.length - 1; }
   emergencias = arr;
   const map = __getHashMap();
-  { const __h = String(rec.hash || rec.payload_hash || rec.payloadHash || rec.server_hash || ''); if(__h) map[code] = __h; }
+  if(rec.hash) map[code] = String(rec.hash);
   __setHashMap(map);
   __saveEmergencias();
   try{ if(emergenciaSeleccionada && String(emergenciaSeleccionada.codigo||'').trim() === code) emergenciaSeleccionada = payload; }catch(_e){}
@@ -11216,7 +11329,7 @@ async function __forceServerFullEmergencia(objOrCodigo, opts){
         let arr = Array.isArray(emergencias) ? emergencias : __loadEmergencias();
         const payload = JSON.parse(JSON.stringify(rec.payload || {}));
         try{ payload.estado_sync = 'Sincronizado'; }catch(_e){}
-        try{ payload.__serverHash = String(rec.hash || rec.payload_hash || rec.payloadHash || rec.server_hash || ''); }catch(_e){}
+        try{ payload.__serverHash = String(rec.hash || ''); }catch(_e){}
         try{ payload.__serverUpdatedAt = String(rec.updated_at || ''); }catch(_e){}
         try{ payload.__summaryOnly = false; delete payload.__needsDetail; }catch(_e){}
 
@@ -11226,7 +11339,8 @@ async function __forceServerFullEmergencia(objOrCodigo, opts){
         emergencias = arr;
 
         const map = __getHashMap();
-        { const __h = String(rec.hash || rec.payload_hash || rec.payloadHash || rec.server_hash || ''); if(__h) map[code] = __h; else delete map[code]; }
+        if(rec.hash) map[code] = String(rec.hash);
+        else delete map[code];
         __setHashMap(map);
         __saveEmergencias();
 
