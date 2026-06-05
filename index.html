@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <!-- BUILD: 2026-02-20 autopull-cooldown-v206-fix-sync-v3 -->
-<script>window.__BUILD_ID='2026-02-20 autopull-cooldown-v206-fix-sync-v3-sync-lock-v224-badgefix';console.log('BUILD',window.__BUILD_ID);</script>
+<script>window.__BUILD_ID='2026-02-20 autopull-cooldown-v206-fix-sync-v3-sync-lock-v226-map-status-allusers';console.log('BUILD',window.__BUILD_ID);</script>
 
 <!-- build: VER_PRINT_RC_ALWAYS_VISIBLE v4 2026-01-11 -->
 <meta charset="UTF-8" />
@@ -18,7 +18,7 @@ body { background: #f5f5f5; }
 .card { margin-top: 1rem; }
 .table td input { width: 100%; }
 .hidden { display: none; }
-/* ======= VERSION 225 02/06/2026 - sync lock + polling optimized + badge pendientes corregido======= */
+/* ======= VERSION 226 02/06/2026 - sync lock + polling optimized + badge pendientes corregido======= */
 /* ======= VER (Listado de Emergencias): Formato de visualización/impresión ======= */
 .ver-report-wrap{ font-family: Calibri, Arial, sans-serif; font-size: 11pt; color:#111; }
 .ver-report-title{ font-family: Calibri, Arial, sans-serif; font-size:15pt; font-weight:700; color:#1F4E79; margin:0 0 6px 0; }
@@ -8433,32 +8433,135 @@ function __dashInitIfNeeded(){
   if(!dashChartAfectProg) dashChartAfectProg = mkBar(document.getElementById("dashChartAfectProg"), "N° emergencias");
 }
 
+// ===== FIX v226 MAPA DASHBOARD =====
+// El mapa debe funcionar igual para Administrador, Registrador y Consulta.
+// No depende de permisos: usa la data cargada en memoria y, si el resumen /sync/list
+// no trae latitud/longitud, toma la coordenada referencial del ubigeoData.js.
+function __dashNormText(v){
+  return String(v || "")
+    .trim()
+    .toUpperCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ");
+}
+
+function __dashParseCoord(v){
+  if(v === null || v === undefined) return NaN;
+  let s = String(v).trim();
+  if(!s) return NaN;
+  s = s.replace(",", ".");
+  const n = Number(s);
+  return Number.isFinite(n) ? n : NaN;
+}
+
+function __dashCoordInPeru(lat, lon){
+  return Number.isFinite(lat) && Number.isFinite(lon) && lat >= -20 && lat <= 1 && lon >= -82 && lon <= -68;
+}
+
+function __dashFindUbigeoCoord(e){
+  try{
+    if(typeof ubigeoData === "undefined" || !Array.isArray(ubigeoData)) return null;
+    const dep = __dashNormText(e && e.departamento);
+    const prov = __dashNormText(e && e.provincia);
+    const dist = __dashNormText(e && e.distrito);
+    if(!dep || !prov || !dist) return null;
+
+    const row = ubigeoData.find(r =>
+      __dashNormText(r.departamento) === dep &&
+      __dashNormText(r.provincia) === prov &&
+      __dashNormText(r.distrito) === dist
+    );
+    if(!row) return null;
+    const lat = __dashParseCoord(row.lat ?? row.latitud);
+    const lon = __dashParseCoord(row.lon ?? row.longitud ?? row.lng);
+    if(!__dashCoordInPeru(lat, lon)) return null;
+    return { lat, lon, source:"ubigeo" };
+  }catch(e){ return null; }
+}
+
+function __dashGetCoord(e){
+  try{
+    const latKeys = ["latitud", "lat", "latitude", "y", "coordLat", "coordenadaLatitud"];
+    const lonKeys = ["longitud", "lon", "lng", "longitude", "x", "coordLon", "coordenadaLongitud"];
+    let lat = NaN, lon = NaN;
+    for(const k of latKeys){
+      lat = __dashParseCoord(e && e[k]);
+      if(Number.isFinite(lat)) break;
+    }
+    for(const k of lonKeys){
+      lon = __dashParseCoord(e && e[k]);
+      if(Number.isFinite(lon)) break;
+    }
+    if(__dashCoordInPeru(lat, lon)) return { lat, lon, source:"registro" };
+    return __dashFindUbigeoCoord(e);
+  }catch(_e){ return null; }
+}
+
+function __dashOffsetCoord(lat, lon, idx, total){
+  if(!total || total <= 1) return [lat, lon];
+  // Separación mínima para que registros con la misma coordenada no se tapen.
+  // Es pequeña: solo sirve para hacer visibles puntos superpuestos en el Dashboard.
+  const angle = (2 * Math.PI * idx) / total;
+  const ring = Math.floor(idx / 8) + 1;
+  const step = 0.012; // aprox. 1 km en latitud; visual, no altera el dato real.
+  return [lat + Math.sin(angle) * step * ring, lon + Math.cos(angle) * step * ring];
+}
+
 function __dashRenderMap(data){
   if(!dashLayer || !window.L) return;
   dashLayer.clearLayers();
 
-  data.forEach(e=>{
-    const lat = parseFloat(String(e?.latitud ?? "").replace(",", "."));
-    const lon = parseFloat(String(e?.longitud ?? "").replace(",", "."));
-    if(isNaN(lat) || isNaN(lon)) return;
-
+  const rows = [];
+  (Array.isArray(data) ? data : []).forEach(e=>{
+    if(!e) return;
     const st = __dashGetStatus(e);
     if(!__dashMapIsVisible(st.name)) return;
-    const marker = L.circleMarker([lat, lon], {
+    const c = __dashGetCoord(e);
+    if(!c) return;
+    rows.push({ e, st, lat:c.lat, lon:c.lon, coordSource:c.source || "registro" });
+  });
+
+  // Agrupa coordenadas iguales o muy próximas. Esto evita que varios RC/RP del mismo distrito
+  // queden exactamente uno encima del otro y parezca que “no figuran”.
+  const groups = {};
+  rows.forEach((r, i)=>{
+    const key = `${r.st.name}|${r.lat.toFixed(4)}|${r.lon.toFixed(4)}`;
+    if(!groups[key]) groups[key] = [];
+    groups[key].push(i);
+  });
+
+  rows.forEach((r, rowIdx)=>{
+    let pos = [r.lat, r.lon];
+    const key = `${r.st.name}|${r.lat.toFixed(4)}|${r.lon.toFixed(4)}`;
+    const g = groups[key] || [];
+    if(g.length > 1){
+      const idx = g.indexOf(rowIdx);
+      pos = __dashOffsetCoord(r.lat, r.lon, idx < 0 ? 0 : idx, g.length);
+    }
+
+    const marker = L.circleMarker(pos, {
       radius: 8,
-      color: st.color,
-      fillColor: st.color,
-      fillOpacity: 0.9,
+      color: r.st.color,
+      fillColor: r.st.color,
+      fillOpacity: 0.88,
       weight: 2
     });
 
+    const coordNota = (r.coordSource === "ubigeo")
+      ? "<br><small><b>Coordenada:</b> referencial por distrito</small>"
+      : "";
+    const superNota = (g.length > 1)
+      ? `<br><small><b>Nota:</b> ${g.length} registros comparten coordenada cercana; se separaron visualmente.</small>`
+      : "";
+
     marker.bindPopup(`
-      <b>${e.codigo||""}</b><br>
-      <b>Estado:</b> ${st.name}<br>
-      <b>Peligro:</b> ${e.peligro||""}<br>
-      <b>Ubicación:</b> ${(e.departamento||"")} / ${(e.provincia||"")} / ${(e.distrito||"")}<br>
-      <b>Fecha del peligro:</b> ${e.fechaPeligro||""}<br>
-      <b>Registro:</b> ${e.fechaHora||""}
+      <b>${r.e.codigo||""}</b><br>
+      <b>Estado:</b> ${r.st.name}<br>
+      <b>Peligro:</b> ${r.e.peligro||""}<br>
+      <b>Ubicación:</b> ${(r.e.departamento||"")} / ${(r.e.provincia||"")} / ${(r.e.distrito||"")}<br>
+      <b>Fecha del peligro:</b> ${r.e.fechaPeligro||""}<br>
+      <b>Registro:</b> ${r.e.fechaHora||""}${coordNota}${superNota}
     `);
 
     marker.addTo(dashLayer);
@@ -10345,6 +10448,8 @@ function __syncSummaryToLocalRecord(r, previous){
     distrito: String((r && r.distrito) || prev.distrito || "").trim(),
     fechaPeligro: String((r && (r.fecha_peligro || r.fechaPeligro || r.fecha_evento)) || prev.fechaPeligro || "").trim(),
     fechaHora: String((r && (r.fecha_hora || r.fechaHora || r.fecha_registro)) || prev.fechaHora || "").trim(),
+    latitud: String((r && (r.latitud || r.lat || r.latitude)) || prev.latitud || "").trim(),
+    longitud: String((r && (r.longitud || r.lon || r.lng || r.longitude)) || prev.longitud || "").trim(),
     createdAt: String((r && r.created_at) || prev.createdAt || "").trim(),
     updatedAt: String((r && r.updated_at) || prev.updatedAt || "").trim(),
     createdByEmail: String((r && r.created_by) || prev.createdByEmail || "").trim(),
