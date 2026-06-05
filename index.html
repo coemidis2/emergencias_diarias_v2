@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <!-- BUILD: 2026-02-20 autopull-cooldown-v206-fix-sync-v3 -->
-<script>window.__BUILD_ID='2026-02-20 autopull-cooldown-v206-fix-sync-v3-sync-lock-v235-dashboard-impacto-midis';console.log('BUILD',window.__BUILD_ID);</script>
+<script>window.__BUILD_ID='2026-02-20 autopull-cooldown-v206-fix-sync-v3-sync-lock-v237-dashboard-impacto-midis-safe';console.log('BUILD',window.__BUILD_ID);</script>
 
 <!-- build: VER_PRINT_RC_ALWAYS_VISIBLE v4 2026-01-11 -->
 <meta charset="UTF-8" />
@@ -18,7 +18,7 @@ body { background: #f5f5f5; }
 .card { margin-top: 1rem; }
 .table td input { width: 100%; }
 .hidden { display: none; }
-/* ======= VERSION 235 05/06/2026 - fix Dashboard Impacto MIDIS ======= */
+/* ======= VERSION 237 05/06/2026 - fix seguro Dashboard Impacto MIDIS ======= */
 /* ======= VER (Listado de Emergencias): Formato de visualización/impresión ======= */
 .ver-report-wrap{ font-family: Calibri, Arial, sans-serif; font-size: 11pt; color:#111; }
 .ver-report-title{ font-family: Calibri, Arial, sans-serif; font-size:15pt; font-weight:700; color:#1F4E79; margin:0 0 6px 0; }
@@ -8384,8 +8384,50 @@ function __dashGetStatus(e){
 }
 
 function __dashNum(v){
-  const n = Number(v);
+  if(v === null || v === undefined || v === "") return 0;
+  const n = Number(String(v).replace(",", "."));
   return Number.isFinite(n) ? n : 0;
+}
+
+function __dashNumAny(){
+  for(let i=0; i<arguments.length; i++){
+    const v = arguments[i];
+    if(v === null || v === undefined || v === "") continue;
+    const n = __dashNum(v);
+    if(Number.isFinite(n)) return n;
+  }
+  return 0;
+}
+
+function __dashParseMaybeJson(v){
+  if(!v) return v;
+  if(typeof v === "object") return v;
+  if(typeof v === "string"){
+    const t = v.trim();
+    if(!t) return null;
+    if((t.startsWith("{") && t.endsWith("}")) || (t.startsWith("[") && t.endsWith("]"))){
+      try{ return JSON.parse(t); }catch(_e){}
+    }
+  }
+  return v;
+}
+
+function __dashFirstObject(){
+  for(let i=0; i<arguments.length; i++){
+    const o = __dashParseMaybeJson(arguments[i]);
+    if(o && typeof o === "object" && !Array.isArray(o)) return o;
+  }
+  return null;
+}
+
+function __dashDanioVal(d, field){
+  d = (d && typeof d === "object") ? d : {};
+  if(field === "usuariosAfectados") return __dashNumAny(d.usuariosAfectados, d.usuarios_afectados, d.usuarios, d.ua, d.UA);
+  if(field === "serviciosAfectados") return __dashNumAny(d.serviciosAfectados, d.servicios_afectados, d.servicios, d.sa, d.SA);
+  if(field === "usuariosPorServicios") return __dashNumAny(d.usuariosPorServicios, d.usuarios_por_servicios, d.usuariosServicios, d.uas, d.ups, d.UPS, d.UAS);
+  if(field === "usuariosFallecidos") return __dashNumAny(d.usuariosFallecidos, d.usuarios_fallecidos, d.fallecidos, d.uf, d.UF);
+  if(field === "moduloAfectado") return __dashNumAny(d.moduloAfectado, d.modulo_afectado, d.modulosAfectados, d.ma, d.MA);
+  return 0;
 }
 
 function __dashNormProgramaKey(k){
@@ -8410,25 +8452,26 @@ function __dashPickProgramaDanio(dm, prog){
 
 function __dashTotalesMidis(daniosMIDIS){
   let usuarios=0, servicios=0, ups=0, fallecidos=0;
+  daniosMIDIS = __dashParseMaybeJson(daniosMIDIS);
   if(!daniosMIDIS || typeof daniosMIDIS !== "object") return {usuarios, servicios, ups, fallecidos};
 
   Object.keys(daniosMIDIS).forEach(k=>{
     const d = daniosMIDIS[k] || {};
-    usuarios += __dashNum(d.usuariosAfectados);
-    servicios += __dashNum(d.serviciosAfectados);
-    ups += __dashNum(d.usuariosPorServicios);
-    fallecidos += __dashNum(d.usuariosFallecidos);
+    usuarios += __dashDanioVal(d, "usuariosAfectados");
+    servicios += __dashDanioVal(d, "serviciosAfectados");
+    ups += __dashDanioVal(d, "usuariosPorServicios");
+    fallecidos += __dashDanioVal(d, "usuariosFallecidos");
   });
   return {usuarios, servicios, ups, fallecidos};
 }
 
 function __dashProgramaTieneAfectacion(d){
   if(!d) return false;
-  return (__dashNum(d.usuariosAfectados) > 0) ||
-         (__dashNum(d.serviciosAfectados) > 0) ||
-         (__dashNum(d.usuariosPorServicios) > 0) ||
-         (__dashNum(d.usuariosFallecidos) > 0) ||
-         (__dashNum(d.moduloAfectado) > 0);
+  return (__dashDanioVal(d, "usuariosAfectados") > 0) ||
+         (__dashDanioVal(d, "serviciosAfectados") > 0) ||
+         (__dashDanioVal(d, "usuariosPorServicios") > 0) ||
+         (__dashDanioVal(d, "usuariosFallecidos") > 0) ||
+         (__dashDanioVal(d, "moduloAfectado") > 0);
 }
 
 function __dashAfectaMidis(e){
@@ -8645,18 +8688,13 @@ function __dashMapFechaPeligroInRange(e){
 function __dashCurrentDaniosMidis(e){
   try{
     const hasAnyValue = (dm)=>{
+      dm = __dashParseMaybeJson(dm);
       if(!dm || typeof dm !== "object") return false;
-      return Object.keys(dm).some(k=>{
-        const d = dm[k] || {};
-        return (__dashNum(d.usuariosAfectados) > 0) ||
-               (__dashNum(d.serviciosAfectados) > 0) ||
-               (__dashNum(d.usuariosPorServicios) > 0) ||
-               (__dashNum(d.usuariosFallecidos) > 0) ||
-               (__dashNum(d.moduloAfectado) > 0);
-      });
+      return Object.keys(dm).some(k=>__dashProgramaTieneAfectacion(dm[k] || {}));
     };
 
     // Prioridad operativa: último RC con matriz de daños real; si no existe, RP.
+    // No bloquea el Dashboard: solo lee lo que está disponible en memoria.
     const rcList = (typeof __getRCList === "function")
       ? __getRCList(e)
       : (Array.isArray(e && e.rcReportes) ? e.rcReportes : []);
@@ -8664,15 +8702,22 @@ function __dashCurrentDaniosMidis(e){
     if(Array.isArray(rcList) && rcList.length){
       for(let i = rcList.length - 1; i >= 0; i--){
         const rc = rcList[i] || {};
-        const dm = rc.daniosMIDIS || rc.danios || rc.daniosMidis || rc.daniosMIDISRC || null;
+        const dm = __dashFirstObject(
+          rc.daniosMIDIS, rc.dañosMIDIS, rc.danosMIDIS, rc.danios, rc.daniosMidis,
+          rc.daniosMIDISRC, rc.daniosSector, rc.daniosSectorMidis, rc.daniosSectorDesarrollo
+        );
         if(hasAnyValue(dm)) return dm;
       }
     }
 
-    const base = e && (e.daniosMIDIS || e.danios || e.daniosMidis);
+    const base = __dashFirstObject(
+      e && e.daniosMIDIS, e && e.dañosMIDIS, e && e.danosMIDIS, e && e.danios, e && e.daniosMidis,
+      e && e.daniosSector, e && e.daniosSectorMidis, e && e.daniosSectorDesarrollo
+    );
     return (base && typeof base === "object") ? base : {};
   }catch(err){
-    return (e && e.daniosMIDIS && typeof e.daniosMIDIS === "object") ? e.daniosMIDIS : {};
+    const fallback = __dashFirstObject(e && e.daniosMIDIS, e && e.dañosMIDIS, e && e.danosMIDIS);
+    return fallback || {};
   }
 }
 
@@ -9369,10 +9414,10 @@ function __dashRenderImpacto(data, groupBy){
         const d = __dashPickProgramaDanio(dm, p);
         if(!d) return;
 
-        const uu = __dashNum(d.usuariosAfectados);
-        const ss = __dashNum(d.serviciosAfectados);
-        const uups = __dashNum(d.usuariosPorServicios);
-        const ff = __dashNum(d.usuariosFallecidos);
+        const uu = __dashDanioVal(d, "usuariosAfectados");
+        const ss = __dashDanioVal(d, "serviciosAfectados");
+        const uups = __dashDanioVal(d, "usuariosPorServicios");
+        const ff = __dashDanioVal(d, "usuariosFallecidos");
 
         u[i] += uu;
         s[i] += ss;
