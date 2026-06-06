@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-<!-- BUILD: 2026-02-20 autopull-cooldown-v206-fix-sync-v3 -->
-<script>window.__BUILD_ID='2026-02-20 autopull-cooldown-v206-fix-sync-v3-sync-lock-v242-dashboard-excel-eventos';console.log('BUILD',window.__BUILD_ID);</script>
+<!-- BUILD: 2026-02-20 autopull-cooldown-v206-fix-sync-v3-v244-d1-pullonly-detail -->
+<script>window.__BUILD_ID='2026-02-20 autopull-cooldown-v206-fix-sync-v3-sync-lock-v244-d1-pullonly-detail';console.log('BUILD',window.__BUILD_ID);</script>
 
 <!-- build: VER_PRINT_RC_ALWAYS_VISIBLE v4 2026-01-11 -->
 <meta charset="UTF-8" />
@@ -18,9 +18,9 @@ body { background: #f5f5f5; }
 .card { margin-top: 1rem; }
 .table td input { width: 100%; }
 .hidden { display: none; }
-/* ======= VERSION 243 05/06/2026 - Estabilidad modal Ver: evita cuelgue por instancias/backdrops duplicados ======= */
+/* ======= VERSION 244 05/06/2026 - Estabilidad modal Ver: evita cuelgue por instancias/backdrops duplicados ======= */
 .ver-detail-loading{display:flex;align-items:center;gap:.5rem;}
-/* ======= VERSION 243 05/06/2026 - Detalle emergencia: N° Global saneado ======= */
+/* ======= VERSION 244 05/06/2026 - Detalle emergencia: N° Global saneado ======= */
 /* ======= VER (Listado de Emergencias): Formato de visualización/impresión ======= */
 .ver-report-wrap{ font-family: Calibri, Arial, sans-serif; font-size: 11pt; color:#111; }
 .ver-report-title{ font-family: Calibri, Arial, sans-serif; font-size:15pt; font-weight:700; color:#1F4E79; margin:0 0 6px 0; }
@@ -14169,6 +14169,326 @@ window.addEventListener('storage', (ev)=>{ if(ev && ev.key === __EDIT_LOCKS_KEY)
     }, 0);
   });
 })();
+
+
+/* ======= FIX v244: D1 fuente principal, Sync Pull-Only, Pendientes operativos y detalle estricto =======
+   Alcance quirúrgico: lectura D1, sincronización, Lista, N° Global, Pendientes, Ver, RP/RC bajo demanda.
+   No modifica Dashboard, mapa, exportaciones, login, roles ni administración de usuarios. */
+(function(){
+  function _s(v){ return (v === null || v === undefined) ? "" : String(v).trim(); }
+  function _first(){
+    for(let i=0;i<arguments.length;i++){
+      const v = _s(arguments[i]);
+      if(v !== "") return v;
+    }
+    return "";
+  }
+  function _clone(o){ try{return JSON.parse(JSON.stringify(o || {}));}catch(_e){return {}; } }
+  function _codeOf(x){ return _s(typeof x === "string" ? x : (x && x.codigo)); }
+  function _isEpoch(v){ return !_s(v) || _s(v) <= "1970-01-01T00:00:00.000Z"; }
+  function _isSummary(e){ return !!(e && (e.__summaryOnly === true || e.__needsDetail === true)); }
+  function _bool(v){
+    if(v === true || v === 1) return true;
+    const s = _s(v).toLowerCase();
+    return ["true","1","si","sí","cerrada","aprobado"].includes(s);
+  }
+  function _rpGlobalExact(e){
+    return _first(e && e.numeroGlobal, e && e.numeroReporte, e && e.numGlobalRP, e && e.numeroGlobalRP, e && e.nroGlobal, e && e.nGlobal);
+  }
+  function _isRealLocalDirty(e){
+    try{
+      if(!e) return false;
+      if(_isSummary(e)) return false;
+      const st = _s(e.estado_sync);
+      if(st === "Pendiente") return true;
+      if(e.__localDirty === true || e.__dirty === true || e.__pendingPush === true) return true;
+      return false;
+    }catch(_e){ return false; }
+  }
+  function _showInfo(msg){
+    try{ alert(msg); }catch(_e){ console.log(msg); }
+  }
+
+  // N° Global: siempre el valor exacto del payload/servidor. No se infiere, no se recalcula por offset.
+  window.__numeroGlobalVisible = function(e){ return _rpGlobalExact(e); };
+  window.__dashNumeroGlobalVisible = function(e){ return _rpGlobalExact(e); };
+  window.__dashRawNumeroGlobal = function(e){ return _rpGlobalExact(e); };
+
+  // Payload limpio: los metadatos locales no son parte de la verdad D1.
+  window.__syncCleanPayload = function(obj){
+    const x = _clone(obj);
+    [
+      "estado_sync","sync_denied_at","sync_denied_reason",
+      "__serverUpdatedAt","__serverHash","__serverCreatedAt",
+      "__summaryOnly","__needsDetail","__detailHydratedAt","__detailPartialNotice",
+      "__detailLoading","__detailPromise","__source","__metaFromList",
+      "__localDirty","__dirty","__pendingPush"
+    ].forEach(k=>{ try{ delete x[k]; }catch(_e){} });
+    return x;
+  };
+  window.__syncHash = async function(obj){ return await __sha256(JSON.stringify(window.__syncCleanPayload(obj))); };
+  window.__syncIsSummaryOnly = function(em){ return _isSummary(em); };
+
+  // /sync/list: pinta la lista con metadatos livianos. NO trae payload completo.
+  window.__syncSummaryToLocalRecord = function(r, previous){
+    const prev = (previous && typeof previous === "object") ? previous : {};
+    const codigo = _first(r && r.codigo, prev && prev.codigo);
+    const rcTotal = Number(_first(r && r.rc_total, r && r.rcTotal, r && r.total_rc, r && r.totalRC, 0)) || 0;
+    const cierreEstado = _first(r && r.cierre_estado, r && r.cierreEstado, r && r.estado_cierre, r && r.estadoCierre, prev.cierreEstado);
+    const rpEstado = _first(r && r.rp_estado, r && r.rpEstado, r && r.rp_aprob_estado, r && r.rpAprobEstado, prev.rpAprobEstado, "Borrador");
+    const cerrada = _bool(_first(r && r.cerrada, r && r.closed, r && r.is_closed, "")) || ["cerrada","aprobado","cierre aprobado"].includes(String(cierreEstado||"").toLowerCase());
+
+    const out = Object.assign({}, prev, {
+      codigo: codigo,
+      peligro: _first(r && r.peligro, r && r.tipo_peligro, r && r.evento, prev.peligro),
+      departamento: _first(r && r.departamento, r && r.region, prev.departamento),
+      provincia: _first(r && r.provincia, prev.provincia),
+      distrito: _first(r && r.distrito, prev.distrito),
+      fechaPeligro: _first(r && r.fecha_peligro, r && r.fechaPeligro, r && r.fecha_evento, prev.fechaPeligro),
+      fechaHora: _first(r && r.fecha_hora, r && r.fechaHora, r && r.fecha_registro, r && r.fechaElaboracion, prev.fechaHora),
+      createdAt: _first(r && r.created_at, r && r.createdAt, prev.createdAt),
+      updatedAt: _first(r && r.updated_at, r && r.updatedAt, prev.updatedAt),
+      createdByEmail: _first(r && r.created_by, r && r.createdByEmail, prev.createdByEmail),
+      updatedByEmail: _first(r && r.updated_by, r && r.updatedByEmail, prev.updatedByEmail),
+      ownerEmail: _first(r && r.owner_email, r && r.ownerEmail, r && r.created_by, prev.ownerEmail),
+      elaboradoPor: _first(r && r.elaborado_por, r && r.elaboradoPor, prev.elaboradoPor),
+      rpEnviadoPor: _first(r && r.rp_enviado_por, r && r.rpEnviadoPor, prev.rpEnviadoPor),
+      rpEnviadoEn: _first(r && r.rp_enviado_en, r && r.rpEnviadoEn, prev.rpEnviadoEn),
+      rpAprobEstado: rpEstado,
+      cierreEstado: cierreEstado || null,
+      cerrada: !!cerrada,
+      numeroGlobal: _first(r && r.numero_global, r && r.numeroGlobal, r && r.nro_global, r && r.nroGlobal, r && r.numGlobalRP, prev.numeroGlobal),
+      numeroReporte: _first(r && r.numero_reporte, r && r.numeroReporte, prev.numeroReporte),
+      latitud: _first(r && r.latitud, r && r.lat, prev.latitud),
+      longitud: _first(r && r.longitud, r && r.lon, r && r.lng, prev.longitud),
+      __summaryOnly: true,
+      __needsDetail: true,
+      __metaFromList: true,
+      __serverHash: _first(r && r.hash, r && r.payload_hash, prev.__serverHash),
+      __serverUpdatedAt: _first(r && r.updated_at, r && r.updatedAt, prev.__serverUpdatedAt)
+    });
+
+    if(rcTotal > 0){
+      const old = Array.isArray(prev.rcReportes) ? prev.rcReportes : [];
+      out.rcReportes = Array.from({length: rcTotal}, (_, i)=> old[i] && !old[i].__summaryOnly ? old[i] : ({ __summaryOnly:true, numeroReporteRC:i+1 }));
+    }else if(!Array.isArray(out.rcReportes) || out.rcReportes.every(x=>x && x.__summaryOnly)){
+      out.rcReportes = [];
+    }
+    return out;
+  };
+
+  window.__isFullEmergenciaSufficient = function(em){
+    try{
+      if(!em || !em.codigo) return false;
+      if(_isSummary(em)) return false;
+      // Si llegó desde /sync/detail, se acepta aunque algunos textos sean legítimamente vacíos.
+      if(em.__detailHydratedAt) return true;
+      const hasFecha = !!_first(em.fechaHora, em.fechaRegistro, em.createdAt, em.updatedAt);
+      const hasAnyPayloadKey = ["hechos","descripcionHechos","daniosMIDIS","daniosMidis","daniosSectorMIDIS","daniosSector","daniosOtros","daniosOtrosSectores","daniosOtrosRP","accionesPreliminar","accionesRP","accionesRPTabla","rcReportes"].some(k=>Object.prototype.hasOwnProperty.call(em,k));
+      return !!(hasFecha && hasAnyPayloadKey);
+    }catch(_e){ return false; }
+  };
+
+  // Detalle estricto bajo demanda: Ver/RP/RC piden /sync/detail del código seleccionado.
+  window.__ensureFullEmergencia = async function(objOrCodigo){
+    const code = _codeOf(objOrCodigo);
+    if(!code) return objOrCodigo || null;
+    let arr = Array.isArray(emergencias) ? emergencias : __loadEmergencias();
+    let idx = arr.findIndex(e => _codeOf(e) === code);
+    let cur = idx >= 0 ? arr[idx] : (typeof objOrCodigo === "object" ? objOrCodigo : null);
+    if(cur && window.__isFullEmergenciaSufficient(cur)) return cur;
+
+    const rec = await __syncFetchDetail(code);
+    if(!rec || !rec.payload) throw new Error("detail_empty");
+    const payload = _clone(rec.payload);
+    payload.estado_sync = "Sincronizado";
+    payload.__serverHash = _first(rec.hash, rec.payload_hash);
+    payload.__serverUpdatedAt = _first(rec.updated_at, rec.updatedAt);
+    payload.__detailHydratedAt = __nowIso();
+    payload.__summaryOnly = false;
+    try{ delete payload.__needsDetail; delete payload.__detailPartialNotice; }catch(_e){}
+    if(idx >= 0) arr[idx] = payload; else { arr.push(payload); idx = arr.length - 1; }
+    emergencias = arr;
+    const map = __getHashMap();
+    if(payload.__serverHash) map[code] = payload.__serverHash;
+    __setHashMap(map);
+    __saveEmergencias();
+    try{ if(emergenciaSeleccionada && _codeOf(emergenciaSeleccionada) === code) emergenciaSeleccionada = payload; }catch(_e){}
+    return payload;
+  };
+
+  window.__withFullEmergencia = async function(objOrCodigo, cb, opts){
+    const options = opts || {};
+    const code = _codeOf(objOrCodigo);
+    let local = null;
+    try{ local = (Array.isArray(emergencias)?emergencias:[]).find(e=>_codeOf(e)===code) || (typeof objOrCodigo === "object" ? objOrCodigo : null); }catch(_e){}
+    if(options.loadingModal && window.__VER_MODAL_OPENING__ && window.__VER_MODAL_CODE__ === code) return;
+    try{
+      if(options.loadingModal){ window.__VER_MODAL_OPENING__ = true; window.__VER_MODAL_CODE__ = code; try{ __setVerButtonsBusy(true); }catch(_e){} }
+      if(options.loadingModal && (!local || !window.__isFullEmergenciaSufficient(local))) __showDetailLoadingModal();
+      const full = await window.__ensureFullEmergencia(objOrCodigo);
+      if(!full){ _showInfo("No se pudo cargar el detalle del registro desde D1."); return; }
+      return await cb(full);
+    }catch(e){
+      const msg = (e && e.message) ? e.message : String(e);
+      if(options.loadingModal){
+        const cont = document.getElementById("contenidoVerEmergencia");
+        if(cont){ cont.innerHTML = `<div class="alert alert-warning mb-0">No se pudo cargar el detalle completo desde D1 para ${code || "el registro"}. Motivo: ${msg}</div>`; }
+      }
+      _showInfo("No se pudo cargar el detalle completo desde D1: " + msg);
+    }finally{
+      if(options.loadingModal){ window.__VER_MODAL_OPENING__ = false; try{ __setVerButtonsBusy(false); }catch(_e){} }
+    }
+  };
+
+  // Pull liviano D1. Solo considera conflicto si existe edición local real (estado_sync Pendiente/dirty).
+  window.__syncPull = async function(since){
+    const pullKey = _s(since || __getLastPull() || __syncEpoch());
+    if(window.__SYNC_PULL_PROMISE__) return await window.__SYNC_PULL_PROMISE__;
+    if(typeof __syncCanSkipRecentEmptyPull === "function" && __syncCanSkipRecentEmptyPull(pullKey)){
+      return { ok:true, records:[], newSince:pullKey, skipped:"recent_empty_pull" };
+    }
+
+    window.__SYNC_PULL_PROMISE__ = (async function(){
+      if(!__isApiConfigured()) throw new Error("server_not_configured");
+      if(!navigator.onLine) throw new Error("offline");
+      const token = __tokenGet();
+      const limit = 5000;
+      let s = pullKey || __syncEpoch();
+      let pulledAll = [];
+      let guard = 0;
+      while(guard < 25){
+        const out = await __api("/sync/list?since=" + encodeURIComponent(s) + "&limit=" + limit, { method:"GET", token:token });
+        if(out.res && out.res.status === 401) throw new Error("unauthorized");
+        if(!out.res || !out.res.ok){ throw new Error((out.data && out.data.error) ? out.data.error : "list_failed"); }
+        const batch = (out.data && Array.isArray(out.data.records)) ? out.data.records : [];
+        if(batch.length === 0) break;
+        pulledAll = pulledAll.concat(batch);
+        let maxBatch = s;
+        batch.forEach(r=>{ const u=_first(r && r.updated_at, r && r.updatedAt); if(u && u > maxBatch) maxBatch = u; });
+        if(batch.length < limit){ s = maxBatch; break; }
+        if(maxBatch === s) break;
+        s = maxBatch;
+        guard++;
+      }
+      if(pulledAll.length === 0) return { ok:true, records:[], newSince:(pullKey || __getLastPull()) };
+
+      const fullPull = _isEpoch(pullKey);
+      const map = __getHashMap();
+      let local = Array.isArray(emergencias) ? emergencias.slice() : __loadEmergencias();
+      const idx = {};
+      local.forEach((e,i)=>{ const c=_codeOf(e); if(c) idx[c]=i; });
+      const serverCodes = new Set();
+      let maxUpdated = s;
+      const conflicts = [];
+
+      for(const r of pulledAll){
+        const codigo = _codeOf(r);
+        if(!codigo) continue;
+        serverCodes.add(codigo);
+        const serverHash = _first(r && r.hash, r && r.payload_hash);
+        const serverUpdated = _first(r && r.updated_at, r && r.updatedAt, s);
+        if(serverUpdated && serverUpdated > maxUpdated) maxUpdated = serverUpdated;
+        const i = idx[codigo];
+
+        if(i !== undefined){
+          const localRec = local[i];
+          const lastSynced = map[codigo] || localRec.__serverHash || "";
+          const dirty = _isRealLocalDirty(localRec);
+          if(dirty && lastSynced && serverHash && serverHash !== lastSynced){
+            conflicts.push({ codigo, reason:"both_modified", server_updated_at:serverUpdated, server_hash:serverHash, local_stage:(typeof __segStage === "function" ? __segStage(localRec) : "") });
+            continue;
+          }
+          // Si no hay edición local real, D1 manda: se reemplaza por resumen vigente.
+          local[i] = window.__syncSummaryToLocalRecord(r, localRec);
+        }else{
+          local.push(window.__syncSummaryToLocalRecord(r, null));
+          idx[codigo] = local.length - 1;
+        }
+        if(serverHash) map[codigo] = serverHash;
+      }
+
+      if(fullPull){
+        local = local.filter(e=>{
+          const c = _codeOf(e);
+          if(!c) return false;
+          if(serverCodes.has(c)) return true;
+          // Se conserva solo una edición local nueva que todavía no existe en D1.
+          return _isRealLocalDirty(e) && !(map[c] || (e && e.__serverHash));
+        });
+      }
+
+      emergencias = local;
+      __setHashMap(map);
+      __setLastPull(maxUpdated || s);
+      __saveEmergencias();
+      if(conflicts.length){ try{ __syncConfAppend({ at:__nowIso(), conflicts, denied:[], errors:[] }); }catch(_e){} }
+      try{ __recalcularCorrelativos(); }catch(_e){}
+      try{ cargarTablaEmergencias(); }catch(_e){}
+      try{ await __calcPending(); }catch(_e){}
+      return { ok:true, records:pulledAll, newSince:maxUpdated, conflicts, mode:"list" };
+    })();
+
+    try{
+      const res = await window.__SYNC_PULL_PROMISE__;
+      try{ if(res && Array.isArray(res.records) && res.records.length === 0) __syncMarkEmptyPull(pullKey); else __syncMarkNonEmptyPull(); }catch(_e){}
+      return res;
+    }finally{ window.__SYNC_PULL_PROMISE__ = null; }
+  };
+
+  // Botón Sincronizar/Actualizar = traer foto vigente de D1. No hace push automático.
+  window.__syncAll = async function(){
+    const btn = document.getElementById("btnSync");
+    const old = btn ? btn.textContent : "";
+    if(btn){ btn.disabled = true; btn.textContent = "Sincronizando..."; }
+    try{
+      if(!__isApiConfigured()){ _showInfo("Servidor no configurado. Edita __API_CFG.baseUrl (patch_cf_sync.js)."); return; }
+      if(!navigator.onLine){ _showInfo("Sin internet: se mantiene en local."); return; }
+      __syncResetIncrementalCursorForFullPull();
+      const pull = await window.__syncPull(__syncEpoch());
+      try{ __syncRefreshViewsAfterHydrate(); }catch(_e){}
+      const n = await __calcPending();
+      if(pull.conflicts && pull.conflicts.length){
+        _showInfo("Se detectaron conflictos reales de edición local vs servidor. No se hará push automático. Revisa Conflictos Sync.");
+        return;
+      }
+      // Sincronizar no sube nada. Guardar/Aprobar/Eliminar usan push puntual por código.
+      if(btn) btn.textContent = old || (currentUser && currentUser.role === __ROLES.CONS ? "Actualizar" : "Sincronizar");
+      return { ok:true, pull:pull, pending:n, pullOnly:true };
+    }catch(e){
+      const msg = (e && e.message) ? e.message : String(e);
+      _showInfo(msg === "offline" ? "Sin internet." : ("Error Sync: " + msg));
+    }finally{
+      if(btn){ btn.disabled = false; btn.textContent = old || (currentUser && currentUser.role === __ROLES.CONS ? "Actualizar" : "Sincronizar"); }
+    }
+  };
+
+  // Pendientes: badge amarillo = pendientes operativos de aprobación, no diferencias técnicas de localStorage.
+  window.__calcPending = async function(){
+    try{
+      let n = 0;
+      try{ n = (typeof __collectPendientes === "function") ? (__collectPendientes() || []).length : 0; }catch(_e){ n = 0; }
+      __updateSyncUI(n);
+      return n;
+    }catch(_e){ __updateSyncUI(0); return 0; }
+  };
+
+  // Reenlazar botón Sync para asegurar pull-only.
+  document.addEventListener("DOMContentLoaded", function(){
+    setTimeout(function(){
+      try{
+        const oldBtn = document.getElementById("btnSync");
+        if(oldBtn){
+          const btn = oldBtn.cloneNode(true);
+          oldBtn.parentNode.replaceChild(btn, oldBtn);
+          btn.addEventListener("click", window.__syncAll);
+          try{ __updateSyncUI(0); }catch(_e){}
+        }
+      }catch(_e){}
+    }, 10);
+  });
+})();
+
 </script>
 
 
