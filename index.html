@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-<!-- BUILD: 2026-02-20 autopull-cooldown-v206-fix-sync-v3-stage4-cobertura-fallback -->
-<script>window.__BUILD_ID='2026-02-20 autopull-cooldown-v206-fix-sync-v3-sync-lock-v246-stage4-cobertura-fallback';console.log('BUILD',window.__BUILD_ID);</script>
+<!-- BUILD: 2026-02-20 autopull-cooldown-v206-fix-sync-v3-stage5-print-compat -->
+<script>window.__BUILD_ID='2026-02-20 autopull-cooldown-v206-fix-sync-v3-sync-lock-v247-stage5-print-compat';console.log('BUILD',window.__BUILD_ID);</script>
 
 <!-- build: VER_PRINT_RC_ALWAYS_VISIBLE v4 2026-01-11 -->
 <meta charset="UTF-8" />
@@ -18,7 +18,7 @@ body { background: #f5f5f5; }
 .card { margin-top: 1rem; }
 .table td input { width: 100%; }
 .hidden { display: none; }
-/* ======= VERSION 246 05/06/2026 - fix RP approve fresh detail/sync ======= */
+/* ======= VERSION 247 05/06/2026 - fix RP approve fresh detail/sync ======= */
 /* ======= VER (Listado de Emergencias): Formato de visualización/impresión ======= */
 .ver-report-wrap{ font-family: Calibri, Arial, sans-serif; font-size: 11pt; color:#111; }
 .ver-report-title{ font-family: Calibri, Arial, sans-serif; font-size:15pt; font-weight:700; color:#1F4E79; margin:0 0 6px 0; }
@@ -1392,7 +1392,7 @@ body { background: #f5f5f5; }
       <div class="modal-footer">
   <button type="button" class="btn btn-danger" id="btnPrintRCLast" onclick="__printRC_PDF()" title="Imprimir RP y todos los RC (PDF)">PDF</button>
   <div class="btn-group d-none" id="grpPrintRC" aria-hidden="true">
-    <button type="button" class="btn btn-danger" id="btnPrintRCCompat" tabindex="-1">PDF</button>
+    <button type="button" class="btn btn-danger" id="btnPrintRCCompat" onclick="__printRC_PDF()" title="Imprimir RP y todos los RC (PDF)" tabindex="-1">PDF</button>
     <button type="button" class="btn btn-danger dropdown-toggle dropdown-toggle-split" id="btnPrintRCDrop"
             data-bs-toggle="dropdown" aria-expanded="false" title="Elegir RC a imprimir" tabindex="-1">
       <span class="visually-hidden">Elegir RC</span>
@@ -5911,6 +5911,13 @@ try{
 
   const grpLegacy = document.getElementById("grpPrintRC");
   if(grpLegacy) grpLegacy.classList.add("d-none");
+
+  const btnCompat = document.getElementById("btnPrintRCCompat");
+  if(btnCompat){
+    btnCompat.disabled = false;
+    btnCompat.title = "Imprimir RP y todos los RC (PDF)";
+    btnCompat.onclick = function(){ __printRC_PDF(); };
+  }
 
   const btnDrop = document.getElementById("btnPrintRCDrop");
   if(btnDrop) btnDrop.disabled = true;
