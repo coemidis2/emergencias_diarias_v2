@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-<!-- BUILD: 2026-02-20 autopull-cooldown-v206-fix-sync-v3 -->
-<script>window.__BUILD_ID='2026-02-20 autopull-cooldown-v206-fix-sync-v3-sync-lock-v240-rp-submit-confirm-d1';console.log('BUILD',window.__BUILD_ID);</script>
+<!-- BUILD: 2026-02-20 autopull-cooldown-v206-fix-sync-v3-stage2-users-fallback -->
+<script>window.__BUILD_ID='2026-02-20 autopull-cooldown-v206-fix-sync-v3-sync-lock-v244-stage2-users-fallback';console.log('BUILD',window.__BUILD_ID);</script>
 
 <!-- build: VER_PRINT_RC_ALWAYS_VISIBLE v4 2026-01-11 -->
 <meta charset="UTF-8" />
@@ -18,7 +18,7 @@ body { background: #f5f5f5; }
 .card { margin-top: 1rem; }
 .table td input { width: 100%; }
 .hidden { display: none; }
-/* ======= VERSION 244 05/06/2026 - fix RP approve fresh detail/sync ======= */
+/* ======= VERSION 245 05/06/2026 - fix RP approve fresh detail/sync ======= */
 /* ======= VER (Listado de Emergencias): Formato de visualización/impresión ======= */
 .ver-report-wrap{ font-family: Calibri, Arial, sans-serif; font-size: 11pt; color:#111; }
 .ver-report-title{ font-family: Calibri, Arial, sans-serif; font-size:15pt; font-weight:700; color:#1F4E79; margin:0 0 6px 0; }
@@ -2467,17 +2467,25 @@ let __admUsersCache = [];
 
 async function __admLoadUsers(){
   const hint = document.getElementById("admUsersHint");
-  const canServer = __isApiConfigured && __isApiConfigured() && navigator.onLine && __tokenGet();
-  if(hint) hint.textContent = canServer ? "Servidor: conectado" : "Servidor: sin conexión";
+  const canServer = !!(__isApiConfigured && __isApiConfigured() && navigator.onLine && __tokenGet());
+  if(hint) hint.textContent = canServer ? "Servidor: conectado" : "Servidor: sin conexión, usando usuarios locales";
   if(!canServer){
-    __admUsersCache = [];
-    __renderUsersTable([]);
-    return [];
+    __admUsersCache = __loadUsers().map(u => Object.assign({}, u || {}, { __local:true }));
+    __renderUsersTable(__admUsersCache);
+    return __admUsersCache;
   }
-  const users = await __adminFetchUsers();
-  __admUsersCache = Array.isArray(users) ? users : [];
-  __renderUsersTable(__admUsersCache);
-  return __admUsersCache;
+  try{
+    const users = await __adminFetchUsers();
+    __admUsersCache = Array.isArray(users) ? users : [];
+    __renderUsersTable(__admUsersCache);
+    return __admUsersCache;
+  }catch(e){
+    console.warn("No se pudo cargar usuarios del servidor. Se usa localStorage.", e);
+    __admUsersCache = __loadUsers().map(u => Object.assign({}, u || {}, { __local:true }));
+    if(hint) hint.textContent = "Servidor no disponible, usando usuarios locales";
+    __renderUsersTable(__admUsersCache);
+    return __admUsersCache;
+  }
 }
 
 function __admApplyUsersFilter(){
@@ -10952,6 +10960,36 @@ function __roleTagRemote(role){
   return '<span class="badge text-bg-secondary">Consulta</span>';
 }
 
+function __admCanUseServer(){
+  try{
+    return !!(__isApiConfigured && __isApiConfigured() && navigator.onLine && __tokenGet());
+  }catch(e){
+    return false;
+  }
+}
+
+function __admEsc(v){
+  return String(v === undefined || v === null ? "" : v)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function __admNormalizeUser(u){
+  const local = !!(u && (u.__local === true || u.fullName !== undefined || u.passwordHash !== undefined || u.id !== undefined));
+  const active = (u && u.active === undefined) ? true : ((Number(u && u.active) === 1) || (u && u.active === true));
+  return Object.assign({}, u || {}, {
+    __local: local,
+    __id: local ? ((u && (u.id || u.email)) || "") : ((u && u.email) || ""),
+    __name: local ? ((u && (u.fullName || u.nombre || u.name || u.full_name)) || "") : ((u && (u.full_name || u.fullName || u.nombre || u.name)) || ""),
+    __email: (u && u.email) || "",
+    __role: (u && u.role) || __ROLES.CONS,
+    __active: !!active
+  });
+}
+
 async function __adminFetchUsers(){
   const token = __tokenGet();
   if(!token) return [];
@@ -10966,17 +11004,20 @@ function __renderUsersTable(users){
   if(!tbody) return;
   tbody.innerHTML = "";
 
-  const all = Array.isArray(users) ? users : [];
+  const source = Array.isArray(users) ? users : __loadUsers();
+  const all = source.map(__admNormalizeUser);
   const q = (document.getElementById("admUserSearch")?.value || "").trim().toLowerCase();
   const arr = !q ? all : all.filter(u=>{
-    const a = String(u.full_name || "").toLowerCase();
-    const b = String(u.email || "").toLowerCase();
+    const a = String(u.__name || "").toLowerCase();
+    const b = String(u.__email || "").toLowerCase();
     return a.includes(q) || b.includes(q);
   });
 
   const hint = document.getElementById("admUsersHint");
   if(hint){
-    hint.textContent = all.length ? ("Mostrando " + arr.length + " de " + all.length) : "";
+    const hasLocal = all.some(u => u.__local);
+    const base = hasLocal ? "localStorage" : "Servidor";
+    hint.textContent = all.length ? (base + ": mostrando " + arr.length + " de " + all.length) : (hasLocal ? "localStorage: sin usuarios" : "Servidor: sin usuarios");
   }
 
   if(arr.length === 0){
@@ -10985,23 +11026,26 @@ function __renderUsersTable(users){
   }
 
   for(const u of arr){
-    const active = (Number(u.active) === 1) || (u.active === true);
+    const active = !!u.__active;
     const estado = active ? '<span class="badge text-bg-success">Activo</span>' : '<span class="badge text-bg-danger">Inactivo</span>';
-    const btnToggle = '<button class="btn btn-sm btn-outline-' + (active ? 'danger' : 'success') + '" data-email-toggle="' + (u.email||'') + '" data-active="' + (active ? '1' : '0') + '">' + (active ? 'Desactivar' : 'Activar') + '</button>';
-    const btnReset = '<button class="btn btn-sm btn-outline-secondary" data-email-reset="' + (u.email||'') + '">Reset clave</button>';
+    const key = u.__local ? (u.__id || u.__email || "") : (u.__email || "");
+    const toggleAttr = u.__local ? 'data-local-toggle' : 'data-email-toggle';
+    const resetAttr = u.__local ? 'data-local-reset' : 'data-email-reset';
+    const btnToggle = '<button class="btn btn-sm btn-outline-' + (active ? 'danger' : 'success') + '" ' + toggleAttr + '="' + __admEsc(key) + '" data-active="' + (active ? '1' : '0') + '">' + (active ? 'Desactivar' : 'Activar') + '</button>';
+    const btnReset = '<button class="btn btn-sm btn-outline-secondary" ' + resetAttr + '="' + __admEsc(key) + '">Reset clave</button>';
 
     tbody.innerHTML += (
       '<tr>' +
-        '<td>' + (u.full_name||'') + '</td>' +
-        '<td>' + (u.email||'') + '</td>' +
-        '<td>' + __roleTagRemote(u.role) + '</td>' +
+        '<td>' + __admEsc(u.__name) + '</td>' +
+        '<td>' + __admEsc(u.__email) + '</td>' +
+        '<td>' + __roleTagRemote(u.__role) + '</td>' +
         '<td>' + estado + '</td>' +
         '<td class="d-flex gap-1">' + btnToggle + btnReset + '</td>' +
       '</tr>'
     );
   }
 
-  // listeners
+  // listeners remotos: se conservan si hay servidor/token/internet
   tbody.querySelectorAll('[data-email-toggle]').forEach(function(b){
     b.addEventListener('click', async function(){
       const email = b.getAttribute('data-email-toggle');
@@ -11014,8 +11058,7 @@ function __renderUsersTable(users){
         alert('No se pudo actualizar usuario.');
         return;
       }
-      const users = await __adminFetchUsers();
-      __renderUsersTable(users);
+      await __admLoadUsers();
     });
   });
 
@@ -11039,9 +11082,49 @@ function __renderUsersTable(users){
         pass.textContent = out.data.temp_password || '';
         usr.textContent = email;
       }
+      await __admLoadUsers();
+    });
+  });
 
-      const users = await __adminFetchUsers();
-      __renderUsersTable(users);
+  // listeners locales: solo localStorage, sin cambiar roles ni permisos
+  tbody.querySelectorAll('[data-local-toggle]').forEach(function(b){
+    b.addEventListener('click', function(){
+      const id = b.getAttribute('data-local-toggle');
+      const cur = b.getAttribute('data-active') === '1';
+      const users = __loadUsers();
+      const u = users.find(x=>String(x && (x.id || x.email) || "") === String(id || ""));
+      if(!u) return;
+      u.active = !cur;
+      __saveUsers(users);
+      try{ __audit(u.active ? "USER_ACTIVATE" : "USER_DEACTIVATE", "user", u.email || u.id || null, { local:true }); }catch(e){}
+      __admUsersCache = users.map(x => Object.assign({}, x || {}, { __local:true }));
+      __renderUsersTable(__admUsersCache);
+    });
+  });
+
+  tbody.querySelectorAll('[data-local-reset]').forEach(function(b){
+    b.addEventListener('click', async function(){
+      const id = b.getAttribute('data-local-reset');
+      const users = __loadUsers();
+      const u = users.find(x=>String(x && (x.id || x.email) || "") === String(id || ""));
+      if(!u) return;
+
+      const temp = __genPassword(18);
+      u.passwordHash = await __sha256(temp);
+      u.forceChangePassword = true;
+      __saveUsers(users);
+      try{ __audit("USER_RESET_PASSWORD", "user", u.email || u.id || null, { local:true }); }catch(e){}
+
+      const box = document.getElementById('admCreatedBox');
+      const pass = document.getElementById('admTempPass');
+      const usr  = document.getElementById('admTempUser');
+      if(box && pass && usr){
+        box.classList.remove('d-none');
+        pass.textContent = temp;
+        usr.textContent = u.email || '';
+      }
+      __admUsersCache = users.map(x => Object.assign({}, x || {}, { __local:true }));
+      __renderUsersTable(__admUsersCache);
     });
   });
 }
@@ -11056,10 +11139,51 @@ async function __createUserFromAdmin(){
     return;
   }
 
-  const token = __tokenGet();
-  if(!token){ alert('Sesión inválida.'); return; }
-  if(!navigator.onLine){ alert('Sin internet.'); return; }
+  const canServer = __admCanUseServer();
+  if(!canServer){
+    const users = __loadUsers();
+    if(users.some(u => String(u && u.email || '').toLowerCase() === email)){
+      alert('Ese correo ya existe.');
+      return;
+    }
 
+    const temp = __genPassword(18);
+    const id = 'u_' + Math.random().toString(36).slice(2,10);
+    users.push({
+      id,
+      fullName,
+      email,
+      role,
+      active: true,
+      forceChangePassword: true,
+      failedAttempts: 0,
+      lockedUntil: null,
+      passwordHash: await __sha256(temp),
+      createdAt: __nowIso(),
+      createdBy: currentUser ? currentUser.email : null
+    });
+    __saveUsers(users);
+    try{ __audit('USER_CREATE', 'user', email, { role: role, local:true }); }catch(e){}
+
+    const box = document.getElementById('admCreatedBox');
+    const pass = document.getElementById('admTempPass');
+    const usr  = document.getElementById('admTempUser');
+    if(box && pass && usr){
+      box.classList.remove('d-none');
+      pass.textContent = temp;
+      usr.textContent = email;
+    }
+
+    if(document.getElementById('admFullName')) document.getElementById('admFullName').value = '';
+    if(document.getElementById('admEmail')) document.getElementById('admEmail').value = '';
+    if(document.getElementById('admRole')) document.getElementById('admRole').value = __ROLES.CONS;
+
+    __admUsersCache = users.map(u => Object.assign({}, u || {}, { __local:true }));
+    __renderUsersTable(__admUsersCache);
+    return;
+  }
+
+  const token = __tokenGet();
   const out = await __api('/admin/users', { method:'POST', token: token, body:{ email: email, full_name: fullName, role: role } });
   if(!out.res || !out.res.ok || !out.data){
     const err = out.data && out.data.error ? out.data.error : 'create_failed';
@@ -11080,8 +11204,7 @@ async function __createUserFromAdmin(){
   if(document.getElementById('admEmail')) document.getElementById('admEmail').value = '';
   if(document.getElementById('admRole')) document.getElementById('admRole').value = __ROLES.CONS;
 
-  const users = await __adminFetchUsers();
-  __renderUsersTable(users);
+  await __admLoadUsers();
 }
 
 // ---- SYNC ----
