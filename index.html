@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <!-- BUILD: 2026-02-20 autopull-cooldown-v206-fix-sync-v3 -->
-<script>window.__BUILD_ID='2026-02-20 autopull-cooldown-v206-fix-sync-v3-sync-lock-v240-dashboard-charts-fix';console.log('BUILD',window.__BUILD_ID);</script>
+<script>window.__BUILD_ID='2026-02-20 autopull-cooldown-v206-fix-sync-v3-sync-lock-v240-rp-submit-confirm-d1';console.log('BUILD',window.__BUILD_ID);</script>
 
 <!-- build: VER_PRINT_RC_ALWAYS_VISIBLE v4 2026-01-11 -->
 <meta charset="UTF-8" />
@@ -18,9 +18,7 @@ body { background: #f5f5f5; }
 .card { margin-top: 1rem; }
 .table td input { width: 100%; }
 .hidden { display: none; }
-/* ======= VERSION 241 05/06/2026 - Estabilidad modal Ver: evita cuelgue por instancias/backdrops duplicados ======= */
-.ver-detail-loading{display:flex;align-items:center;gap:.5rem;}
-/* ======= VERSION 241 05/06/2026 - Detalle emergencia: N° Global saneado ======= */
+/* ======= VERSION 242 05/06/2026 - fix RP approve fresh detail/sync ======= */
 /* ======= VER (Listado de Emergencias): Formato de visualización/impresión ======= */
 .ver-report-wrap{ font-family: Calibri, Arial, sans-serif; font-size: 11pt; color:#111; }
 .ver-report-title{ font-family: Calibri, Arial, sans-serif; font-size:15pt; font-weight:700; color:#1F4E79; margin:0 0 6px 0; }
@@ -270,71 +268,6 @@ body { background: #f5f5f5; }
   .modal-xl{ --bs-modal-width: calc(100vw - .75rem); }
 }
 
-
-/* ======= VERSION 238: Dashboard Impacto MIDIS - visualización completa ======= */
-#dashTab #dashChartUsuariosProg,
-#dashTab #dashChartServiciosProg,
-#dashTab #dashChartAfectProg{
-  height:260px !important;
-  max-height:260px !important;
-}
-#dashTab #dashChartAfectProg{
-  margin-bottom:8px;
-}
-#dashTab #dashAfectaMidisTbody td,
-#dashTab #dashAfectaMidisTbody th{
-  vertical-align:middle;
-}
-#dashTab .dash-impact-chart-box{
-  height:280px;
-  min-height:280px;
-  position:relative;
-}
-@media (max-width: 768px){
-  #dashTab #dashChartUsuariosProg,
-  #dashTab #dashChartServiciosProg,
-  #dashTab #dashChartAfectProg{
-    height:220px !important;
-    max-height:220px !important;
-  }
-  #dashTab .dash-impact-chart-box{
-    height:240px;
-    min-height:240px;
-  }
-}
-
-
-
-/* ======= VERSION 240: Dashboard - gráficos y datos MIDIS completos ======= */
-#dashTab #dashChartEvento,
-#dashTab #dashChartRegion{
-  display:block !important;
-  width:100% !important;
-  height:360px !important;
-  max-height:360px !important;
-}
-#dashTab #dashHistEvento,
-#dashTab #dashHistRegion{
-  min-height:420px;
-}
-#dashTab .dash-impact-chart-box canvas{
-  display:block !important;
-  width:100% !important;
-}
-#dashTab .table-responsive{
-  max-width:100%;
-}
-@media (max-width: 768px){
-  #dashTab #dashChartEvento,
-  #dashTab #dashChartRegion{
-    height:300px !important;
-    max-height:300px !important;
-  }
-  #dashTab #dashHistEvento,
-  #dashTab #dashHistRegion{
-    min-height:350px;
-  }
-}
 </style>
 
  <script src="./patch_cf_sync.js?v=20260527_syncfix"></script>
@@ -964,11 +897,10 @@ body { background: #f5f5f5; }
                 <th>Peligro</th>
                 <th class="text-end">Total usuarios afectados</th>
                 <th class="text-end">Total servicios afectados</th>
-                <th class="text-center" style="width:54px">Ver</th>
               </tr>
             </thead>
             <tbody id="dashMapDeptTbody">
-              <tr><td colspan="6" class="text-muted small">Sin datos para mostrar.</td></tr>
+              <tr><td colspan="5" class="text-muted small">Sin datos para mostrar.</td></tr>
             </tbody>
           </table>
         </div>
@@ -1178,18 +1110,18 @@ body { background: #f5f5f5; }
       <div class="row g-3 mb-3">
         <div class="col-md-6">
           <h5 class="text-primary">Usuarios afectados <span class="text-muted small" id="dashLblUsuariosAfectados">(por programa)</span></h5>
-          <div class="dash-impact-chart-box"><canvas id="dashChartUsuariosProg"></canvas></div>
+          <canvas id="dashChartUsuariosProg"></canvas>
         </div>
         <div class="col-md-6">
           <h5 class="text-primary">Servicios afectados y usuarios por servicios <span class="text-muted small" id="dashLblServiciosUsuarios">(por programa)</span></h5>
-          <div class="dash-impact-chart-box"><canvas id="dashChartServiciosProg"></canvas></div>
+          <canvas id="dashChartServiciosProg"></canvas>
         </div>
       </div>
 
       <!-- 4. Histograma de afectación de programas nacionales (N° emergencias) -->
       <div class="mb-3">
         <h5 class="text-primary">Usuarios fallecidos <span class="text-muted small" id="dashLblFallecidos">(por programa)</span></h5>
-        <div class="dash-impact-chart-box"><canvas id="dashChartAfectProg"></canvas></div>
+        <canvas id="dashChartAfectProg"></canvas>
       </div>
 
       <!-- 5. Emergencias que afectan MIDIS -->
@@ -3234,21 +3166,41 @@ function __renderAprobaciones(){
       const ref = JSON.parse(b.getAttribute("data-apr"));
       const code = String(ref && ref.codigo ? ref.codigo : '').trim();
       if(!code) return;
-      const target = (Array.isArray(emergencias)?emergencias:[]).find(x=>String(x && x.codigo ? x.codigo : '').trim()===code) || null;
-      const snapshot = target ? JSON.parse(JSON.stringify(target)) : null;
-      try{ if(__isApiConfigured && __isApiConfigured() && navigator.onLine){ await __syncPullAuto(); } }catch(_e){}
-      __aprobar(ref);
-      __saveEmergencias();
-      __renderAprobaciones();
-      cargarTablaEmergencias?.();
-      dashboardRefresh?.();
-      const res = await __syncCommitCodigo(code, snapshot, {
-        successMessage: 'Aprobación confirmada en servidor.',
-        pendingMessage: 'Aprobación guardada en local. Pendiente de sincronizar.',
-        failurePrefix: 'No se pudo confirmar la aprobación en servidor'
-      });
-      __renderAprobaciones();
-      if(res && res.message) alert(res.message);
+      b.disabled = true;
+      const oldTxt = b.textContent;
+      try{
+        b.textContent = "Aprobando...";
+        if(ref && ref.kind === "rp"){
+          const res = await __aprobarRPServidorAtomico(code, { source:'modal' });
+          if(res && res.payload){
+            try{ if(emergenciaSeleccionada && String(emergenciaSeleccionada.codigo||'').trim() === code) abrirRP(res.payload); }catch(_e){}
+          }
+          try{ cargarTablaEmergencias?.(); }catch(_e){}
+          try{ dashboardRefresh?.({force:true}); }catch(_e){}
+          try{ __renderAprobaciones(); }catch(_e){}
+          alert((res && res.message) ? res.message : 'Operación finalizada.');
+          return;
+        }
+
+        const target = (Array.isArray(emergencias)?emergencias:[]).find(x=>String(x && x.codigo ? x.codigo : '').trim()===code) || null;
+        const snapshot = target ? JSON.parse(JSON.stringify(target)) : null;
+        try{ if(__isApiConfigured && __isApiConfigured() && navigator.onLine){ await __syncPullAuto({force:true}); } }catch(_e){}
+        __aprobar(ref);
+        __saveEmergencias();
+        __renderAprobaciones();
+        cargarTablaEmergencias?.();
+        dashboardRefresh?.();
+        const res = await __syncCommitCodigo(code, snapshot, {
+          successMessage: 'Aprobación confirmada en servidor.',
+          pendingMessage: 'Aprobación guardada en local. Pendiente de sincronizar.',
+          failurePrefix: 'No se pudo confirmar la aprobación en servidor'
+        });
+        __renderAprobaciones();
+        if(res && res.message) alert(res.message);
+      }finally{
+        b.disabled = false;
+        b.textContent = oldTxt || "Aprobar";
+      }
     });
   });
   tbody.querySelectorAll("[data-obs]").forEach(b=>{
@@ -4101,7 +4053,6 @@ function __renderSyncConflictsTable(){
 
 // ===================== INIT AUTH UI =====================
 document.addEventListener("DOMContentLoaded", ()=>{
-  try{ __initVerModalStabilityOnce(); }catch(e){}
   // Bootstrap auth
   __bootstrapAuth();
 
@@ -4180,10 +4131,23 @@ document.addEventListener("DOMContentLoaded", ()=>{
   });
 
   // Aprobaciones modal
-  document.getElementById("btnAprob")?.addEventListener("click", ()=>{
-    __renderAprobaciones();
-    const modal = new bootstrap.Modal(document.getElementById("modalAprob"));
-    modal.show();
+  // FIX v240: antes de listar pendientes, el Administrador jala la versión vigente desde D1.
+  document.getElementById("btnAprob")?.addEventListener("click", async ()=>{
+    const btn = document.getElementById("btnAprob");
+    const oldTxt = btn ? btn.textContent : "";
+    try{
+      if(btn){ btn.disabled = true; btn.textContent = "Actualizando..."; }
+      if(__isApiConfigured && __isApiConfigured() && navigator.onLine){
+        await __syncPullAuto({ force:true });
+      }
+    }catch(e){
+      console.warn("No se pudo actualizar pendientes desde D1 antes de abrir Aprobaciones.", e);
+    }finally{
+      try{ __renderAprobaciones(); }catch(e){}
+      const modal = new bootstrap.Modal(document.getElementById("modalAprob"));
+      modal.show();
+      if(btn){ btn.disabled = false; btn.textContent = oldTxt || "Aprobaciones"; }
+    }
   });
 
   // Envíos a aprobación
@@ -4194,28 +4158,13 @@ document.addEventListener("DOMContentLoaded", ()=>{
     if(!__isAdmin()) return;
     const codigo = (document.getElementById("codigoRP")?.value || "").trim();
     if(!codigo){ alert("No hay RP cargado."); return; }
-    const em = emergencias.find(e=>e.codigo===codigo);
-    if(!em){ alert("No se encontró la emergencia."); return; }
-    if(em.rpAprobEstado !== "Pendiente"){
-      alert("El RP no está en estado 'Por aprobar'. Primero debe enviarse a aprobación.");
-      return;
-    }
-    const snapshot = JSON.parse(JSON.stringify(em));
-    __aprobar({kind:"rp", codigo});
-    __saveEmergencias();
-    cargarTablaEmergencias();
-    const res = await __syncCommitCodigo(codigo, snapshot, {
-      successMessage: 'RP aprobado en servidor.',
-      pendingMessage: 'RP aprobado en local. Pendiente de sincronizar.',
-      failurePrefix: 'No se pudo confirmar la aprobación del RP en servidor'
-    });
+    const res = await __aprobarRPServidorAtomico(codigo, { source:'form-direct' });
     try{
-      const fresh = emergencias.find(e=>e.codigo===codigo);
-      const apr = document.getElementById("aprobadoRP");
-      if(apr && fresh) apr.value = fresh.rpAprobadoPor || __getApproverName();
-      const btnApr = document.getElementById("btnAprobarRPAdmin");
-      if(btnApr) btnApr.disabled = !!(res.ok && !res.pending);
-      if(res.ok && !res.pending) __lockRPFormAdminApproved?.();
+      if(res && res.payload){
+        abrirRP(res.payload);
+        if(res.ok && !res.pending) __lockRPFormAdminApproved?.();
+        else __syncRPAdminApproveButtonState(res.payload);
+      }
     }catch(e){}
     alert(res.message || 'Operación finalizada.');
   });
@@ -5305,74 +5254,151 @@ document.getElementById("btnGuardarRP").onclick = async () => {
 document.getElementById("btnGuardarAprobarRPAdmin")?.addEventListener("click", async () => {
   if(!(__isAdmin && __isAdmin())) return;
 
-  try{
-    if(__isApiConfigured && __isApiConfigured() && navigator.onLine){
-      await __syncPullAuto();
-    }
-  }catch(e){}
-
-  const codigo = (document.getElementById("codigoRP")?.value || "").trim();
-  const prev = codigo ? ((Array.isArray(emergencias)?emergencias:[]).find(e=>String(e && e.codigo ? e.codigo : '').trim()===codigo) || null) : null;
-  const snapshot = prev ? JSON.parse(JSON.stringify(prev)) : null;
-
-  const saved = __saveRP({submit:false});
-  if(!saved) return;
-
-  const code = (document.getElementById("codigoRP")?.value || "").trim();
-  if(!code){ alert("No hay RP cargado."); return; }
-
-  const em = emergencias.find(e=>String(e && e.codigo ? e.codigo : '').trim()===code);
-  if(!em){ alert("No se encontró la emergencia."); return; }
-
-  if(em.rpAprobEstado !== "Pendiente" && em.rpAprobEstado !== "Aprobado"){
-    em.rpAprobEstado = "Pendiente";
-    __ensureRPGlobalNumber(em);
-    em.rpEnviadoPor  = __rpEnviadoPorValue(em) || __getCurrentUserName();
-    em.rpEnviadoPorEmail = currentUser ? currentUser.email : (em.rpEnviadoPorEmail || null);
-    em.rpEnviadoEn   = __rpEnviadoEnValue(em) || __nowIso();
-    __audit("ENVIAR_RP_APROBACION", "emergencia", em.codigo, null);
+  const btn = document.getElementById("btnGuardarAprobarRPAdmin");
+  const oldTxt = btn ? btn.textContent : "";
+  if(btn){
+    btn.disabled = true;
+    btn.textContent = "Grabando...";
   }
 
-  if(em.rpAprobEstado === "Pendiente"){
-    __aprobar({kind:"rp", codigo: code});
-  }
-
-  __saveEmergencias();
-  cargarTablaEmergencias();
-
-  const res = await __syncCommitCodigo(code, snapshot, {
-    successMessage: 'Reporte Preliminar guardado y aprobado en servidor.',
-    pendingMessage: 'Reporte Preliminar aprobado en local. Pendiente de sincronizar.',
-    failurePrefix: 'No se pudo confirmar la aprobación del RP en servidor'
-  });
-
+  let code = "";
   try{
-    const fresh = emergencias.find(e=>String(e && e.codigo ? e.codigo : '').trim()===code);
-    const apr = document.getElementById("aprobadoRP");
-    if(apr && fresh) apr.value = fresh.rpAprobadoPor || __getApproverName();
-    if(res.ok && !res.pending) __lockRPFormAdminApproved?.();
-  }catch(e){}
+    const saved = __saveRP({submit:false});
+    if(!saved) return;
 
-  alert(res.message || 'Operación finalizada.');
-});
-;
+    code = (document.getElementById("codigoRP")?.value || "").trim();
+    if(!code){ alert("No hay RP cargado."); return; }
 
-// Botón Registrador: guarda y envía a aprobación (1 solo botón)
-document.getElementById("btnGuardarEnviarRP").onclick = async () => {
-  try{
-    if(__isApiConfigured && __isApiConfigured() && navigator.onLine){
-      await __syncPullAuto();
+    const localRec = (Array.isArray(emergencias)?emergencias:[]).find(e=>String(e && e.codigo ? e.codigo : '').trim()===code) || null;
+    if(!localRec){ alert("No se encontró la emergencia."); return; }
+
+    if(String(localRec.rpAprobEstado || "") !== "Pendiente"){
+      localRec.rpAprobEstado = "Pendiente";
+      __ensureRPGlobalNumber(localRec);
+      localRec.rpEnviadoPor  = __rpEnviadoPorValue(localRec) || __getCurrentUserName();
+      localRec.rpEnviadoPorEmail = currentUser ? currentUser.email : (localRec.rpEnviadoPorEmail || null);
+      localRec.rpEnviadoEn   = __rpEnviadoEnValue(localRec) || __nowIso();
+      try{ __audit("ENVIAR_RP_APROBACION", "emergencia", localRec.codigo, null); }catch(_e){}
+      try{ __histPush(localRec, "RP_ENVIADO_APROBACION", null); }catch(_e){}
+      try{ __touch(localRec); }catch(_e){}
+      __saveEmergencias();
     }
-  }catch(e){}
 
-  const saved = __saveRP({submit:true});
-  if(saved){
+    if(btn) btn.textContent = "Aprobando...";
+    const res = await __aprobarRPServidorAtomico(code, { localOverride: localRec, source:'form-save-approve' });
+
     try{
-      if(__isApiConfigured && __isApiConfigured() && navigator.onLine){
-        await __syncPush();
+      let fresh = res && res.payload ? res.payload : ((Array.isArray(emergencias)?emergencias:[]).find(e=>String(e && e.codigo ? e.codigo : '').trim()===code) || null);
+      if(fresh){
+        abrirRP(fresh);
+        if(res && res.ok && !res.pending) __lockRPFormAdminApproved?.();
+        else __syncRPAdminApproveButtonState(fresh);
       }
     }catch(e){}
-    alert("RP guardado y enviado a aprobación.");
+
+    alert((res && res.message) ? res.message : 'Operación finalizada.');
+  }catch(e){
+    const msg = (e && e.message) ? e.message : String(e);
+    alert("No se pudo grabar y aprobar el RP: " + msg);
+    try{
+      if(code && __isApiConfigured && __isApiConfigured() && navigator.onLine){
+        const fresh = await __forceServerFullEmergencia(code, { required:false });
+        if(fresh) abrirRP(fresh);
+      }
+    }catch(_e){}
+  }finally{
+    if(btn){
+      btn.textContent = oldTxt || "Grabar y aprobar RP";
+      try{
+        const codeNow = (document.getElementById("codigoRP")?.value || "").trim();
+        const rec = (Array.isArray(emergencias)?emergencias:[]).find(e=>String(e && e.codigo ? e.codigo : '').trim()===codeNow) || null;
+        __syncRPAdminApproveButtonState(rec);
+      }catch(e){ btn.disabled = false; }
+    }
+  }
+});
+
+
+// Botón Registrador: guarda y envía a aprobación (1 solo botón)
+// FIX v240: no mostrar "enviado" hasta confirmar subida del código en D1.
+document.getElementById("btnGuardarEnviarRP").onclick = async () => {
+  const btn = document.getElementById("btnGuardarEnviarRP");
+  const oldTxt = btn ? btn.textContent : "";
+  let codigo = (document.getElementById("codigoRP")?.value || "").trim();
+  let snapshot = null;
+
+  try{
+    if(btn){ btn.disabled = true; btn.textContent = "Validando..."; }
+
+    // Si el RP ya existe, tomar como base la versión oficial completa para evitar enviar sobre hash viejo.
+    if(codigo && __isApiConfigured && __isApiConfigured() && navigator.onLine){
+      try{
+        const fresh = await __forceServerFullEmergencia(codigo, { required:false });
+        if(fresh) snapshot = JSON.parse(JSON.stringify(fresh));
+      }catch(e){
+        console.warn("No se pudo traer detalle vigente antes de enviar RP.", e);
+      }
+    }else if(__isApiConfigured && __isApiConfigured() && navigator.onLine){
+      try{ await __syncPullAuto(); }catch(e){}
+    }
+
+    if(!snapshot && codigo){
+      const prev = (Array.isArray(emergencias)?emergencias:[]).find(e=>String(e && e.codigo ? e.codigo : '').trim()===codigo) || null;
+      if(prev) snapshot = JSON.parse(JSON.stringify(prev));
+    }
+
+    if(btn) btn.textContent = "Guardando...";
+    const saved = __saveRP({submit:true});
+    if(!saved){
+      if(btn){ btn.disabled = false; btn.textContent = oldTxt || "Grabar y enviar a aprobación"; }
+      return;
+    }
+
+    codigo = String(saved.codigo || (document.getElementById("codigoRP")?.value || "")).trim();
+    if(!codigo){
+      alert("RP guardado localmente, pero no se obtuvo el código para sincronizar con el servidor.");
+      return;
+    }
+
+    if(btn) btn.textContent = "Sincronizando...";
+    const res = await __syncCommitCodigo(codigo, snapshot, {
+      successMessage: "RP enviado a aprobación y confirmado en servidor.",
+      pendingMessage: "RP guardado localmente. Pendiente de sincronizar con el servidor. El Administrador aún no lo verá hasta que se confirme en D1.",
+      failurePrefix: "No se pudo enviar el RP al servidor"
+    });
+
+    try{
+      if(res && res.ok && !res.pending){
+        const fresh = (Array.isArray(emergencias)?emergencias:[]).find(e=>String(e && e.codigo ? e.codigo : '').trim()===codigo) || saved;
+        if(fresh) abrirRP(fresh);
+        try{ __lockRPForm(true); }catch(e){}
+        const b = document.getElementById("btnGuardarEnviarRP");
+        if(b) b.disabled = true;
+      }else if(res && !res.ok){
+        // Si hubo conflicto/rechazo/error, repintar con la versión vigente para no dejar pantalla falsa.
+        let fresh = null;
+        try{
+          if(__isApiConfigured && __isApiConfigured() && navigator.onLine){
+            fresh = await __forceServerFullEmergencia(codigo, { required:false });
+          }
+        }catch(_e){}
+        if(fresh) abrirRP(fresh);
+        else if(snapshot) abrirRP(snapshot);
+      }
+    }catch(e){}
+
+    alert((res && res.message) ? res.message : "Operación finalizada.");
+  }catch(e){
+    const msg = (e && e.message) ? e.message : String(e);
+    alert("RP guardado localmente, pero no se pudo enviar al servidor. El Administrador aún no lo verá. Detalle: " + msg);
+  }finally{
+    if(btn){
+      btn.textContent = oldTxt || "Grabar y enviar a aprobación";
+      const codeNow = (document.getElementById("codigoRP")?.value || "").trim();
+      const rec = (Array.isArray(emergencias)?emergencias:[]).find(e=>String(e && e.codigo ? e.codigo : '').trim()===codeNow) || null;
+      const locked = !!(rec && (String(rec.rpAprobEstado||"") === "Pendiente" || String(rec.rpAprobEstado||"") === "Aprobado"));
+      btn.disabled = locked;
+    }
   }
 };
 
@@ -5385,12 +5411,8 @@ window.__COBERTURA_PROGRAMAS_CACHE = window.__COBERTURA_PROGRAMAS_CACHE || null;
 async function __loadCoberturaProgramas(){
   // Cache en memoria para no hacer múltiples fetch
   if(window.__COBERTURA_PROGRAMAS_CACHE) return window.__COBERTURA_PROGRAMAS_CACHE;
-  const url = 'cobertura_programas.json?v=202605';
-  const controller = new AbortController();
-  const t = setTimeout(()=>controller.abort(), 10000);
-  let res;
-  try{ res = await fetch(url, { cache: 'force-cache', signal: controller.signal }); }
-  finally{ clearTimeout(t); }
+  const url = 'cobertura_programas.json?v=' + Date.now(); // bust cache
+  const res = await fetch(url, { cache: 'no-store' });
   if(!res.ok) throw new Error('No se pudo cargar cobertura_programas.json');
   const data = await res.json();
   // Esperado: { version, labels, rows }
@@ -5494,70 +5516,6 @@ async function __renderCoberturaAnexo(em, containerId){
 }
 
 // ===================== FUNCIÓN VER EMERGENCIA CERRADA =====================
-
-// ======= FIX v237: Modal Ver estable (evita backdrops/instancias duplicadas y doble apertura) =======
-window.__VER_MODAL_OPENING__ = window.__VER_MODAL_OPENING__ || false;
-window.__DETAIL_FETCH_PROMISES__ = window.__DETAIL_FETCH_PROMISES__ || {};
-
-function __getVerModalInstance(){
-  try{
-    const modalEl = document.getElementById("modalVerEmergencia");
-    if(!modalEl || !window.bootstrap) return null;
-    return bootstrap.Modal.getOrCreateInstance(modalEl, { backdrop:true, keyboard:true, focus:true });
-  }catch(e){ return null; }
-}
-
-function __showVerModalSafe(){
-  try{
-    const inst = __getVerModalInstance();
-    if(inst) inst.show();
-  }catch(e){}
-}
-
-function __cleanupVerModalBackdrops(){
-  try{
-    // Bootstrap a veces deja el body bloqueado si se abre el mismo modal mientras otro show/hide está en curso.
-    const modalEl = document.getElementById("modalVerEmergencia");
-    const anyShown = document.querySelector('.modal.show');
-    if(anyShown) return;
-    document.body.classList.remove('modal-open');
-    document.body.style.removeProperty('overflow');
-    document.body.style.removeProperty('padding-right');
-    document.querySelectorAll('.modal-backdrop').forEach(b=>b.remove());
-    if(modalEl) modalEl.removeAttribute('aria-hidden');
-  }catch(e){}
-}
-
-function __initVerModalStabilityOnce(){
-  try{
-    if(window.__VER_MODAL_STABILITY_INIT__) return;
-    window.__VER_MODAL_STABILITY_INIT__ = true;
-    const modalEl = document.getElementById("modalVerEmergencia");
-    if(!modalEl) return;
-    modalEl.addEventListener('hidden.bs.modal', ()=>{
-      window.__VER_MODAL_OPENING__ = false;
-      window.__VER_EMERG_ACTUAL = null;
-      window.__VER_WORD_CTX = null;
-      window.__VER_COBERTURA_PROMISE = null;
-      setTimeout(__cleanupVerModalBackdrops, 80);
-    });
-    modalEl.addEventListener('shown.bs.modal', ()=>{
-      window.__VER_MODAL_OPENING__ = false;
-    });
-  }catch(e){}
-}
-
-function __setVerButtonsBusy(busy){
-  try{
-    const modalEl = document.getElementById("modalVerEmergencia");
-    if(!modalEl) return;
-    modalEl.querySelectorAll('.modal-footer button').forEach(b=>{ b.disabled = !!busy; });
-    if(!busy){
-      const closeBtn = modalEl.querySelector('.modal-footer .btn-secondary');
-      if(closeBtn) closeBtn.disabled = false;
-    }
-  }catch(e){}
-}
 function __getAccionesCompArray(rc){
   if(!rc) return [];
   let a = rc.acciones ?? rc.accionesRC ?? rc.accionesComplementario ?? rc.accionesComplementarias ?? rc.accionesComp;
@@ -5690,7 +5648,7 @@ function __verNrosGlobalesHistorial(e, rcList){
   const parts = [];
   const seen = new Set();
 
-  const rpGlobal = (typeof __numeroGlobalVisible === "function") ? __numeroGlobalVisible(e) : safe(e && (e.numeroGlobal || e.numeroReporte || e.numGlobal || e.nroGlobal));
+  const rpGlobal = safe(e && (e.numeroGlobal || e.numeroReporte || e.numGlobal || e.nroGlobal));
   const rpFecha = __verDateOnly(__verFechaRegistroRP(e));
   const rpTxt = `RP – ${rpGlobal ? `N° Global ${rpGlobal}` : "N° Global"}${rpFecha ? ` | Fecha de registro ${rpFecha}` : ""}`;
   parts.push(rpTxt);
@@ -5753,7 +5711,7 @@ function verEmergencia(e) {
   aprobadoPorTxt = __normalizeAdminName(aprobadoPorTxt);
   if(!String(aprobadoPorTxt||"").trim()) aprobadoPorTxt = __getPrimaryAdminName();
 
-  const nroGlobalWord = (lastRC && (lastRC.numeroGlobal || lastRC.numeroReporteRC)) ? (lastRC.numeroGlobal || lastRC.numeroReporteRC) : ((typeof __numeroGlobalVisible === "function") ? __numeroGlobalVisible(e) : (e.numeroGlobal || ""));
+  const nroGlobalWord = (lastRC && (lastRC.numeroGlobal || lastRC.numeroReporteRC)) ? (lastRC.numeroGlobal || lastRC.numeroReporteRC) : (e.numeroGlobal || "");
   const fechaHoraWord = (lastRC && (lastRC.fechaHoraRC || lastRC.fechaHora || lastRC.fechaRegistro || lastRC.updatedAt)) ? (lastRC.fechaHoraRC || lastRC.fechaHora || lastRC.fechaRegistro || lastRC.updatedAt) : (e.fechaHora || "");
 
   // Contexto para exportar a Word desde VER
@@ -5914,8 +5872,8 @@ try{
   if(menu) menu.innerHTML = "";
 }catch(_e){}
 
-__initVerModalStabilityOnce();
-  __showVerModalSafe();
+const modal = new bootstrap.Modal(document.getElementById("modalVerEmergencia"));
+  modal.show();
 }
 
 
@@ -7151,7 +7109,7 @@ function cargarTablaEmergencias() {
     // Handlers de botones según disponibilidad
     const btnVer = tr.querySelector(".btnVer");
     if (btnVer && !btnVer.disabled && btnVer.style.display !== "none") {
-      btnVer.onclick = () => __withFullEmergencia(e, (full)=>{ verEmergencia(full); if(__getRCList(full).length>0) __scrollVerToLastRC(); }, {loadingModal:true});
+      btnVer.onclick = () => __withFullEmergencia(e, (full)=>{ verEmergencia(full); if(__getRCList(full).length>0) __scrollVerToLastRC(); });
     }
 
     const btnRP = tr.querySelector(".btnRP");
@@ -7176,7 +7134,7 @@ function cargarTablaEmergencias() {
         btnRP.title = "Emergencia cerrada: RP bloqueado";
       }
       if (!btnRP.disabled) {
-        btnRP.onclick = () => __withFullEmergencia(e, (full)=>abrirRP(full));
+        btnRP.onclick = () => __withFreshFullEmergencia(e, (full)=>abrirRP(full));
       }
     }
 
@@ -7188,7 +7146,7 @@ function cargarTablaEmergencias() {
     // Admin-only: Modificar / Eliminar
     const btnEditRP = tr.querySelector(".btnEditRP");
     if(btnEditRP && __isAdmin && __isAdmin()){
-      btnEditRP.onclick = () => __withFullEmergencia(e, (full)=>__abrirRPAdminEditarDesdeListado(full));
+      btnEditRP.onclick = () => __withFreshFullEmergencia(e, (full)=>__abrirRPAdminEditarDesdeListado(full));
     }
     const btnEditRC = tr.querySelector(".btnEditRC");
     if(btnEditRC && __isAdmin && __isAdmin()){
@@ -7604,11 +7562,12 @@ try{
   }
 }catch(e){}
 
-    // Botón aprobar (admin) habilitado solo si RP está pendiente
+    // Botones de aprobación Admin: estado limpio según el RP real cargado
   const btnApr = document.getElementById("btnAprobarRPAdmin");
   if(btnApr){
     btnApr.disabled = !(__isAdmin() && obj.rpAprobEstado === "Pendiente");
   }
+  try{ __syncRPAdminApproveButtonState(obj); }catch(e){}
 
   // Admin: si el RP ya está aprobado, bloquear todos los campos (solo Retornar activo)
   try{
@@ -8520,31 +8479,101 @@ function __dashGetStatus(e){
   return {name:"En proceso", color:"#fd7e14"};
 }
 
+function __dashNum(v){
+  if(v === null || v === undefined || v === "") return 0;
+  const n = Number(String(v).replace(",", "."));
+  return Number.isFinite(n) ? n : 0;
+}
+
+function __dashNumAny(){
+  for(let i=0; i<arguments.length; i++){
+    const v = arguments[i];
+    if(v === null || v === undefined || v === "") continue;
+    const n = __dashNum(v);
+    if(Number.isFinite(n)) return n;
+  }
+  return 0;
+}
+
+function __dashParseMaybeJson(v){
+  if(!v) return v;
+  if(typeof v === "object") return v;
+  if(typeof v === "string"){
+    const t = v.trim();
+    if(!t) return null;
+    if((t.startsWith("{") && t.endsWith("}")) || (t.startsWith("[") && t.endsWith("]"))){
+      try{ return JSON.parse(t); }catch(_e){}
+    }
+  }
+  return v;
+}
+
+function __dashFirstObject(){
+  for(let i=0; i<arguments.length; i++){
+    const o = __dashParseMaybeJson(arguments[i]);
+    if(o && typeof o === "object" && !Array.isArray(o)) return o;
+  }
+  return null;
+}
+
+function __dashDanioVal(d, field){
+  d = (d && typeof d === "object") ? d : {};
+  if(field === "usuariosAfectados") return __dashNumAny(d.usuariosAfectados, d.usuarios_afectados, d.usuarios, d.ua, d.UA);
+  if(field === "serviciosAfectados") return __dashNumAny(d.serviciosAfectados, d.servicios_afectados, d.servicios, d.sa, d.SA);
+  if(field === "usuariosPorServicios") return __dashNumAny(d.usuariosPorServicios, d.usuarios_por_servicios, d.usuariosServicios, d.uas, d.ups, d.UPS, d.UAS);
+  if(field === "usuariosFallecidos") return __dashNumAny(d.usuariosFallecidos, d.usuarios_fallecidos, d.fallecidos, d.uf, d.UF);
+  if(field === "moduloAfectado") return __dashNumAny(d.moduloAfectado, d.modulo_afectado, d.modulosAfectados, d.ma, d.MA);
+  return 0;
+}
+
+function __dashNormProgramaKey(k){
+  return String(k || "")
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase()
+    .replace(/Ñ/g, "N")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function __dashPickProgramaDanio(dm, prog){
+  if(!dm || !prog) return null;
+  const keys = Object.keys(dm || {});
+  const wanted = [
+    __dashNormProgramaKey(prog.key),
+    __dashNormProgramaKey(prog.label)
+  ];
+  const found = keys.find(k => wanted.includes(__dashNormProgramaKey(k)));
+  return found ? (dm[found] || null) : null;
+}
+
 function __dashTotalesMidis(daniosMIDIS){
-  let usuarios=0, servicios=0, fallecidos=0;
-  if(!daniosMIDIS) return {usuarios, servicios, fallecidos};
+  let usuarios=0, servicios=0, ups=0, fallecidos=0;
+  daniosMIDIS = __dashParseMaybeJson(daniosMIDIS);
+  if(!daniosMIDIS || typeof daniosMIDIS !== "object") return {usuarios, servicios, ups, fallecidos};
 
   Object.keys(daniosMIDIS).forEach(k=>{
     const d = daniosMIDIS[k] || {};
-    usuarios += Number(d.usuariosAfectados || 0);
-    servicios += Number(d.serviciosAfectados || 0);
-    fallecidos += Number(d.usuariosFallecidos || 0);
+    usuarios += __dashDanioVal(d, "usuariosAfectados");
+    servicios += __dashDanioVal(d, "serviciosAfectados");
+    ups += __dashDanioVal(d, "usuariosPorServicios");
+    fallecidos += __dashDanioVal(d, "usuariosFallecidos");
   });
-  return {usuarios, servicios, fallecidos};
+  return {usuarios, servicios, ups, fallecidos};
 }
 
 function __dashProgramaTieneAfectacion(d){
   if(!d) return false;
-  return (Number(d.usuariosAfectados||0) > 0) ||
-         (Number(d.serviciosAfectados||0) > 0) ||
-         (Number(d.usuariosPorServicios||0) > 0) ||
-         (Number(d.usuariosFallecidos||0) > 0) ||
-         (Number(d.moduloAfectado||0) > 0);
+  return (__dashDanioVal(d, "usuariosAfectados") > 0) ||
+         (__dashDanioVal(d, "serviciosAfectados") > 0) ||
+         (__dashDanioVal(d, "usuariosPorServicios") > 0) ||
+         (__dashDanioVal(d, "usuariosFallecidos") > 0) ||
+         (__dashDanioVal(d, "moduloAfectado") > 0);
 }
 
 function __dashAfectaMidis(e){
-  if(!e || !e.daniosMIDIS) return false;
-  return Object.keys(e.daniosMIDIS).some(k => __dashProgramaTieneAfectacion(e.daniosMIDIS[k]));
+  const dm = __dashCurrentDaniosMidis(e);
+  if(!dm || typeof dm !== "object") return false;
+  return Object.keys(dm).some(k => __dashProgramaTieneAfectacion(dm[k]));
 }
 
 function __dashInRange(d, desde, hasta){
@@ -8601,18 +8630,10 @@ function __dashInitIfNeeded(){
     return;
   }
 
-  const mkBar = (el, label, extraOptions={}) => new Chart(el, {
+  const mkBar = (el, label) => new Chart(el, {
     type:"bar",
     data:{labels:[], datasets:[{label, data:[]}]},
-    options:Object.assign({
-      responsive:true,
-      maintainAspectRatio:false,
-      plugins:{legend:{display:true}},
-      scales:{
-        x:{ticks:{autoSkip:false, maxRotation:45, minRotation:0}},
-        y:{beginAtZero:true, ticks:{precision:0}}
-      }
-    }, extraOptions || {})
+    options:{responsive:true}
   });
 
   if(!dashChartEvento) dashChartEvento = mkBar(document.getElementById("dashChartEvento"), "Emergencias");
@@ -8636,9 +8657,9 @@ function __dashInitIfNeeded(){
         });
       }
     }
-    if(!dashChartUsuariosProg) dashChartUsuariosProg = mkBar(document.getElementById("dashChartUsuariosProg"), "Usuarios afectados", {scales:{x:{ticks:{autoSkip:false, maxRotation:45, minRotation:0}}, y:{beginAtZero:true, ticks:{precision:0}}}});
-  if(!dashChartServiciosProg) dashChartServiciosProg = mkBar(document.getElementById("dashChartServiciosProg"), "Servicios afectados", {scales:{x:{ticks:{autoSkip:false, maxRotation:45, minRotation:0}}, y:{beginAtZero:true, ticks:{precision:0}}}});
-  if(!dashChartAfectProg) dashChartAfectProg = mkBar(document.getElementById("dashChartAfectProg"), "Usuarios fallecidos", {scales:{x:{ticks:{autoSkip:false, maxRotation:45, minRotation:0}}, y:{beginAtZero:true, ticks:{precision:0}}}});
+    if(!dashChartUsuariosProg) dashChartUsuariosProg = mkBar(document.getElementById("dashChartUsuariosProg"), "Usuarios afectados");
+  if(!dashChartServiciosProg) dashChartServiciosProg = mkBar(document.getElementById("dashChartServiciosProg"), "Servicios afectados");
+  if(!dashChartAfectProg) dashChartAfectProg = mkBar(document.getElementById("dashChartAfectProg"), "N° emergencias");
 }
 
 // ======= FIX v226: Mapa Dashboard - todos los estados, coordenadas alternativas y puntos coincidentes visibles =======
@@ -8762,15 +8783,135 @@ function __dashMapFechaPeligroInRange(e){
 
 function __dashCurrentDaniosMidis(e){
   try{
-    const rcList = (typeof __getRCList === "function") ? __getRCList(e) : [];
+    const hasAnyValue = (dm)=>{
+      dm = __dashParseMaybeJson(dm);
+      if(!dm || typeof dm !== "object") return false;
+      return Object.keys(dm).some(k=>__dashProgramaTieneAfectacion(dm[k] || {}));
+    };
+
+    // Prioridad operativa: último RC con matriz de daños real; si no existe, RP.
+    // No bloquea el Dashboard: solo lee lo que está disponible en memoria.
+    const rcList = (typeof __getRCList === "function")
+      ? __getRCList(e)
+      : (Array.isArray(e && e.rcReportes) ? e.rcReportes : []);
+
     if(Array.isArray(rcList) && rcList.length){
       for(let i = rcList.length - 1; i >= 0; i--){
-        const rc = rcList[i];
-        if(rc && rc.daniosMIDIS && typeof rc.daniosMIDIS === "object") return rc.daniosMIDIS;
+        const rc = rcList[i] || {};
+        const dm = __dashFirstObject(
+          rc.daniosMIDIS, rc.dañosMIDIS, rc.danosMIDIS, rc.danios, rc.daniosMidis,
+          rc.daniosMIDISRC, rc.daniosSector, rc.daniosSectorMidis, rc.daniosSectorDesarrollo
+        );
+        if(hasAnyValue(dm)) return dm;
       }
     }
-    return (e && e.daniosMIDIS && typeof e.daniosMIDIS === "object") ? e.daniosMIDIS : {};
-  }catch(err){ return (e && e.daniosMIDIS) ? e.daniosMIDIS : {}; }
+
+    const base = __dashFirstObject(
+      e && e.daniosMIDIS, e && e.dañosMIDIS, e && e.danosMIDIS, e && e.danios, e && e.daniosMidis,
+      e && e.daniosSector, e && e.daniosSectorMidis, e && e.daniosSectorDesarrollo
+    );
+    return (base && typeof base === "object") ? base : {};
+  }catch(err){
+    const fallback = __dashFirstObject(e && e.daniosMIDIS, e && e.dañosMIDIS, e && e.danosMIDIS);
+    return fallback || {};
+  }
+}
+
+
+// FIX v238: Impacto MIDIS necesita payload completo; /sync/list trae resumen liviano.
+// Este proceso NO bloquea mapa ni estadísticas generales: primero pinta el Dashboard y luego
+// rehidrata solo los registros filtrados para recalcular los histogramas MIDIS con data real.
+let __DASH_IMPACTO_DETAIL_RUN_ID = 0;
+let __DASH_IMPACTO_DETAIL_LAST_SIG = "";
+let __DASH_IMPACTO_DETAIL_LAST_AT = 0;
+
+function __dashImpactoDetailSignature(data, groupBy){
+  try{
+    const codes = (Array.isArray(data) ? data : [])
+      .map(e => String(e && e.codigo ? e.codigo : "").trim())
+      .filter(Boolean)
+      .sort();
+    const filters = [
+      document.getElementById("dashTipoFecha")?.value || "",
+      document.getElementById("dashDesde")?.value || "",
+      document.getElementById("dashHasta")?.value || "",
+      document.getElementById("dashSoloMidis")?.checked ? "1" : "0",
+      groupBy || "programa"
+    ].join("|");
+    return filters + "||" + codes.join(",");
+  }catch(_e){
+    return String(Date.now());
+  }
+}
+
+function __dashNeedsImpactoDetail(e, force){
+  try{
+    if(!e || !String(e.codigo || "").trim()) return false;
+    if(typeof __syncIsSummaryOnly === "function" && __syncIsSummaryOnly(e)) return true;
+    if(e.__summaryOnly === true || e.__needsDetail === true) return true;
+    // Al presionar Aplicar, se permite refrescar el detalle para evitar datos MIDIS antiguos.
+    if(force) return true;
+  }catch(_e){}
+  return false;
+}
+
+async function __dashHydrateImpactoMidisAsync(filteredData, groupBy, force){
+  try{
+    if(typeof __ensureFullEmergencia !== "function") return;
+    if(typeof __isApiConfigured === "function" && !__isApiConfigured()) return;
+    if(typeof navigator !== "undefined" && !navigator.onLine) return;
+
+    const src = Array.isArray(filteredData) ? filteredData : [];
+    if(!src.length) return;
+
+    const sig = __dashImpactoDetailSignature(src, groupBy);
+    const now = Date.now();
+    if(!force && sig === __DASH_IMPACTO_DETAIL_LAST_SIG && (now - __DASH_IMPACTO_DETAIL_LAST_AT) < 60000) return;
+    __DASH_IMPACTO_DETAIL_LAST_SIG = sig;
+    __DASH_IMPACTO_DETAIL_LAST_AT = now;
+
+    const seen = new Set();
+    const toLoad = [];
+    src.forEach(e=>{
+      const c = String(e && e.codigo ? e.codigo : "").trim();
+      if(!c || seen.has(c)) return;
+      if(__dashNeedsImpactoDetail(e, !!force)){
+        seen.add(c);
+        toLoad.push(c);
+      }
+    });
+
+    if(!toLoad.length) return;
+
+    const runId = ++__DASH_IMPACTO_DETAIL_RUN_ID;
+    const CONCURRENCY = 5;
+    let pos = 0;
+
+    async function worker(){
+      while(pos < toLoad.length){
+        const code = toLoad[pos++];
+        try{ await __ensureFullEmergencia(code); }catch(_e){}
+        // Cede el hilo para no congelar la pantalla cuando hay varios registros.
+        await new Promise(resolve => setTimeout(resolve, 0));
+      }
+    }
+
+    const workers = [];
+    for(let i=0; i<Math.min(CONCURRENCY, toLoad.length); i++) workers.push(worker());
+    await Promise.all(workers);
+
+    if(runId !== __DASH_IMPACTO_DETAIL_RUN_ID) return;
+
+    // Recalcula SOLO Impacto MIDIS desde la misma colección filtrada del Dashboard,
+    // pero ya con payload completo en memoria. No repinta mapa ni estadísticas generales.
+    const freshData = __dashGetFiltered();
+    const freshGroup = __dashGetImpactoGroupBy();
+    const freshImpacto = (Array.isArray(freshData) ? freshData : []).filter(__dashAfectaMidis);
+    __dashRenderImpacto(freshImpacto, freshGroup);
+    __dashRenderAfectaMidisTable(freshImpacto);
+  }catch(err){
+    console.warn("Impacto MIDIS: no se pudo rehidratar detalle sin bloquear Dashboard", err);
+  }
 }
 
 function __dashMapApplyDepartamentoFilter(data){
@@ -8855,7 +8996,7 @@ function __dashMapRenderDepartamentoResumen(data){
   }
 
   if(!total){
-    tbody.innerHTML = '<tr><td colspan="6" class="text-muted small">Sin emergencias para el filtro seleccionado.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="5" class="text-muted small">Sin emergencias para el filtro seleccionado.</td></tr>';
     if(pageInfo) pageInfo.textContent = "0 a 0 de 0 registros";
     if(btnPrev) btnPrev.disabled = true;
     if(btnNext) btnNext.disabled = true;
@@ -8874,31 +9015,9 @@ function __dashMapRenderDepartamentoResumen(data){
       <td>${__dashHtmlEscape(e?.peligro || "")}</td>
       <td class="text-end">${Number(t.usuarios || 0)}</td>
       <td class="text-end">${Number(t.servicios || 0)}</td>
-      <td class="text-center"><button type="button" class="btn btn-sm btn-outline-secondary dashMapDeptVer" data-codigo="${__dashHtmlEscape(e?.codigo || "")}" title="Ver detalle RP/RC">👁</button></td>
     </tr>`;
   }).join("");
   tbody.innerHTML = rows;
-
-  try{
-    tbody.querySelectorAll(".dashMapDeptVer").forEach(btn=>{
-      btn.addEventListener("click", ()=>{
-        const code = String(btn.getAttribute("data-codigo") || "").trim();
-        if(!code) return;
-        const local = (Array.isArray(emergencias) ? emergencias : []).find(x => String(x && x.codigo ? x.codigo : "").trim() === code) || null;
-        if(typeof __withFullEmergencia === "function"){
-          __withFullEmergencia(local || code, (full)=>{
-            verEmergencia(full);
-            try{ if(typeof __getRCList === "function" && __getRCList(full).length > 0 && typeof __scrollVerToLastRC === "function") __scrollVerToLastRC(); }catch(_e){}
-          }, {loadingModal:true});
-        }else if(local && typeof verEmergencia === "function"){
-          verEmergencia(local);
-          try{ if(typeof __getRCList === "function" && __getRCList(local).length > 0 && typeof __scrollVerToLastRC === "function") __scrollVerToLastRC(); }catch(_e){}
-        }else{
-          alert("No se encontró la emergencia: " + code);
-        }
-      });
-    });
-  }catch(_e){}
 
   if(pageInfo) pageInfo.textContent = `${start + 1} a ${end} de ${total} registros`;
   if(btnPrev) btnPrev.disabled = (__dashMapDeptPager.page <= 1);
@@ -9089,39 +9208,6 @@ function __dashExportActivasHoyWord(){
   table{border-collapse:collapse; width:100%;}
   th,td{border:1px solid #000; padding:6px; vertical-align:top;}
   th{background:#FEE599; color:#1F4E79; font-weight:bold; text-align:center;}
-
-/* ======= VERSION 238: Dashboard Impacto MIDIS - visualización completa ======= */
-#dashTab #dashChartUsuariosProg,
-#dashTab #dashChartServiciosProg,
-#dashTab #dashChartAfectProg{
-  height:260px !important;
-  max-height:260px !important;
-}
-#dashTab #dashChartAfectProg{
-  margin-bottom:8px;
-}
-#dashTab #dashAfectaMidisTbody td,
-#dashTab #dashAfectaMidisTbody th{
-  vertical-align:middle;
-}
-#dashTab .dash-impact-chart-box{
-  height:280px;
-  min-height:280px;
-  position:relative;
-}
-@media (max-width: 768px){
-  #dashTab #dashChartUsuariosProg,
-  #dashTab #dashChartServiciosProg,
-  #dashTab #dashChartAfectProg{
-    height:220px !important;
-    max-height:220px !important;
-  }
-  #dashTab .dash-impact-chart-box{
-    height:240px;
-    min-height:240px;
-  }
-}
-
 </style>
 </head>
 <body>
@@ -9362,100 +9448,6 @@ function __dashSliceForPager(arr, pager){
   return { slice: list.slice(start, start + size), pages };
 }
 
-
-
-// ======= FIX v236: N° Global visible en Detalle / Dashboard =======
-function __numeroGlobalVisible(e){
-  try{
-    if(typeof __dashNumeroGlobalVisible === "function") return __dashNumeroGlobalVisible(e);
-  }catch(_e){}
-  try{
-    return __dashFirstNonEmptyValue(
-      e && e.numeroGlobal,
-      e && e.numeroReporte,
-      e && e.numGlobalRP,
-      e && e.numeroGlobalRP,
-      e && e.nroGlobal,
-      e && e.nGlobal
-    );
-  }catch(_e){
-    return (e && e.numeroGlobal) ? String(e.numeroGlobal) : "";
-  }
-}
-
-// ======= FIX v235: N° Global visible en Dashboard / Emergencias del día =======
-// Corrige casos donde el RP quedó con un correlativo local provisional (ej. 22/23)
-// pero el correlativo global real se puede inferir de registros cercanos ya sincronizados.
-function __dashExtractRPSeq(codigo){
-  try{
-    const m = String(codigo || "").trim().match(/^RP-(\d+)-(\d{4})$/i);
-    if(!m) return null;
-    return { seq: Number(m[1]) || 0, year: String(m[2] || "") };
-  }catch(e){ return null; }
-}
-
-function __dashFirstNonEmptyValue(){
-  for(let i=0;i<arguments.length;i++){
-    const v = arguments[i];
-    if(v === null || v === undefined) continue;
-    const s = String(v).trim();
-    if(s !== "") return s;
-  }
-  return "";
-}
-
-function __dashRawNumeroGlobal(e){
-  try{
-    return __dashFirstNonEmptyValue(
-      e && e.numeroGlobal,
-      e && e.numeroReporte,
-      e && e.numGlobalRP,
-      e && e.numeroGlobalRP,
-      e && e.nroGlobal,
-      e && e.nGlobal
-    );
-  }catch(_e){ return ""; }
-}
-
-function __dashGlobalOffsetForYear(year){
-  try{
-    const counts = {};
-    const arr = (typeof __dashGetEmergencias === "function") ? __dashGetEmergencias() : (Array.isArray(emergencias) ? emergencias : []);
-    (Array.isArray(arr) ? arr : []).forEach(x=>{
-      const rp = __dashExtractRPSeq(x && x.codigo);
-      if(!rp || String(rp.year) !== String(year) || !rp.seq) return;
-      const raw = __dashRawNumeroGlobal(x);
-      const g = Number(raw);
-      // Solo usar registros claramente válidos para calcular el desfase.
-      if(!Number.isFinite(g) || g <= 1000 || rp.seq <= 1000) return;
-      const off = g - rp.seq;
-      if(!Number.isFinite(off) || off < 0 || off > 1000) return;
-      counts[String(off)] = (counts[String(off)] || 0) + 1;
-    });
-    let best = null;
-    let bestCount = 0;
-    Object.keys(counts).forEach(k=>{
-      if(counts[k] > bestCount){ best = Number(k); bestCount = counts[k]; }
-    });
-    return (best !== null && bestCount > 0) ? best : null;
-  }catch(e){ return null; }
-}
-
-function __dashNumeroGlobalVisible(e){
-  const raw = __dashRawNumeroGlobal(e);
-  const rp = __dashExtractRPSeq(e && e.codigo);
-  if(!rp || !rp.seq) return raw;
-
-  const n = Number(raw);
-  const offset = __dashGlobalOffsetForYear(rp.year);
-
-  // Si el registro grande aparece con N° Global chico, es un provisional local.
-  if(offset !== null && rp.seq > 1000 && (!raw || (Number.isFinite(n) && n > 0 && n < 1000))){
-    return String(rp.seq + offset);
-  }
-  return raw;
-}
-
 function __dashRenderActivasHoy(){
   const tbody = document.getElementById("dashActivasTbody");
   if(tbody) tbody.innerHTML = "";
@@ -9518,7 +9510,7 @@ function __dashRenderActivasHoy(){
         <td>${e.peligro||""}</td>
         <td>${ub}</td>
         <td>${e.fechaPeligro||""}</td>
-        <td>${__dashNumeroGlobalVisible(e)}</td>
+        <td>${e.numeroGlobal||""}</td>
         <td>${badge} ${st.name}</td>
         <td class="text-center">
           <button type="button" class="btn btn-sm btn-outline-primary" title="Ver RP/RC"
@@ -9573,30 +9565,25 @@ function __dashSetImpactoLabels(groupBy){
 }
 
 function __dashSumDanios(daniosMIDIS){
-  let usuarios=0, servicios=0, ups=0, fallecidos=0;
-  if(!daniosMIDIS) return {usuarios, servicios, ups, fallecidos};
-
-  Object.keys(daniosMIDIS).forEach(k=>{
-    const d = daniosMIDIS[k] || {};
-    usuarios += Number(d.usuariosAfectados || 0);
-    servicios += Number(d.serviciosAfectados || 0);
-    ups += Number(d.usuariosPorServicios || 0);
-    fallecidos += Number(d.usuariosFallecidos || 0);
-  });
-  return {usuarios, servicios, ups, fallecidos};
-}
-
-function __dashResizeImpactCharts(){
-  try{
-    [dashChartUsuariosProg, dashChartServiciosProg, dashChartAfectProg].forEach(ch=>{
-      if(ch && typeof ch.resize === "function") ch.resize();
-    });
-  }catch(e){}
+  return __dashTotalesMidis(daniosMIDIS);
 }
 
 function __dashRenderImpacto(data, groupBy){
   groupBy = groupBy || "programa";
   __dashSetImpactoLabels(groupBy);
+
+  // Colección única y filtrada SOLO con emergencias que afectan al MIDIS.
+  // No usa caché ni valores hardcodeados; toma la matriz vigente del último RC y, si no hay, del RP.
+  const seen = new Set();
+  const base = [];
+  (Array.isArray(data) ? data : []).forEach(e=>{
+    if(!e || !__dashAfectaMidis(e)) return;
+    const code = String(e.codigo || "").trim();
+    const key = code || JSON.stringify([e.fechaPeligro||"", e.departamento||"", e.provincia||"", e.distrito||"", e.peligro||""]);
+    if(seen.has(key)) return;
+    seen.add(key);
+    base.push(e);
+  });
 
   let labels = [];
   let u = [];
@@ -9614,16 +9601,16 @@ function __dashRenderImpacto(data, groupBy){
     ups = new Array(labels.length).fill(0);
     f = new Array(labels.length).fill(0);
 
-    data.forEach(e=>{
-      const dm = e?.daniosMIDIS || {};
+    base.forEach(e=>{
+      const dm = __dashCurrentDaniosMidis(e);
       __DASH_PROGRAMAS.forEach((p, i)=>{
-        const d = dm[p.key] || dm[p.label] || null; // por si viene con llave distinta
+        const d = __dashPickProgramaDanio(dm, p);
         if(!d) return;
 
-        const uu = Number(d.usuariosAfectados||0);
-        const ss = Number(d.serviciosAfectados||0);
-        const uups = Number(d.usuariosPorServicios||0);
-        const ff = Number(d.usuariosFallecidos||0);
+        const uu = __dashDanioVal(d, "usuariosAfectados");
+        const ss = __dashDanioVal(d, "serviciosAfectados");
+        const uups = __dashDanioVal(d, "usuariosPorServicios");
+        const ff = __dashDanioVal(d, "usuariosFallecidos");
 
         u[i] += uu;
         s[i] += ss;
@@ -9638,9 +9625,9 @@ function __dashRenderImpacto(data, groupBy){
     });
   } else {
     const map = {};
-    data.forEach(e=>{
+    base.forEach(e=>{
       const k = (groupBy === "evento") ? (e.peligro || "Sin dato") : (e.departamento || "Sin dato");
-      const t = __dashSumDanios(e?.daniosMIDIS);
+      const t = __dashSumDanios(__dashCurrentDaniosMidis(e));
 
       if(!map[k]) map[k] = {usuarios:0, servicios:0, ups:0, fallecidos:0};
       map[k].usuarios += t.usuarios;
@@ -9675,44 +9662,60 @@ function __dashRenderImpacto(data, groupBy){
   if(elTUPS) elTUPS.textContent = String(totalUPS);
   if(elTF) elTF.textContent = String(totalF);
 
-  // Usuarios (según clasificación)
-  if(dashChartUsuariosProg){
-    dashChartUsuariosProg.data.labels = labels;
-    dashChartUsuariosProg.data.datasets[0].label = "Usuarios afectados";
-    dashChartUsuariosProg.data.datasets[0].data = u;
-    dashChartUsuariosProg.update();
-  }
+  // Gráficos de Impacto MIDIS: destruir y recrear evita acumulación visual/datasets antiguos.
+  try{
+    if(typeof Chart !== "undefined"){
+      const makeBar = (canvasId, label, dataArr, extraDatasets)=>{
+        const el = document.getElementById(canvasId);
+        if(!el) return null;
+        const datasets = extraDatasets || [{label, data:dataArr}];
+        return new Chart(el, {
+          type:"bar",
+          data:{labels: labels, datasets: datasets},
+          options:{responsive:true}
+        });
+      };
 
-  // Servicios + Usuarios por servicios (2 datasets)
-  if(dashChartServiciosProg){
-    dashChartServiciosProg.data.labels = labels;
-    dashChartServiciosProg.data.datasets[0].label = "Servicios afectados";
-    dashChartServiciosProg.data.datasets[0].data = s;
+      if(dashChartUsuariosProg){ try{ dashChartUsuariosProg.destroy(); }catch(_e){} dashChartUsuariosProg = null; }
+      dashChartUsuariosProg = makeBar("dashChartUsuariosProg", "Usuarios afectados", u);
 
-    // Asegurar dataset 2
-    if(!dashChartServiciosProg.data.datasets[1]){
-      dashChartServiciosProg.data.datasets.push({label:"Usuarios por servicios", data:[]});
+      if(dashChartServiciosProg){ try{ dashChartServiciosProg.destroy(); }catch(_e){} dashChartServiciosProg = null; }
+      dashChartServiciosProg = makeBar("dashChartServiciosProg", "Servicios afectados", s, [
+        {label:"Servicios afectados", data:s},
+        {label:"Usuarios por servicios", data:ups}
+      ]);
+
+      if(dashChartAfectProg){ try{ dashChartAfectProg.destroy(); }catch(_e){} dashChartAfectProg = null; }
+      dashChartAfectProg = makeBar("dashChartAfectProg", "Usuarios fallecidos", f);
     }
-    dashChartServiciosProg.data.datasets[1].label = "Usuarios por servicios";
-    dashChartServiciosProg.data.datasets[1].data = ups;
-    dashChartServiciosProg.update();
+  }catch(e){
+    // Fallback: si Chart.js no permite recrear, al menos no dejar valores antiguos.
+    if(dashChartUsuariosProg){ dashChartUsuariosProg.data.labels = labels; dashChartUsuariosProg.data.datasets[0].data = u; dashChartUsuariosProg.update(); }
+    if(dashChartServiciosProg){ dashChartServiciosProg.data.labels = labels; dashChartServiciosProg.data.datasets[0].data = s; if(!dashChartServiciosProg.data.datasets[1]) dashChartServiciosProg.data.datasets.push({label:"Usuarios por servicios", data:[]}); dashChartServiciosProg.data.datasets[1].data = ups; dashChartServiciosProg.update(); }
+    if(dashChartAfectProg){ dashChartAfectProg.data.labels = labels; dashChartAfectProg.data.datasets[0].data = f; dashChartAfectProg.update(); }
   }
-
-  // Fallecidos (según clasificación)
-  if(dashChartAfectProg){
-    dashChartAfectProg.data.labels = labels;
-    dashChartAfectProg.data.datasets[0].label = "Usuarios fallecidos";
-    dashChartAfectProg.data.datasets[0].data = f;
-    dashChartAfectProg.update();
-  }
-  __dashResizeImpactCharts();
 }
 
 function __dashRenderAfectaMidisTable(data){
   const tbody = document.getElementById("dashAfectaMidisTbody");
   if(tbody) tbody.innerHTML = "";
 
-  const list = (Array.isArray(data) ? data : []).filter(__dashAfectaMidis);
+  const seen = new Set();
+  const list = [];
+  (Array.isArray(data) ? data : []).forEach(e=>{
+    if(!e || !__dashAfectaMidis(e)) return;
+    const code = String(e.codigo || "").trim();
+    const key = code || JSON.stringify([e.fechaPeligro||"", e.departamento||"", e.provincia||"", e.distrito||"", e.peligro||""]);
+    if(seen.has(key)) return;
+    seen.add(key);
+    list.push(e);
+  });
+
+  list.sort((a,b)=>{
+    const fa = String(__dashGetFechaSegunTipo(a, document.getElementById("dashTipoFecha")?.value || "evento") || "");
+    const fb = String(__dashGetFechaSegunTipo(b, document.getElementById("dashTipoFecha")?.value || "evento") || "");
+    return fb.localeCompare(fa) || String(b.codigo||"").localeCompare(String(a.codigo||""));
+  });
 
   // Paginación
   __dashPagerMidis.size = __dashReadPageSize("dashAfectaMidisPageSize", __dashPagerMidis.size || 10);
@@ -9721,11 +9724,16 @@ function __dashRenderAfectaMidisTable(data){
 
   if(!tbody) return;
 
+  if(!slice.length){
+    tbody.innerHTML = '<tr><td colspan="10" class="text-muted text-center">Sin emergencias que afecten al MIDIS para el filtro seleccionado.</td></tr>';
+    return;
+  }
+
   slice.forEach(e=>{
     const st = __dashGetStatus(e);
     const badge = `<span class="badge" style="background:${st.color}"> </span>`;
 
-    const t = __dashTotalesMidis(e.daniosMIDIS);
+    const t = __dashTotalesMidis(__dashCurrentDaniosMidis(e));
     tbody.innerHTML += `
       <tr>
         <td>${e.codigo||""}</td>
@@ -9773,7 +9781,7 @@ function __dashBuildRenderSignature(){
       document.getElementById("dashMapFechaInicial")?.value || "",
       document.getElementById("dashMapFechaFinal")?.value || ""
     ].join("|"); }catch(_e){}
-    return [arr.length, maxUpd, f, impacto, Array.from(__dashMapStatusEnabled || []).sort().join(","), mapExtra].join("||");
+    return [arr.length, maxUpd, f, impacto, JSON.stringify(__dashMapStatusVisible || {}), mapExtra].join("||");
   }catch(e){
     return String(Date.now());
   }
@@ -9806,9 +9814,14 @@ function dashboardRefresh(opts){
   __dashRenderHistogramas(data);
 
   const groupBy = __dashGetImpactoGroupBy();
-  __dashRenderImpacto(data, groupBy);
+  // Impacto MIDIS se calcula desde una sola colección filtrada por fecha y condición MIDIS.
+  const dataImpactoMidis = (Array.isArray(data) ? data : []).filter(__dashAfectaMidis);
+  __dashRenderImpacto(dataImpactoMidis, groupBy);
 
-  __dashRenderAfectaMidisTable(data);
+  __dashRenderAfectaMidisTable(dataImpactoMidis);
+
+  // Rehidratación no bloqueante: corrige histogramas MIDIS sin apagar el mapa ni la estadística general.
+  try{ __dashHydrateImpactoMidisAsync(data, groupBy, force); }catch(_e){}
 
   setTimeout(()=>{ if(dashMap) dashMap.invalidateSize(); }, 150);
 }
@@ -9871,8 +9884,8 @@ document.addEventListener("DOMContentLoaded", ()=>{
     dashboardRefresh({force:true});
   });
 
-  if(btnAplicar) btnAplicar.addEventListener("click", ()=>dashboardRefresh({force:true}));
-  if(soloMidis) soloMidis.addEventListener("change", ()=>dashboardRefresh({force:true}));
+  if(btnAplicar) btnAplicar.addEventListener("click", ()=>{ __dashPagerMidis.page = 1; dashboardRefresh({force:true}); });
+  if(soloMidis) soloMidis.addEventListener("change", ()=>{ __dashPagerMidis.page = 1; dashboardRefresh({force:true}); });
 
   if(btnWordActivas) btnWordActivas.addEventListener("click", __dashExportActivasHoyExcel);
 
@@ -9906,399 +9919,6 @@ document.addEventListener("DOMContentLoaded", ()=>{
   document.getElementById("dashPillEvento")?.addEventListener("shown.bs.tab", ()=>dashboardRefresh({force:true}));
   document.getElementById("dashPillRegion")?.addEventListener("shown.bs.tab", ()=>dashboardRefresh({force:true}));
 });
-
-// ======= VERSION 240: Dashboard - corrección de visualización y fuente de datos MIDIS =======
-// Motivo: los gráficos de Impacto y la relación MIDIS estaban leyendo solo daniosMIDIS del RP.
-// Ahora toman la última matriz disponible (RC más reciente si existe; si no RP) y normalizan llaves históricas.
-(function(){
-  function esc(v){
-    try{ if(typeof __dashHtmlEscape === "function") return __dashHtmlEscape(v); }catch(_e){}
-    return String(v ?? "").replace(/[&<>'"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;","\"":"&quot;"}[c]));
-  }
-  function norm(v){
-    try{
-      return String(v || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toUpperCase().replace(/\s+/g," ");
-    }catch(_e){ return String(v || "").trim().toUpperCase(); }
-  }
-  function num(v){
-    const n = Number(v || 0);
-    return Number.isFinite(n) ? n : 0;
-  }
-  window.__dashCanonProgKeyV240 = function(k){
-    const n = norm(k);
-    if(n.includes("CUNA")) return "CUNA MAS";
-    if(n.includes("PENSION")) return "PENSION 65";
-    if(n.includes("ALIMENTACION")) return "ALIMENTACION ESCOLAR";
-    if(n.includes("CONTIGO")) return "CONTIGO";
-    if(n.includes("FONCODES")) return "FONCODES";
-    if(n.includes("JUNTOS")) return "JUNTOS";
-    if(n.includes("PAIS")) return "PAIS";
-    if(n === "PCA" || n.includes("COMPLEMENTACION")) return "PCA";
-    return n || "SIN DATO";
-  };
-  window.__dashCurrentDaniosMidis = function(e){
-    try{
-      const rcList = (typeof __getRCList === "function") ? __getRCList(e) : (Array.isArray(e && e.rcReportes) ? e.rcReportes : []);
-      if(Array.isArray(rcList) && rcList.length){
-        for(let i = rcList.length - 1; i >= 0; i--){
-          const rc = rcList[i] || {};
-          const dm = rc.daniosMIDIS || rc.daniosMidis || rc.daniosSectorMIDIS || rc.daniosSector || rc.danios || null;
-          if(dm && typeof dm === "object" && Object.keys(dm).length) return dm;
-        }
-      }
-      const rp = (e && (e.daniosMIDIS || e.daniosMidis || e.daniosSectorMIDIS || e.daniosSector || e.danios)) || {};
-      return (rp && typeof rp === "object") ? rp : {};
-    }catch(_e){ return (e && e.daniosMIDIS) ? e.daniosMIDIS : {}; }
-  };
-  window.__dashProgramDataV240 = function(danios, programKey){
-    const wanted = window.__dashCanonProgKeyV240(programKey);
-    const out = {usuariosAfectados:0, serviciosAfectados:0, usuariosPorServicios:0, usuariosFallecidos:0, moduloAfectado:0};
-    Object.keys(danios || {}).forEach(k=>{
-      if(window.__dashCanonProgKeyV240(k) !== wanted) return;
-      const d = danios[k] || {};
-      out.usuariosAfectados += num(d.usuariosAfectados ?? d.usuarios_afectados ?? d.totalUsuariosAfectados);
-      out.serviciosAfectados += num(d.serviciosAfectados ?? d.servicios_afectados ?? d.totalServiciosAfectados);
-      out.usuariosPorServicios += num(d.usuariosPorServicios ?? d.usuarios_por_servicios ?? d.usuariosServicios ?? d.totalUsuariosPorServicios);
-      out.usuariosFallecidos += num(d.usuariosFallecidos ?? d.fallecidos ?? d.totalFallecidos);
-      out.moduloAfectado += num(d.moduloAfectado ?? d.modulosAfectados);
-    });
-    return out;
-  };
-  window.__dashSumDanios = function(daniosMIDIS){
-    const out = {usuarios:0, servicios:0, ups:0, fallecidos:0};
-    Object.keys(daniosMIDIS || {}).forEach(k=>{
-      const d = daniosMIDIS[k] || {};
-      out.usuarios += num(d.usuariosAfectados ?? d.usuarios_afectados ?? d.totalUsuariosAfectados);
-      out.servicios += num(d.serviciosAfectados ?? d.servicios_afectados ?? d.totalServiciosAfectados);
-      out.ups += num(d.usuariosPorServicios ?? d.usuarios_por_servicios ?? d.usuariosServicios ?? d.totalUsuariosPorServicios);
-      out.fallecidos += num(d.usuariosFallecidos ?? d.fallecidos ?? d.totalFallecidos);
-    });
-    return out;
-  };
-  window.__dashTotalesMidis = function(daniosMIDIS){
-    const t = window.__dashSumDanios(daniosMIDIS);
-    return {usuarios:t.usuarios, servicios:t.servicios, fallecidos:t.fallecidos};
-  };
-  window.__dashAfectaMidis = function(e){
-    const dm = window.__dashCurrentDaniosMidis(e);
-    const t = window.__dashSumDanios(dm);
-    if(t.usuarios > 0 || t.servicios > 0 || t.ups > 0 || t.fallecidos > 0) return true;
-    // compatibilidad con módulo afectado/FONCODES y otros nombres de campos
-    return Object.keys(dm || {}).some(k=>{
-      const d = dm[k] || {};
-      return num(d.moduloAfectado ?? d.modulosAfectados) > 0;
-    });
-  };
-  window.__dashEnsureChartBoxV240 = function(){
-    try{
-      ["dashChartEvento","dashChartRegion"].forEach(id=>{
-        const el = document.getElementById(id);
-        if(el){ el.style.height = el.style.height || "360px"; el.style.maxHeight = "360px"; }
-      });
-      [dashChartEvento, dashChartRegion, dashChartUsuariosProg, dashChartServiciosProg, dashChartAfectProg].forEach(ch=>{
-        if(!ch) return;
-        ch.options = ch.options || {};
-        ch.options.maintainAspectRatio = false;
-        if(ch.options.scales && ch.options.scales.y) ch.options.scales.y.beginAtZero = true;
-        if(ch.options.scales && ch.options.scales.y && ch.options.scales.y.ticks) ch.options.scales.y.ticks.precision = 0;
-      });
-    }catch(_e){}
-  };
-  window.__dashRenderHistogramas = function(data){
-    data = Array.isArray(data) ? data : [];
-    window.__dashEnsureChartBoxV240();
-    const byEvento = {};
-    data.forEach(e=>{ const k = String((e && e.peligro) || "Sin dato").trim() || "Sin dato"; byEvento[k] = (byEvento[k]||0) + 1; });
-    const evEntries = Object.entries(byEvento).sort((a,b)=> (b[1]-a[1]) || a[0].localeCompare(b[0],"es"));
-    if(dashChartEvento){
-      dashChartEvento.data.labels = evEntries.map(x=>x[0]);
-      dashChartEvento.data.datasets[0].label = "Emergencias";
-      dashChartEvento.data.datasets[0].data = evEntries.map(x=>x[1]);
-      dashChartEvento.update();
-      try{ dashChartEvento.resize(); }catch(_e){}
-    }
-    const byDep = {};
-    data.forEach(e=>{ const k = String((e && e.departamento) || "Sin dato").trim() || "Sin dato"; byDep[k] = (byDep[k]||0) + 1; });
-    const depEntries = Object.entries(byDep).sort((a,b)=> (b[1]-a[1]) || a[0].localeCompare(b[0],"es"));
-    if(dashChartRegion){
-      dashChartRegion.data.labels = depEntries.map(x=>x[0]);
-      dashChartRegion.data.datasets[0].label = "Emergencias";
-      dashChartRegion.data.datasets[0].data = depEntries.map(x=>x[1]);
-      dashChartRegion.update();
-      try{ dashChartRegion.resize(); }catch(_e){}
-    }
-    const total = data.length;
-    const elTotEv = document.getElementById("dashTotalEmergenciasEvento"); if(elTotEv) elTotEv.textContent = String(total);
-    const elTotReg = document.getElementById("dashTotalEmergenciasRegion"); if(elTotReg) elTotReg.textContent = String(total);
-  };
-  window.__dashRenderImpacto = function(data, groupBy){
-    data = Array.isArray(data) ? data : [];
-    groupBy = groupBy || "programa";
-    if(typeof __dashSetImpactoLabels === "function") __dashSetImpactoLabels(groupBy);
-    window.__dashEnsureChartBoxV240();
-    let labels=[], u=[], s=[], ups=[], f=[];
-    let totalU=0,totalS=0,totalUPS=0,totalF=0;
-    if(groupBy === "programa"){
-      const progs = (Array.isArray(window.__DASH_PROGRAMAS) ? window.__DASH_PROGRAMAS : null) || __DASH_PROGRAMAS;
-      labels = progs.map(p=>p.label);
-      u = new Array(labels.length).fill(0); s = new Array(labels.length).fill(0); ups = new Array(labels.length).fill(0); f = new Array(labels.length).fill(0);
-      data.forEach(e=>{
-        const dm = window.__dashCurrentDaniosMidis(e);
-        progs.forEach((p,i)=>{
-          const d = window.__dashProgramDataV240(dm, p.key || p.label);
-          u[i]+=d.usuariosAfectados; s[i]+=d.serviciosAfectados; ups[i]+=d.usuariosPorServicios; f[i]+=d.usuariosFallecidos;
-          totalU+=d.usuariosAfectados; totalS+=d.serviciosAfectados; totalUPS+=d.usuariosPorServicios; totalF+=d.usuariosFallecidos;
-        });
-      });
-    }else{
-      const map = {};
-      data.forEach(e=>{
-        const k = (groupBy === "evento") ? (e.peligro || "Sin dato") : (e.departamento || "Sin dato");
-        const t = window.__dashSumDanios(window.__dashCurrentDaniosMidis(e));
-        if(!map[k]) map[k] = {usuarios:0, servicios:0, ups:0, fallecidos:0};
-        map[k].usuarios += t.usuarios; map[k].servicios += t.servicios; map[k].ups += t.ups; map[k].fallecidos += t.fallecidos;
-        totalU+=t.usuarios; totalS+=t.servicios; totalUPS+=t.ups; totalF+=t.fallecidos;
-      });
-      const entries = Object.entries(map).map(([k,v])=>({k,...v})).sort((a,b)=> (b.usuarios-a.usuarios) || (b.servicios-a.servicios) || a.k.localeCompare(b.k,"es"));
-      labels = entries.map(x=>x.k); u=entries.map(x=>x.usuarios); s=entries.map(x=>x.servicios); ups=entries.map(x=>x.ups); f=entries.map(x=>x.fallecidos);
-    }
-    const setTxt=(id,val)=>{ const el=document.getElementById(id); if(el) el.textContent=String(val); };
-    setTxt("dashTotalUsuarios", totalU); setTxt("dashTotalServicios", totalS); setTxt("dashTotalUsuariosPorServicios", totalUPS); setTxt("dashTotalFallecidos", totalF);
-    if(dashChartUsuariosProg){ dashChartUsuariosProg.data.labels=labels; dashChartUsuariosProg.data.datasets[0].label="Usuarios afectados"; dashChartUsuariosProg.data.datasets[0].data=u; dashChartUsuariosProg.update(); }
-    if(dashChartServiciosProg){
-      dashChartServiciosProg.data.labels=labels;
-      dashChartServiciosProg.data.datasets[0].label="Servicios afectados";
-      dashChartServiciosProg.data.datasets[0].data=s;
-      if(!dashChartServiciosProg.data.datasets[1]) dashChartServiciosProg.data.datasets.push({label:"Usuarios por servicios", data:[]});
-      dashChartServiciosProg.data.datasets[1].label="Usuarios por servicios";
-      dashChartServiciosProg.data.datasets[1].data=ups;
-      dashChartServiciosProg.update();
-    }
-    if(dashChartAfectProg){ dashChartAfectProg.data.labels=labels; dashChartAfectProg.data.datasets[0].label="Usuarios fallecidos"; dashChartAfectProg.data.datasets[0].data=f; dashChartAfectProg.update(); }
-    try{ __dashResizeImpactCharts(); }catch(_e){}
-  };
-  window.__dashRenderAfectaMidisTable = function(data){
-    const tbody = document.getElementById("dashAfectaMidisTbody");
-    if(tbody) tbody.innerHTML = "";
-    const list = (Array.isArray(data) ? data : []).filter(window.__dashAfectaMidis).sort((a,b)=>String(b.fechaPeligro||"").localeCompare(String(a.fechaPeligro||"")) || String(b.codigo||"").localeCompare(String(a.codigo||"")));
-    __dashPagerMidis.size = __dashReadPageSize("dashAfectaMidisPageSize", __dashPagerMidis.size || 10);
-    const page = __dashSliceForPager(list, __dashPagerMidis);
-    __dashUpdatePagerUI(__dashPagerMidis, list.length, "dashAfectaMidisPageInfo", "dashAfectaMidisPrev", "dashAfectaMidisNext");
-    if(!tbody) return;
-    if(!list.length){ tbody.innerHTML = '<tr><td colspan="10" class="text-muted small">Sin emergencias con afectación MIDIS para el filtro seleccionado.</td></tr>'; return; }
-    page.slice.forEach(e=>{
-      const st = __dashGetStatus(e);
-      const badge = `<span class="badge" style="background:${st.color}"> </span>`;
-      const t = window.__dashTotalesMidis(window.__dashCurrentDaniosMidis(e));
-      tbody.innerHTML += `<tr>
-        <td>${esc(e.codigo||"")}</td><td>${badge} ${esc(st.name)}</td><td>${esc(e.peligro||"")}</td>
-        <td>${esc(e.departamento||"")}</td><td>${esc(e.provincia||"")}</td><td>${esc(e.distrito||"")}</td>
-        <td>${esc(e.fechaPeligro||"")}</td><td>${t.usuarios}</td><td>${t.servicios}</td>
-        <td class="text-center"><button type="button" class="btn btn-sm btn-outline-primary" title="Ver RP/RC" onclick='__openVerByCodigo(${JSON.stringify(String(e.codigo||""))})'>👁</button></td>
-      </tr>`;
-    });
-  };
-})();
-
-
-
-// ======= VERSION 241: Dashboard robusto - recuperación de datos y render estable =======
-// Alcance: solo Dashboard. Corrige pantallas en blanco cuando el Dashboard se abre antes de terminar la hidratación/sincronización.
-(function(){
-  function _safeArr(v){ return Array.isArray(v) ? v : []; }
-  function _isDeletedSafe(e){
-    try{ if(typeof __isDeleted === "function") return __isDeleted(e); }catch(_e){}
-    try{
-      if(!e) return true;
-      return !!(e.deleted || e.eliminado || e._deleted || e.__deleted || e.estado === "Eliminado");
-    }catch(_e){ return false; }
-  }
-  function _loadAll(){
-    let arr = [];
-    try{ if(typeof emergencias !== "undefined" && Array.isArray(emergencias) && emergencias.length) arr = emergencias; }catch(_e){}
-    if(!arr.length){
-      try{ if(typeof __loadEmergencias === "function") arr = __loadEmergencias(); }catch(_e){}
-    }
-    if(!Array.isArray(arr) || !arr.length){
-      try{
-        const raw = (typeof __lsGet === "function") ? __lsGet(__AUTH_KEYS.emerg) : localStorage.getItem("midis_emergencias_v1");
-        const parsed = raw ? JSON.parse(raw) : [];
-        if(Array.isArray(parsed)) arr = parsed;
-      }catch(_e){}
-    }
-    try{ if(typeof emergencias !== "undefined" && Array.isArray(arr) && arr.length && (!Array.isArray(emergencias) || !emergencias.length)) emergencias = arr; }catch(_e){}
-    return _safeArr(arr).filter(e=>!_isDeletedSafe(e));
-  }
-  function _num(v){ const n = Number(v || 0); return Number.isFinite(n) ? n : 0; }
-  function _norm(v){
-    try{ return String(v || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toUpperCase().replace(/\s+/g," "); }
-    catch(_e){ return String(v || "").trim().toUpperCase(); }
-  }
-  function _canonProg(k){
-    const n = _norm(k);
-    if(n.includes("CUNA")) return "CUNA MAS";
-    if(n.includes("PENSION")) return "PENSION 65";
-    if(n.includes("ALIMENTACION")) return "ALIMENTACION ESCOLAR";
-    if(n.includes("CONTIGO")) return "CONTIGO";
-    if(n.includes("FONCODES")) return "FONCODES";
-    if(n.includes("JUNTOS")) return "JUNTOS";
-    if(n.includes("PAIS")) return "PAIS";
-    if(n === "PCA" || n.includes("COMPLEMENTACION")) return "PCA";
-    return n || "SIN DATO";
-  }
-  function _currentDanios(e){
-    try{
-      const rcList = (typeof __getRCList === "function") ? __getRCList(e) : (Array.isArray(e && e.rcReportes) ? e.rcReportes : []);
-      for(let i = rcList.length - 1; i >= 0; i--){
-        const rc = rcList[i] || {};
-        const dm = rc.daniosMIDIS || rc.daniosMidis || rc.daniosSectorMIDIS || rc.daniosSector || rc.danios || null;
-        if(dm && typeof dm === "object" && Object.keys(dm).length) return dm;
-      }
-      const rp = e && (e.daniosMIDIS || e.daniosMidis || e.daniosSectorMIDIS || e.daniosSector || e.danios) || {};
-      return (rp && typeof rp === "object") ? rp : {};
-    }catch(_e){ return {}; }
-  }
-  function _sumDanios(dm){
-    const out = {usuarios:0, servicios:0, ups:0, fallecidos:0, modulo:0};
-    Object.keys(dm || {}).forEach(k=>{
-      const d = dm[k] || {};
-      out.usuarios += _num(d.usuariosAfectados ?? d.usuarios_afectados ?? d.totalUsuariosAfectados);
-      out.servicios += _num(d.serviciosAfectados ?? d.servicios_afectados ?? d.totalServiciosAfectados);
-      out.ups += _num(d.usuariosPorServicios ?? d.usuarios_por_servicios ?? d.usuariosServicios ?? d.totalUsuariosPorServicios);
-      out.fallecidos += _num(d.usuariosFallecidos ?? d.fallecidos ?? d.totalFallecidos);
-      out.modulo += _num(d.moduloAfectado ?? d.modulosAfectados);
-    });
-    return out;
-  }
-  function _programData(dm, programKey){
-    const wanted = _canonProg(programKey);
-    const out = {usuariosAfectados:0, serviciosAfectados:0, usuariosPorServicios:0, usuariosFallecidos:0, moduloAfectado:0};
-    Object.keys(dm || {}).forEach(k=>{
-      if(_canonProg(k) !== wanted) return;
-      const d = dm[k] || {};
-      out.usuariosAfectados += _num(d.usuariosAfectados ?? d.usuarios_afectados ?? d.totalUsuariosAfectados);
-      out.serviciosAfectados += _num(d.serviciosAfectados ?? d.servicios_afectados ?? d.totalServiciosAfectados);
-      out.usuariosPorServicios += _num(d.usuariosPorServicios ?? d.usuarios_por_servicios ?? d.usuariosServicios ?? d.totalUsuariosPorServicios);
-      out.usuariosFallecidos += _num(d.usuariosFallecidos ?? d.fallecidos ?? d.totalFallecidos);
-      out.moduloAfectado += _num(d.moduloAfectado ?? d.modulosAfectados);
-    });
-    return out;
-  }
-  function _esc(v){
-    try{ if(typeof __dashHtmlEscape === "function") return __dashHtmlEscape(v); }catch(_e){}
-    return String(v ?? "").replace(/[&<>'"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;","\"":"&quot;"}[c]));
-  }
-  function _ensureCharts(){
-    try{ if(typeof __dashInitIfNeeded === "function") __dashInitIfNeeded(); }catch(_e){}
-    try{
-      const h = {dashChartEvento:360, dashChartRegion:360, dashChartUsuariosProg:260, dashChartServiciosProg:260, dashChartAfectProg:260};
-      Object.keys(h).forEach(id=>{ const el=document.getElementById(id); if(el){ el.style.height=h[id]+"px"; el.style.maxHeight=h[id]+"px"; }});
-      [dashChartEvento, dashChartRegion, dashChartUsuariosProg, dashChartServiciosProg, dashChartAfectProg].forEach(ch=>{
-        if(!ch) return;
-        ch.options = ch.options || {};
-        ch.options.maintainAspectRatio = false;
-        ch.options.responsive = true;
-        if(ch.options.scales && ch.options.scales.y){ ch.options.scales.y.beginAtZero = true; ch.options.scales.y.ticks = ch.options.scales.y.ticks || {}; ch.options.scales.y.ticks.precision = 0; }
-      });
-    }catch(_e){}
-  }
-  window.__dashGetEmergencias = __dashGetEmergencias = function(){ return _loadAll(); };
-  window.__dashCurrentDaniosMidis = _currentDanios;
-  window.__dashSumDanios = _sumDanios;
-  window.__dashTotalesMidis = function(dm){ const t=_sumDanios(dm); return {usuarios:t.usuarios, servicios:t.servicios, fallecidos:t.fallecidos}; };
-  window.__dashAfectaMidis = function(e){ const t=_sumDanios(_currentDanios(e)); return (t.usuarios>0 || t.servicios>0 || t.ups>0 || t.fallecidos>0 || t.modulo>0); };
-  window.__dashGetFiltered = __dashGetFiltered = function(){
-    const tipo = document.getElementById("dashTipoFecha")?.value || "evento";
-    const desde = (typeof __dashParseDateOnly === "function") ? __dashParseDateOnly(document.getElementById("dashDesde")?.value) : null;
-    const hasta = (typeof __dashParseDateOnly === "function") ? __dashParseDateOnly(document.getElementById("dashHasta")?.value) : null;
-    const soloMidis = !!document.getElementById("dashSoloMidis")?.checked;
-    return _loadAll().filter(e=>{
-      let okRango = true;
-      try{
-        const f = (typeof __dashGetFechaSegunTipo === "function") ? __dashGetFechaSegunTipo(e, tipo) : null;
-        okRango = (!desde && !hasta) ? true : (typeof __dashInRange === "function" ? __dashInRange(f, desde, hasta) : true);
-      }catch(_e){ okRango = true; }
-      return okRango && (soloMidis ? window.__dashAfectaMidis(e) : true);
-    });
-  };
-  window.__dashRenderHistogramas = __dashRenderHistogramas = function(data){
-    data = Array.isArray(data) ? data : window.__dashGetFiltered();
-    _ensureCharts();
-    const byEvento = {}, byDep = {};
-    data.forEach(e=>{
-      const ev = String(e?.peligro || "Sin dato").trim() || "Sin dato";
-      const dep = String(e?.departamento || "Sin dato").trim() || "Sin dato";
-      byEvento[ev]=(byEvento[ev]||0)+1; byDep[dep]=(byDep[dep]||0)+1;
-    });
-    const evEntries = Object.entries(byEvento).sort((a,b)=>(b[1]-a[1]) || a[0].localeCompare(b[0],"es"));
-    const depEntries = Object.entries(byDep).sort((a,b)=>(b[1]-a[1]) || a[0].localeCompare(b[0],"es"));
-    try{ if(dashChartEvento){ dashChartEvento.data.labels=evEntries.map(x=>x[0]); dashChartEvento.data.datasets[0].data=evEntries.map(x=>x[1]); dashChartEvento.update(); dashChartEvento.resize(); } }catch(_e){}
-    try{ if(dashChartRegion){ dashChartRegion.data.labels=depEntries.map(x=>x[0]); dashChartRegion.data.datasets[0].data=depEntries.map(x=>x[1]); dashChartRegion.update(); dashChartRegion.resize(); } }catch(_e){}
-    const t=data.length;
-    const evTot=document.getElementById("dashTotalEmergenciasEvento"); if(evTot) evTot.textContent=String(t);
-    const rgTot=document.getElementById("dashTotalEmergenciasRegion"); if(rgTot) rgTot.textContent=String(t);
-  };
-  window.__dashRenderImpacto = __dashRenderImpacto = function(data, groupBy){
-    data = Array.isArray(data) ? data : window.__dashGetFiltered();
-    groupBy = groupBy || ((typeof __dashGetImpactoGroupBy === "function") ? __dashGetImpactoGroupBy() : "programa");
-    try{ if(typeof __dashSetImpactoLabels === "function") __dashSetImpactoLabels(groupBy); }catch(_e){}
-    _ensureCharts();
-    let labels=[], u=[], s=[], ups=[], f=[];
-    let totalU=0,totalS=0,totalUPS=0,totalF=0;
-    if(groupBy === "programa"){
-      const progs = (typeof __DASH_PROGRAMAS !== "undefined" && Array.isArray(__DASH_PROGRAMAS)) ? __DASH_PROGRAMAS : [
-        {key:"CONTIGO", label:"CONTIGO"},{key:"CUNA MAS", label:"CUNA MÁS"},{key:"FONCODES", label:"FONCODES"},{key:"JUNTOS", label:"JUNTOS"},{key:"PAIS", label:"PAIS"},{key:"PENSION 65", label:"PENSIÓN 65"},{key:"PCA", label:"PCA"},{key:"ALIMENTACION ESCOLAR", label:"ALIMENTACIÓN ESCOLAR"}
-      ];
-      labels = progs.map(p=>p.label); u=labels.map(()=>0); s=labels.map(()=>0); ups=labels.map(()=>0); f=labels.map(()=>0);
-      data.forEach(e=>{ const dm=_currentDanios(e); progs.forEach((p,i)=>{ const d=_programData(dm,p.key||p.label); u[i]+=d.usuariosAfectados; s[i]+=d.serviciosAfectados; ups[i]+=d.usuariosPorServicios; f[i]+=d.usuariosFallecidos; }); });
-      totalU=u.reduce((a,b)=>a+b,0); totalS=s.reduce((a,b)=>a+b,0); totalUPS=ups.reduce((a,b)=>a+b,0); totalF=f.reduce((a,b)=>a+b,0);
-    }else{
-      const map={};
-      data.forEach(e=>{ const k=String((groupBy==="evento"?e?.peligro:e?.departamento)||"Sin dato").trim()||"Sin dato"; const t=_sumDanios(_currentDanios(e)); if(!map[k]) map[k]={u:0,s:0,ups:0,f:0}; map[k].u+=t.usuarios; map[k].s+=t.servicios; map[k].ups+=t.ups; map[k].f+=t.fallecidos; });
-      const entries=Object.entries(map).map(([k,v])=>({k,...v})).sort((a,b)=>(b.u-a.u)||(b.s-a.s)||a.k.localeCompare(b.k,"es"));
-      labels=entries.map(x=>x.k); u=entries.map(x=>x.u); s=entries.map(x=>x.s); ups=entries.map(x=>x.ups); f=entries.map(x=>x.f);
-      totalU=u.reduce((a,b)=>a+b,0); totalS=s.reduce((a,b)=>a+b,0); totalUPS=ups.reduce((a,b)=>a+b,0); totalF=f.reduce((a,b)=>a+b,0);
-    }
-    [["dashTotalUsuarios",totalU],["dashTotalServicios",totalS],["dashTotalUsuariosPorServicios",totalUPS],["dashTotalFallecidos",totalF]].forEach(([id,val])=>{ const el=document.getElementById(id); if(el) el.textContent=String(val); });
-    try{ if(dashChartUsuariosProg){ dashChartUsuariosProg.data.labels=labels; dashChartUsuariosProg.data.datasets[0].data=u; dashChartUsuariosProg.update(); dashChartUsuariosProg.resize(); } }catch(_e){}
-    try{ if(dashChartServiciosProg){ dashChartServiciosProg.data.labels=labels; dashChartServiciosProg.data.datasets[0].data=s; if(!dashChartServiciosProg.data.datasets[1]) dashChartServiciosProg.data.datasets.push({label:"Usuarios por servicios", data:[]}); dashChartServiciosProg.data.datasets[1].data=ups; dashChartServiciosProg.update(); dashChartServiciosProg.resize(); } }catch(_e){}
-    try{ if(dashChartAfectProg){ dashChartAfectProg.data.labels=labels; dashChartAfectProg.data.datasets[0].data=f; dashChartAfectProg.update(); dashChartAfectProg.resize(); } }catch(_e){}
-  };
-  window.__dashRenderAfectaMidisTable = __dashRenderAfectaMidisTable = function(data){
-    const tbody=document.getElementById("dashAfectaMidisTbody"); if(tbody) tbody.innerHTML="";
-    data = Array.isArray(data) ? data : window.__dashGetFiltered();
-    const list=data.filter(window.__dashAfectaMidis).sort((a,b)=>String(b.fechaPeligro||"").localeCompare(String(a.fechaPeligro||"")) || String(b.codigo||"").localeCompare(String(a.codigo||"")));
-    try{ __dashPagerMidis.size = (typeof __dashReadPageSize === "function") ? __dashReadPageSize("dashAfectaMidisPageSize", __dashPagerMidis.size || 10) : (__dashPagerMidis.size||10); }catch(_e){}
-    let page={slice:list};
-    try{ page = (typeof __dashSliceForPager === "function") ? __dashSliceForPager(list, __dashPagerMidis) : {slice:list.slice(0,10)}; }catch(_e){}
-    try{ if(typeof __dashUpdatePagerUI === "function") __dashUpdatePagerUI(__dashPagerMidis, list.length, "dashAfectaMidisPageInfo", "dashAfectaMidisPrev", "dashAfectaMidisNext"); }catch(_e){}
-    if(!tbody) return;
-    if(!list.length){ tbody.innerHTML='<tr><td colspan="10" class="text-muted small">Sin emergencias con afectación MIDIS para el filtro seleccionado.</td></tr>'; return; }
-    page.slice.forEach(e=>{ const st=(typeof __dashGetStatus === "function") ? __dashGetStatus(e) : {name:e?.cerrada?"Cerrada":"Abierta",color:e?.cerrada?"#198754":"#dc3545"}; const t=window.__dashTotalesMidis(_currentDanios(e)); tbody.innerHTML += `<tr><td>${_esc(e.codigo||"")}</td><td><span class="badge" style="background:${st.color}"> </span> ${_esc(st.name)}</td><td>${_esc(e.peligro||"")}</td><td>${_esc(e.departamento||"")}</td><td>${_esc(e.provincia||"")}</td><td>${_esc(e.distrito||"")}</td><td>${_esc(e.fechaPeligro||"")}</td><td>${t.usuarios}</td><td>${t.servicios}</td><td class="text-center"><button type="button" class="btn btn-sm btn-outline-primary" title="Ver RP/RC" onclick='__openVerByCodigo(${JSON.stringify(String(e.codigo||""))})'>👁</button></td></tr>`; });
-  };
-  window.dashboardRefresh = dashboardRefresh = function(opts){
-    opts = opts || {};
-    try{ _ensureCharts(); }catch(_e){}
-    const data = window.__dashGetFiltered();
-    try{ __dashLastFiltered = data; }catch(_e){}
-    try{ if(typeof __dashMapPopulateDepartamento === "function") __dashMapPopulateDepartamento(data); }catch(_e){}
-    try{ if(typeof __dashMapPopulatePeligro === "function") __dashMapPopulatePeligro(data); }catch(_e){}
-    let mapData = data;
-    try{ if(typeof __dashMapApplyDepartamentoFilter === "function") mapData = __dashMapApplyDepartamentoFilter(data); }catch(_e){}
-    try{ if(typeof __dashRenderMap === "function") __dashRenderMap(mapData); }catch(_e){ console.warn("Dashboard mapa:", _e); }
-    try{ if(typeof __dashMapRenderDepartamentoResumen === "function") __dashMapRenderDepartamentoResumen(data); }catch(_e){}
-    try{ if(typeof __dashRenderActivasHoy === "function") __dashRenderActivasHoy(); }catch(_e){}
-    window.__dashRenderHistogramas(data);
-    window.__dashRenderImpacto(data, (typeof __dashGetImpactoGroupBy === "function") ? __dashGetImpactoGroupBy() : "programa");
-    window.__dashRenderAfectaMidisTable(data);
-    try{ setTimeout(()=>{ if(dashMap){ dashMap.invalidateSize(); } [dashChartEvento,dashChartRegion,dashChartUsuariosProg,dashChartServiciosProg,dashChartAfectProg].forEach(ch=>{ try{ ch && ch.resize && ch.resize(); }catch(_e){} }); }, 250); }catch(_e){}
-  };
-  document.addEventListener("DOMContentLoaded", function(){
-    setTimeout(()=>{ try{ dashboardRefresh({force:true}); }catch(_e){} }, 800);
-    setTimeout(()=>{ try{ dashboardRefresh({force:true}); }catch(_e){} }, 2500);
-  });
-})();
-
 </script>
 
 <script>
@@ -10360,13 +9980,18 @@ const __SYNC_KEYS = {
 // === SYNC helpers: payload limpio y hash consistente con el servidor ===
 function __syncCleanPayload(obj){
   const x = JSON.parse(JSON.stringify(obj || {}));
-  // Campos locales (UI) que NO deben ir al servidor ni al hash
+  // Campos locales (UI/sync/resumen) que NO deben ir al servidor ni al hash
   delete x.estado_sync;
   delete x.sync_denied_at;
   delete x.sync_denied_reason;
   delete x.__serverUpdatedAt;
   delete x.__serverHash;
   delete x.__serverCreatedAt;
+  delete x.__summaryOnly;
+  delete x.__needsDetail;
+  delete x.__needsExcelDetail;
+  delete x.__detailLoading;
+  delete x.__detailPromise;
   return x;
 }
 async function __syncHash(obj){
@@ -10451,7 +10076,7 @@ async function __syncCommitCodigo(codigo, snapshot, opts){
       return { ok:false, conflict:hasConflict, denied:hasDenied, message: cfg.failurePrefix + (hasConflict ? ' (conflicto).' : ' (rechazo).') };
     }
 
-    try{ await __syncPullAuto(); }catch(_e){}
+    try{ await __syncPullAuto({ force:true }); }catch(_e){}
     return { ok:true, message: cfg.successMessage, acked: push && push.acked ? push.acked : [] };
   }catch(e){
     __restoreCodigoSnapshot(code, snapshot);
@@ -10461,6 +10086,185 @@ async function __syncCommitCodigo(codigo, snapshot, opts){
   }
 }
 
+
+
+// FIX v242: aprobación RP atómica contra D1 usando el hash oficial del servidor.
+function __syncUpdateLocalFromPayload(code, payload, hash, updatedAt){
+  try{
+    const codigo = String(code || '').trim();
+    if(!codigo || !payload) return null;
+    const arr = Array.isArray(emergencias) ? emergencias : __loadEmergencias();
+    const cleanPayload = JSON.parse(JSON.stringify(payload || {}));
+    try{ cleanPayload.estado_sync = 'Sincronizado'; }catch(_e){}
+    try{ cleanPayload.__serverHash = String(hash || ''); }catch(_e){}
+    try{ cleanPayload.__serverUpdatedAt = String(updatedAt || ''); }catch(_e){}
+    try{ cleanPayload.__summaryOnly = false; delete cleanPayload.__needsDetail; delete cleanPayload.__needsExcelDetail; }catch(_e){}
+    const idx = arr.findIndex(e => String(e && e.codigo ? e.codigo : '').trim() === codigo);
+    if(idx >= 0) arr[idx] = cleanPayload;
+    else arr.push(cleanPayload);
+    emergencias = arr;
+    const map = __getHashMap();
+    if(hash) map[codigo] = String(hash); else delete map[codigo];
+    __setHashMap(map);
+    __saveEmergencias();
+    try{
+      if(emergenciaSeleccionada && String(emergenciaSeleccionada.codigo || '').trim() === codigo){
+        emergenciaSeleccionada = cleanPayload;
+      }
+    }catch(_e){}
+    return cleanPayload;
+  }catch(e){ return null; }
+}
+
+function __syncAppendCodigoIssue(kind, code, items, reasonFallback, localPayload, serverPayload){
+  try{
+    const codigo = String(code || '').trim();
+    const list = Array.isArray(items) ? items : [];
+    const normalized = list.length ? list.map(it=>{
+      if(typeof it === 'string') return { codigo, reason: reasonFallback || kind };
+      return Object.assign({}, it || {}, { codigo: String((it && (it.codigo || it.code || it.id)) || codigo).trim() || codigo });
+    }) : [{ codigo, reason: reasonFallback || kind }];
+    const addStages = normalized.map(it=>{
+      const out = Object.assign({}, it || {});
+      try{ out.local_stage = out.local_stage || (typeof __segStage === 'function' ? __segStage(localPayload || {}) : ''); }catch(_e){}
+      try{ out.server_stage = out.server_stage || (typeof __segStage === 'function' ? __segStage(serverPayload || {}) : ''); }catch(_e){}
+      try{ if(serverPayload) out.server_payload = serverPayload; }catch(_e){}
+      return out;
+    });
+    const entry = { at: __nowIso(), conflicts: [], denied: [], errors: [] };
+    if(kind === 'conflicts' || kind === 'conflict') entry.conflicts = addStages;
+    else if(kind === 'denied') entry.denied = addStages;
+    else entry.errors = addStages;
+    if(typeof __syncConfAppend === 'function') __syncConfAppend(entry);
+    try{ if(typeof __renderSyncConflictsTable === 'function') __renderSyncConflictsTable(); }catch(_e){}
+  }catch(e){}
+}
+
+function __applyRPAprobacionToPayload(payload){
+  const em = JSON.parse(JSON.stringify(payload || {}));
+  em.rpAprobEstado = 'Aprobado';
+  em.rpAprobadoPor = (typeof __getApproverName === 'function') ? __getApproverName() : __getCurrentUserName();
+  em.rpAprobadoPorEmail = currentUser ? currentUser.email : null;
+  em.rpAprobadoEn = __nowIso();
+  em.rpObs = null;
+  em.aprobadoPor = em.rpAprobadoPor;
+  em.aprobadoPorEmail = em.rpAprobadoPorEmail;
+  try{ __histPush(em, 'RP_APROBADO', null); }catch(_e){}
+  try{ __touch(em); }catch(_e){
+    em.updatedAt = __nowIso();
+    if(currentUser) em.updatedByEmail = currentUser.email;
+  }
+  return em;
+}
+
+async function __syncPushCodigoAtomic(code, payload, baseHash, createdAt){
+  const codigo = String(code || '').trim();
+  if(!codigo) throw new Error('codigo_invalido');
+  const token = __tokenGet();
+  const clean = __syncCleanPayload(payload || {});
+  const h = await __sha256(JSON.stringify(clean));
+  const now = __nowIso();
+  const rec = {
+    codigo: codigo,
+    payload: clean,
+    hash: h,
+    if_match: String(baseHash || ''),
+    created_at: createdAt || payload.createdAt || payload.fechaRegistro || now,
+    updated_at: now,
+    device_id: __getDeviceId()
+  };
+  const out = await __api('/sync/push', { method:'POST', token: token, body:{ records:[rec] } });
+  if(out.res && out.res.status === 401) throw new Error('unauthorized');
+  if(!out.res || !out.res.ok){
+    const err = out.data && out.data.error ? out.data.error : 'push_failed';
+    throw new Error(err);
+  }
+  const acked = out.data && Array.isArray(out.data.acked) ? out.data.acked : [];
+  const conflicts = out.data && Array.isArray(out.data.conflicts) ? out.data.conflicts : [];
+  const denied = out.data && Array.isArray(out.data.denied) ? out.data.denied : [];
+  return { ok: acked.includes(codigo), acked, conflicts, denied, hash:h, updated_at: now, payload: clean };
+}
+
+async function __aprobarRPServidorAtomico(codigo, opts){
+  const cfg = Object.assign({ localOverride:null, source:'form' }, opts || {});
+  const code = String(codigo || '').trim();
+  if(!code) return { ok:false, message:'Código inválido.' };
+
+  if(!(__isApiConfigured && __isApiConfigured()) || !navigator.onLine){
+    return { ok:false, pending:true, message:'No hay conexión con D1. El RP no fue aprobado en servidor.' };
+  }
+
+  let serverRec = null;
+  let serverPayload = null;
+  let serverHash = '';
+  try{
+    serverRec = await __syncFetchDetail(code);
+    if(!serverRec || !serverRec.payload) throw new Error('detail_empty');
+    serverPayload = JSON.parse(JSON.stringify(serverRec.payload || {}));
+    serverHash = String(serverRec.hash || '');
+    __syncUpdateLocalFromPayload(code, serverPayload, serverHash, serverRec.updated_at || '');
+  }catch(e){
+    const msg = (e && e.message) ? e.message : String(e);
+    __syncAppendCodigoIssue('errors', code, [{ codigo:code, reason:'detail_failed', message:msg }], 'detail_failed', null, null);
+    return { ok:false, message:'No se pudo leer la versión vigente del servidor (' + msg + ').' };
+  }
+
+  if(String(serverPayload.rpAprobEstado || '') === 'Aprobado'){
+    const fresh = __syncUpdateLocalFromPayload(code, serverPayload, serverHash, serverRec.updated_at || '');
+    return { ok:true, already:true, payload:fresh, message:'El RP ya figura aprobado en servidor.' };
+  }
+
+  if(String(serverPayload.rpAprobEstado || '') !== 'Pendiente'){
+    const fresh = __syncUpdateLocalFromPayload(code, serverPayload, serverHash, serverRec.updated_at || '');
+    return { ok:false, payload:fresh, message:'El RP no está Por aprobar en servidor. Se cargó la versión vigente.' };
+  }
+
+  let baseForApproval = JSON.parse(JSON.stringify(serverPayload));
+  if(cfg.localOverride){
+    const localClean = __syncCleanPayload(cfg.localOverride);
+    baseForApproval = Object.assign({}, baseForApproval, localClean, {
+      codigo: code,
+      createdAt: baseForApproval.createdAt || localClean.createdAt,
+      createdByEmail: baseForApproval.createdByEmail || localClean.createdByEmail,
+      ownerEmail: baseForApproval.ownerEmail || localClean.ownerEmail,
+      rpAprobEstado: 'Pendiente',
+      rpEnviadoPor: baseForApproval.rpEnviadoPor || localClean.rpEnviadoPor,
+      rpEnviadoPorEmail: baseForApproval.rpEnviadoPorEmail || localClean.rpEnviadoPorEmail,
+      rpEnviadoEn: baseForApproval.rpEnviadoEn || localClean.rpEnviadoEn
+    });
+  }
+
+  const approvedPayload = __applyRPAprobacionToPayload(baseForApproval);
+
+  try{
+    const push = await __syncPushCodigoAtomic(code, approvedPayload, serverHash, serverRec.created_at || serverPayload.createdAt || serverPayload.fechaRegistro || '');
+    if(push.ok){
+      const saved = __syncUpdateLocalFromPayload(code, push.payload, push.hash, push.updated_at);
+      try{ await __syncPullAuto({ force:true }); }catch(_e){}
+      try{ cargarTablaEmergencias(); }catch(_e){}
+      try{ dashboardRefresh({force:true}); }catch(_e){}
+      try{ __calcPending(); }catch(_e){}
+      try{ __renderAprobaciones(); }catch(_e){}
+      return { ok:true, payload:saved, message:'RP aprobado y confirmado en servidor.' };
+    }
+
+    const hasConflict = __syncListHasCodigo(push.conflicts, code);
+    const hasDenied = __syncListHasCodigo(push.denied, code);
+    if(hasConflict) __syncAppendCodigoIssue('conflicts', code, push.conflicts, 'both_modified', approvedPayload, serverPayload);
+    if(hasDenied) __syncAppendCodigoIssue('denied', code, push.denied, 'denied', approvedPayload, serverPayload);
+    const fresh = __syncUpdateLocalFromPayload(code, serverPayload, serverHash, serverRec.updated_at || '');
+    try{ cargarTablaEmergencias(); }catch(_e){}
+    try{ __renderAprobaciones(); }catch(_e){}
+    return { ok:false, conflict:hasConflict, denied:hasDenied, payload:fresh, message:'No se pudo confirmar la aprobación del RP en servidor' + (hasConflict ? ' (conflicto).' : (hasDenied ? ' (rechazo).' : '.')) };
+  }catch(e){
+    const msg = (e && e.message) ? e.message : String(e);
+    __syncAppendCodigoIssue('errors', code, [{ codigo:code, reason:msg }], msg, approvedPayload, serverPayload);
+    const fresh = __syncUpdateLocalFromPayload(code, serverPayload, serverHash, serverRec.updated_at || '');
+    try{ cargarTablaEmergencias(); }catch(_e){}
+    try{ __renderAprobaciones(); }catch(_e){}
+    return { ok:false, error:msg, payload:fresh, message:'No se pudo confirmar la aprobación del RP en servidor (' + msg + ').' };
+  }
+}
 
 function __isApiConfigured(){
   const u = (__API_CFG && __API_CFG.baseUrl) ? String(__API_CFG.baseUrl).trim() : "";
@@ -11470,105 +11274,20 @@ function __syncIsSummaryOnly(em){
   return !!(em && (em.__summaryOnly === true || em.__needsDetail === true));
 }
 
-function __hasOwnField(obj, field){
-  try{ return !!(obj && Object.prototype.hasOwnProperty.call(obj, field)); }catch(e){ return false; }
-}
-
-function __detailFieldValue(em){
-  for(let i=1;i<arguments.length;i++){
-    const k = arguments[i];
-    try{
-      const v = em ? em[k] : null;
-      if(v === null || v === undefined) continue;
-      const s = String(v).trim();
-      if(s !== "") return s;
-    }catch(e){}
-  }
-  return "";
-}
-
-function __hasAnyAccionPreliminar(em){
-  try{
-    if(!em) return false;
-    if(Array.isArray(em.accionesPreliminar)) return true;
-    if(Array.isArray(em.accionesRP)) return true;
-    if(Array.isArray(em.accionesRPTabla)) return true;
-    if(__hasOwnField(em, "accionesPreliminar")) return true;
-    if(__hasOwnField(em, "accionesRP")) return true;
-  }catch(e){}
-  return false;
-}
-
-function __hasAnyDaniosOtros(em){
-  try{
-    return __hasOwnField(em, "daniosOtros") || __hasOwnField(em, "daniosOtrosSectores") || __hasOwnField(em, "daniosOtrosRP");
-  }catch(e){ return false; }
-}
-
-function __isFullEmergenciaSufficient(em){
-  try{
-    if(!em || !em.codigo) return false;
-    if(__syncIsSummaryOnly(em)) return false;
-    if(em.__detailHydratedAt) return true;
-
-    const hasGlobal = !!__detailFieldValue(em, "numeroGlobal", "numeroReporte", "numGlobalRP", "numeroGlobalRP", "nroGlobal", "nGlobal");
-    const hasFecha = !!__detailFieldValue(em, "fechaHora", "fechaRegistro", "createdAt", "updatedAt");
-    const hasHechos = !!__detailFieldValue(em, "hechos", "descripcionHechos");
-    const hasElaborado = !!__detailFieldValue(em, "elaboradoPor", "rpEnviadoPor", "createdBy", "createdByEmail", "ownerEmail");
-    const hasDaniosOtros = __hasAnyDaniosOtros(em);
-    const hasAcciones = __hasAnyAccionPreliminar(em);
-
-    return !!(hasGlobal && hasFecha && hasHechos && hasElaborado && hasDaniosOtros && hasAcciones);
-  }catch(e){ return false; }
-}
-
-function __showDetailLoadingModal(){
-  try{
-    const cont = document.getElementById("contenidoVerEmergencia");
-    if(cont){
-      cont.innerHTML = '<div class="alert alert-info mb-0 ver-detail-loading"><span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span><span><strong>Cargando detalle completo...</strong><br><span class="small">Consultando la información completa del registro en D1.</span></span></div>';
-    }
-    const modalEl = document.getElementById("modalVerEmergencia");
-    if(modalEl && window.bootstrap){
-      __initVerModalStabilityOnce();
-      __showVerModalSafe();
-    }
-  }catch(e){}
-}
-
-function __prependPartialDetailNotice(){
-  try{
-    const cont = document.getElementById("contenidoVerEmergencia");
-    if(!cont) return;
-    const div = document.createElement("div");
-    div.className = "alert alert-warning py-2 small";
-    div.innerHTML = "<strong>Detalle parcial pendiente de sincronización.</strong> Se muestra la copia local disponible; cuando haya conexión o termine la sincronización se cargará el detalle completo.";
-    cont.prepend(div);
-  }catch(e){}
-}
-
 async function __syncFetchDetail(codigo){
   const code = String(codigo || "").trim();
   if(!code) throw new Error("codigo_invalido");
   if(!__isApiConfigured()) throw new Error('server_not_configured');
   if(!navigator.onLine) throw new Error('offline');
-  if(window.__DETAIL_FETCH_PROMISES__ && window.__DETAIL_FETCH_PROMISES__[code]) return window.__DETAIL_FETCH_PROMISES__[code];
   const token = __tokenGet();
-  const p = (async ()=>{
-    const apiPromise = __api('/sync/detail?codigo=' + encodeURIComponent(code), { method:'GET', token: token });
-    const timeoutPromise = new Promise((_, reject)=>setTimeout(()=>reject(new Error('detail_timeout')), 15000));
-    const out = await Promise.race([apiPromise, timeoutPromise]);
-    if(out.res && out.res.status === 401) throw new Error('unauthorized');
-    if(out.res && out.res.status === 404) throw new Error('not_found');
-    if(!out.res || !out.res.ok){
-      const err = out.data && out.data.error ? out.data.error : 'detail_failed';
-      throw new Error(err);
-    }
-    return out.data && out.data.record ? out.data.record : null;
-  })();
-  window.__DETAIL_FETCH_PROMISES__[code] = p;
-  try{ return await p; }
-  finally{ try{ delete window.__DETAIL_FETCH_PROMISES__[code]; }catch(_e){} }
+  const out = await __api('/sync/detail?codigo=' + encodeURIComponent(code), { method:'GET', token: token });
+  if(out.res && out.res.status === 401) throw new Error('unauthorized');
+  if(out.res && out.res.status === 404) throw new Error('not_found');
+  if(!out.res || !out.res.ok){
+    const err = out.data && out.data.error ? out.data.error : 'detail_failed';
+    throw new Error(err);
+  }
+  return out.data && out.data.record ? out.data.record : null;
 }
 
 async function __ensureFullEmergencia(objOrCodigo){
@@ -11577,20 +11296,14 @@ async function __ensureFullEmergencia(objOrCodigo){
   let arr = Array.isArray(emergencias) ? emergencias : __loadEmergencias();
   let idx = arr.findIndex(e => String(e && e.codigo ? e.codigo : '').trim() === code);
   let cur = idx >= 0 ? arr[idx] : (typeof objOrCodigo === 'object' ? objOrCodigo : null);
-
-  // V234: no confiar en una copia local aparentemente completa si le faltan campos clave del RP.
-  // Si falta N° Global, fecha, hechos, elaborado por, daños en otros sectores o acciones preliminares,
-  // se trae el detalle real desde D1 mediante /sync/detail.
-  if(cur && __isFullEmergenciaSufficient(cur)) return cur;
-
+  if(cur && !__syncIsSummaryOnly(cur) && cur.codigo) return cur;
   const rec = await __syncFetchDetail(code);
   if(!rec || !rec.payload) return cur;
   const payload = JSON.parse(JSON.stringify(rec.payload || {}));
   try{ payload.estado_sync = 'Sincronizado'; }catch(_e){}
   try{ payload.__serverHash = String(rec.hash || ''); }catch(_e){}
   try{ payload.__serverUpdatedAt = String(rec.updated_at || ''); }catch(_e){}
-  try{ payload.__detailHydratedAt = __nowIso(); }catch(_e){}
-  try{ payload.__summaryOnly = false; delete payload.__needsDetail; delete payload.__detailPartialNotice; }catch(_e){}
+  try{ payload.__summaryOnly = false; delete payload.__needsDetail; }catch(_e){}
   if(idx >= 0) arr[idx] = payload;
   else { arr.push(payload); idx = arr.length - 1; }
   emergencias = arr;
@@ -11602,42 +11315,86 @@ async function __ensureFullEmergencia(objOrCodigo){
   return payload;
 }
 
-async function __withFullEmergencia(objOrCodigo, cb, opts){
-  const options = opts || {};
+// FIX v239: para aprobar RP no basta con la copia resumida/local.
+// Esta función fuerza detalle vigente del servidor cuando hay conexión y conserva hash/updatedAt.
+async function __forceServerFullEmergencia(objOrCodigo, opts){
+  const cfg = Object.assign({ required:false }, opts || {});
   const code = String((typeof objOrCodigo === 'string') ? objOrCodigo : (objOrCodigo && objOrCodigo.codigo) || '').trim();
-  let local = null;
-  try{
-    const arr = Array.isArray(emergencias) ? emergencias : __loadEmergencias();
-    local = arr.find(e => String(e && e.codigo ? e.codigo : '').trim() === code) || (typeof objOrCodigo === 'object' ? objOrCodigo : null);
-  }catch(_e){}
+  if(!code) return objOrCodigo || null;
 
-  if(options.loadingModal && window.__VER_MODAL_OPENING__ && window.__VER_MODAL_CODE__ === code){
-    return;
+  if(__isApiConfigured && __isApiConfigured() && navigator.onLine){
+    try{
+      const rec = await __syncFetchDetail(code);
+      if(rec && rec.payload){
+        let arr = Array.isArray(emergencias) ? emergencias : __loadEmergencias();
+        const payload = JSON.parse(JSON.stringify(rec.payload || {}));
+        try{ payload.estado_sync = 'Sincronizado'; }catch(_e){}
+        try{ payload.__serverHash = String(rec.hash || ''); }catch(_e){}
+        try{ payload.__serverUpdatedAt = String(rec.updated_at || ''); }catch(_e){}
+        try{ payload.__summaryOnly = false; delete payload.__needsDetail; }catch(_e){}
+
+        const idx = arr.findIndex(e => String(e && e.codigo ? e.codigo : '').trim() === code);
+        if(idx >= 0) arr[idx] = payload;
+        else arr.push(payload);
+        emergencias = arr;
+
+        const map = __getHashMap();
+        if(rec.hash) map[code] = String(rec.hash);
+        else delete map[code];
+        __setHashMap(map);
+        __saveEmergencias();
+
+        try{
+          if(emergenciaSeleccionada && String(emergenciaSeleccionada.codigo||'').trim() === code){
+            emergenciaSeleccionada = payload;
+          }
+        }catch(_e){}
+        return payload;
+      }
+    }catch(e){
+      if(cfg.required) throw e;
+      console.warn("No se pudo traer detalle vigente del servidor para", code, e);
+    }
   }
 
+  return await __ensureFullEmergencia(objOrCodigo);
+}
+
+async function __withFreshFullEmergencia(objOrCodigo, cb){
   try{
-    if(options.loadingModal){
-      window.__VER_MODAL_OPENING__ = true;
-      window.__VER_MODAL_CODE__ = code;
-      __setVerButtonsBusy(true);
-    }
-    if(options.loadingModal && (!local || !__isFullEmergenciaSufficient(local))){
-      __showDetailLoadingModal();
-    }
+    const full = await __forceServerFullEmergencia(objOrCodigo);
+    if(!full){ alert('No se pudo cargar el detalle vigente del registro.'); return; }
+    return await cb(full);
+  }catch(e){
+    alert('No se pudo cargar el detalle vigente desde D1: ' + ((e && e.message) ? e.message : e));
+  }
+}
+
+function __syncRPAdminApproveButtonState(obj){
+  try{
+    const btn = document.getElementById("btnGuardarAprobarRPAdmin");
+    if(!btn) return;
+    const isAdm = (__isAdmin && __isAdmin());
+    btn.classList.toggle("d-none", !isAdm);
+
+    const st = String((obj && obj.rpAprobEstado) || "Borrador").trim();
+    const closed = !!(obj && obj.cerrada);
+    const canApprove = !!(isAdm && !closed && st !== "Aprobado");
+
+    btn.disabled = !canApprove;
+    btn.title = canApprove
+      ? "Grabar cambios y aprobar RP con la versión vigente del servidor."
+      : (st === "Aprobado" ? "RP ya aprobado." : (closed ? "Emergencia cerrada." : "No disponible."));
+  }catch(e){}
+}
+
+async function __withFullEmergencia(objOrCodigo, cb){
+  try{
     const full = await __ensureFullEmergencia(objOrCodigo);
     if(!full){ alert('No se pudo cargar el detalle del registro.'); return; }
     return await cb(full);
   }catch(e){
-    if(options.loadingModal && local){
-      try{ await cb(local); __prependPartialDetailNotice(); }catch(_e){}
-      return;
-    }
     alert('No se pudo cargar el detalle desde D1: ' + ((e && e.message) ? e.message : e));
-  }finally{
-    if(options.loadingModal){
-      window.__VER_MODAL_OPENING__ = false;
-      __setVerButtonsBusy(false);
-    }
   }
 }
 
@@ -12913,18 +12670,18 @@ async function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO, peligrosS
   try{
     if(!window.XLSX){
       alert("No se pudo cargar la librería de Excel (XLSX). Verifique su conexión a internet.");
-      return;
+      return false;
     }
 
     const desde = String(desdeISO || "").trim();
     const hasta = String(hastaISO || "").trim();
     if(!/^\d{4}-\d{2}-\d{2}$/.test(desde) || !/^\d{4}-\d{2}-\d{2}$/.test(hasta)){
       alert("Seleccione un rango de fechas válido.");
-      return;
+      return false;
     }
     if(hasta < desde){
       alert("La fecha final no puede ser menor que la fecha inicial.");
-      return;
+      return false;
     }
 
     const peligrosFiltro = (Array.isArray(peligrosSeleccionados) ? peligrosSeleccionados : [])
@@ -12936,9 +12693,9 @@ async function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO, peligrosS
 
     const __ACCION_PRELIMINAR_BASE = "El COE MIDIS solicita al equipo territorial realizar el monitoreo de la emergencia a fin de determinar si existe afectación a usuarios o servicios de los programas nacionales. El COE MIDIS mantiene el seguimiento continuo del evento a través de los Espacios de Monitoreo y Seguimiento Sectorial (EMSS), a fin de consolidar información estratégica para la toma de decisiones y acciones sectoriales de respuesta.";
 
-    // FIX v231: en la Lista ahora se trabaja con metadatos (/sync/list) y el payload completo
-    // solo se trae bajo demanda. Para que Excel no salga con columnas vacías, antes de armar
-    // el libro se hidratan los registros filtrados con /sync/detail cuando haga falta.
+    // FIX v234: la Lista usa resúmenes de /sync/list. Para exportar campos largos
+    // (Hechos, daños y acciones) se debe usar payload completo. Si el rango es amplio,
+    // se evita consultar /sync/detail registro por registro y se usa un snapshot completo.
     const __firstExcelText = (...vals)=>{
       for(const v of vals){
         if(v === null || v === undefined) continue;
@@ -12949,87 +12706,185 @@ async function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO, peligrosS
       return "";
     };
 
+    const __excelParseMaybeJson = (v)=>{
+      if(typeof v === "string"){
+        const s = v.trim();
+        if(!s) return v;
+        if((s.startsWith("{") && s.endsWith("}")) || (s.startsWith("[") && s.endsWith("]"))){
+          try{ return JSON.parse(s); }catch(_e){ return v; }
+        }
+      }
+      return v;
+    };
+
     const __coalesceExcelObject = (...vals)=>{
       for(let v of vals){
-        if(typeof v === "string"){
-          try{ v = JSON.parse(v); }catch(_e){}
-        }
-        if(v && typeof v === "object") return v;
+        v = __excelParseMaybeJson(v);
+        if(v && typeof v === "object" && !Array.isArray(v)) return v;
       }
       return null;
     };
 
-    // FIX v239: Exportar Excel no debe quedarse esperando por hidratación secuencial.
-    // Se identifica mejor cuándo un registro requiere /sync/detail y se hidrata en paralelo controlado.
-    const __hasExcelUsefulText = (...vals)=> !!__firstExcelText(...vals);
-    const __hasExcelUsefulObj = (...vals)=>{
-      const o = __coalesceExcelObject(...vals);
-      if(!o || typeof o !== "object") return false;
+    const __excelArray = (v)=>{
+      v = __excelParseMaybeJson(v);
+      return Array.isArray(v) ? v : [];
+    };
+
+    const __lastExcelRC = (em)=>{
       try{
-        return Object.keys(o).some(k=>{
-          const v = o[k];
-          if(v === null || v === undefined) return false;
-          if(typeof v !== "object") return String(v).trim() !== "";
-          return Object.values(v).some(x=> Number(x||0) !== 0 || String(x||"").trim() !== "");
-        });
-      }catch(_e){ return true; }
+        const rcs = __excelArray(em && (em.rcReportes ?? em.rcReportesJson ?? em.rcReportesJSON));
+        for(let i=rcs.length-1; i>=0; i--){
+          const rc = rcs[i];
+          if(rc && typeof rc === "object" && rc.__summaryOnly !== true) return rc;
+        }
+        return null;
+      }catch(_e){ return null; }
     };
 
     const __needsExcelDetail = (em)=>{
       try{
-        if(!em || !em.codigo) return false;
-        if(em.__detailHydratedAt) return false;
+        if(!em) return false;
         if(typeof __syncIsSummaryOnly === "function" && __syncIsSummaryOnly(em)) return true;
-        if(em.__summaryOnly || em.__needsDetail) return true;
-
-        const hasHechos = __hasExcelUsefulText(em.hechos, em.hecho, em.descripcionHechos, em.detalleHechos, em.descripcion);
-        const hasDaniosOtros = __hasExcelUsefulText(em.daniosOtros, em.dañosOtros, em.danosOtros, em.daniosOtrosSectores, em.danosOtrosSectores, em.afectacionOtrosSectores);
-        const hasDaniosMidis = __hasExcelUsefulObj(em.daniosMIDIS, em.dañosMIDIS, em.danosMIDIS, em.daniosSector, em.daniosSectorMidis, em.daniosSectorDesarrollo);
-        const hasAccPre = !!(em.accionesPreliminar || em.accionesPreliminares || em.accionesRP || em.accionesPreliminarRP || em.accionesSectorPreliminar);
-        const hasRcFull = Array.isArray(em.rcReportes) && em.rcReportes.some(rc => rc && !rc.__summaryOnly && (rc.acciones || rc.accionesRC || rc.accionesComplementario || rc.accionesComplementarias || rc.accionesComp || rc.daniosMIDIS || rc.dañosMIDIS || rc.danosMIDIS));
-
-        // Si faltan campos largos que deberían venir del payload completo, se consulta detalle.
-        return !(hasHechos && (hasDaniosOtros || hasDaniosMidis || hasAccPre || hasRcFull));
+        const lastRC = __lastExcelRC(em);
+        const hasRp = !!(
+          __firstExcelText(em.hechos, em.hecho, em.descripcionHechos, em.detalleHechos, em.descripcion) ||
+          __firstExcelText(em.daniosOtros, em.dañosOtros, em.danosOtros, em.daniosOtrosSectores, em.danosOtrosSectores, em.afectacionOtrosSectores) ||
+          __coalesceExcelObject(em.daniosMIDIS, em.dañosMIDIS, em.danosMIDIS, em.daniosSector, em.daniosSectorMidis, em.daniosSectorDesarrollo) ||
+          em.accionesPreliminar || em.accionesPreliminares || em.accionesRP || em.accionesPreliminarRP || em.accionesSectorPreliminar
+        );
+        const hasRc = !!(lastRC && (
+          lastRC.daniosMIDIS || lastRC.dañosMIDIS || lastRC.danosMIDIS ||
+          lastRC.acciones || lastRC.accionesRC || lastRC.accionesComplementario || lastRC.accionesComplementarias || lastRC.accionesComp
+        ));
+        return !(hasRp || hasRc);
       }catch(e){ return false; }
+    };
+
+    const __excelSleep = (ms)=>new Promise(resolve=>setTimeout(resolve, ms));
+
+    const __excelWithTimeout = (promise, ms, label)=>{
+      let timer = null;
+      return Promise.race([
+        promise,
+        new Promise((_, reject)=>{
+          timer = setTimeout(()=>reject(new Error(label || "timeout")), ms);
+        })
+      ]).finally(()=>{ try{ clearTimeout(timer); }catch(_e){} });
+    };
+
+    const __excelCanApi = ()=>{
+      try{ return !!(__isApiConfigured && __isApiConfigured() && navigator.onLine && (!currentUser || currentUser.role !== __ROLES.CONS || __tokenGet)); }catch(_e){ return false; }
+    };
+
+    const __excelFetchSnapshotMap = async ()=>{
+      const map = new Map();
+      if(!__excelCanApi() || typeof __api !== "function") return map;
+      const token = (typeof __tokenGet === "function") ? __tokenGet() : null;
+      const limit = 5000;
+      let since = "1970-01-01T00:00:00.000Z";
+      let guard = 0;
+      while(guard < 8){
+        const out = await __excelWithTimeout(
+          __api("/sync/pull?since=" + encodeURIComponent(since) + "&limit=" + limit, { method:"GET", token: token }),
+          25000,
+          "timeout_snapshot_excel"
+        );
+        if(out.res && out.res.status === 401) throw new Error("unauthorized");
+        if(!out.res || !out.res.ok) throw new Error((out.data && out.data.error) ? out.data.error : "pull_failed");
+        const recs = (out.data && Array.isArray(out.data.records)) ? out.data.records : [];
+        if(recs.length === 0) break;
+        let maxUpdated = since;
+        for(const r of recs){
+          const code = String(r && r.codigo ? r.codigo : "").trim();
+          const payload = r && r.payload ? JSON.parse(JSON.stringify(r.payload)) : null;
+          if(code && payload){
+            try{ payload.__serverHash = String(r.hash || r.payload_hash || ""); }catch(_e){}
+            try{ payload.__serverUpdatedAt = String(r.updated_at || ""); }catch(_e){}
+            try{ payload.__serverCreatedAt = String(r.created_at || ""); }catch(_e){}
+            try{ payload.__summaryOnly = false; delete payload.__needsDetail; }catch(_e){}
+            const prev = map.get(code);
+            if(!prev || String(payload.__serverUpdatedAt || "") >= String(prev.__serverUpdatedAt || "")) map.set(code, payload);
+          }
+          const upd = String(r && r.updated_at ? r.updated_at : "");
+          if(upd && upd > maxUpdated) maxUpdated = upd;
+        }
+        if(recs.length < limit) break;
+        if(maxUpdated === since) break;
+        since = maxUpdated;
+        guard++;
+        await __excelSleep(0);
+      }
+      return map;
+    };
+
+    const __replaceLocalWithFull = (code, full)=>{
+      try{
+        if(!code || !full) return;
+        const arrLocal = Array.isArray(emergencias) ? emergencias : [];
+        const idxLocal = arrLocal.findIndex(x=>String(x && x.codigo ? x.codigo : "").trim() === code);
+        if(idxLocal >= 0) arrLocal[idxLocal] = full;
+        if(typeof __saveEmergencias === "function") __saveEmergencias();
+      }catch(_e){}
     };
 
     const __hydrateExcelItems = async (selected)=>{
       const arr = Array.isArray(selected) ? selected : [];
-      const queue = [];
-      for(let i=0; i<arr.length; i++){
-        const em = arr[i];
-        if(em && em.codigo && __needsExcelDetail(em)) queue.push({i, codigo: em.codigo});
-      }
-      if(queue.length === 0) return 0;
+      const needed = [];
+      arr.forEach((em, i)=>{ if(em && em.codigo && __needsExcelDetail(em)) needed.push(i); });
+      if(!needed.length) return 0;
 
-      const btnProgress = document.getElementById("btnDoExportExcelLista");
-      const oldTxtProgress = btnProgress ? btnProgress.textContent : "";
-      let done = 0, fullCount = 0;
-      const concurrency = Math.min(8, queue.length);
+      let fullCount = 0;
+
+      // Rangos amplios: una sola consulta con payload completo evita N llamadas lentas a /sync/detail.
+      if(needed.length >= 25){
+        try{
+          const snap = await __excelFetchSnapshotMap();
+          if(snap && snap.size){
+            needed.forEach(i=>{
+              const code = String(arr[i]?.codigo || "").trim();
+              const full = snap.get(code);
+              if(full){ arr[i] = full; __replaceLocalWithFull(code, full); fullCount++; }
+            });
+          }
+        }catch(_e){
+          console.warn("Export Excel Lista: snapshot completo no disponible; se usará detalle por registro.", _e);
+        }
+      }
+
+      const pending = needed.filter(i=>__needsExcelDetail(arr[i]));
+      const detailTimeoutMs = 8500;
+      const concurrency = 6;
       let cursor = 0;
 
       const worker = async ()=>{
-        while(cursor < queue.length){
-          const job = queue[cursor++];
+        while(cursor < pending.length){
+          const i = pending[cursor++];
+          const em = arr[i];
+          const code = String(em && em.codigo ? em.codigo : "").trim();
+          if(!code) continue;
           try{
-            if(btnProgress) btnProgress.textContent = `Cargando detalle ${done + 1}/${queue.length}...`;
-            if(typeof __ensureFullEmergencia === "function"){
-              const full = await __ensureFullEmergencia(job.codigo);
-              if(full){ arr[job.i] = full; fullCount++; }
+            let full = null;
+            const cached = window.__EXCEL_DETAIL_CACHE__ && window.__EXCEL_DETAIL_CACHE__[code];
+            if(cached && cached.hash && cached.hash === String(em.__serverHash || "") && cached.payload){
+              full = cached.payload;
+            }else if(typeof __ensureFullEmergencia === "function"){
+              full = await __excelWithTimeout(__ensureFullEmergencia(code), detailTimeoutMs, "timeout_detail_" + code);
+            }
+            if(full){
+              arr[i] = full;
+              fullCount++;
+              try{
+                window.__EXCEL_DETAIL_CACHE__ = window.__EXCEL_DETAIL_CACHE__ || {};
+                window.__EXCEL_DETAIL_CACHE__[code] = { hash:String(full.__serverHash || em.__serverHash || ""), payload:full };
+              }catch(_e){}
             }
           }catch(_e){
-            // Si un detalle falla, no se detiene toda la exportación; se exporta lo disponible.
-          }finally{
-            done++;
+            console.warn("Export Excel Lista: no se pudo hidratar detalle", code, _e);
           }
+          if(cursor % 10 === 0) await __excelSleep(0);
         }
       };
-
-      try{
-        await Promise.all(Array.from({length: concurrency}, worker));
-      }finally{
-        if(btnProgress) btnProgress.textContent = oldTxtProgress || "Exportar";
-      }
+      await Promise.all(Array.from({length: Math.min(concurrency, pending.length)}, ()=>worker()));
       return fullCount;
     };
 
@@ -13069,26 +12924,34 @@ async function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO, peligrosS
       }).filter(Boolean).join("\n");
     };
 
-    const __fmtDaniosMIDIS = (src)=>{
-      let o = src;
-      if(typeof o === "string"){
-        try{ o = JSON.parse(o); }catch(_e){}
+    const __numExcel = (...vals)=>{
+      for(const v of vals){
+        if(v === null || v === undefined || v === "") continue;
+        const n = Number(String(v).replace(",", "."));
+        if(!isNaN(n)) return n;
       }
-      if(!o || typeof o !== "object") return { text:"", totals:{ua:0,sa:0,ups:0,uf:0,ma:0} };
-      const progs = (Array.isArray(programas) && programas.length) ? programas : Object.keys(o);
+      return 0;
+    };
+
+    const __fmtDaniosMIDIS = (src)=>{
+      let o = __excelParseMaybeJson(src);
+      if(!o || typeof o !== "object" || Array.isArray(o)) return { text:"", totals:{ua:0,sa:0,ups:0,uf:0,ma:0} };
+      const baseProgs = (Array.isArray(programas) && programas.length) ? programas : [];
+      const dynamicProgs = Object.keys(o || {});
+      const progs = Array.from(new Set(baseProgs.concat(dynamicProgs))).filter(Boolean);
       const lines = [];
       const totals = {ua:0,sa:0,ups:0,uf:0,ma:0};
+      const objKeys = Object.keys(o || {});
       progs.forEach(p=>{
         const name = String(p||"").trim();
         if(!name) return;
-        const keyUp = name.toUpperCase();
-        const keyLo = name.toLowerCase();
-        const d = (o && (o[name] || o[keyUp] || o[keyLo])) ? (o[name] || o[keyUp] || o[keyLo]) : {};
-        const ua  = Number(d?.usuariosAfectados || 0);
-        const sa  = Number(d?.serviciosAfectados || 0);
-        const ups = Number(d?.usuariosPorServicios || 0);
-        const uf  = Number(d?.usuariosFallecidos || 0);
-        const ma  = Number(d?.moduloAfectado || 0);
+        const key = objKeys.find(k=>String(k||"").trim().toLowerCase() === name.toLowerCase()) || name;
+        const d = (o && o[key] && typeof o[key] === "object") ? o[key] : {};
+        const ua  = __numExcel(d.usuariosAfectados, d.usuarios_afectados, d.ua, d.UA);
+        const sa  = __numExcel(d.serviciosAfectados, d.servicios_afectados, d.sa, d.SA);
+        const ups = __numExcel(d.usuariosPorServicios, d.usuarios_por_servicios, d.uas, d.ups, d.UPS, d.UAS);
+        const uf  = __numExcel(d.usuariosFallecidos, d.fallecidos, d.uf, d.UF);
+        const ma  = __numExcel(d.moduloAfectado, d.modulo_afectado, d.ma, d.MA);
         totals.ua += ua; totals.sa += sa; totals.ups += ups; totals.uf += uf; totals.ma += ma;
         if((ua + sa + ups + uf + ma) <= 0) return;
         lines.push(`${name}: UA=${ua}, SA=${sa}, UPS=${ups}, UF=${uf}, MA=${ma}`);
@@ -13097,20 +12960,33 @@ async function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO, peligrosS
     };
 
     const __fmtAccionesComplementario = (em)=>{
-      let rcs = em?.rcReportes;
-      if(typeof rcs === "string"){
-        try{ rcs = JSON.parse(rcs); }catch(_e){}
+      const rc = __lastExcelRC(em);
+      if(!rc) return "";
+      let a = (typeof __dashGetAccionesComplementarioFromRC==="function")
+        ? __dashGetAccionesComplementarioFromRC(rc)
+        : (rc && (rc.acciones ?? rc.accionesRC ?? rc.accionesComplementario ?? rc.accionesComplementarias ?? rc.accionesComp ?? rc.accionesSectorComplementario));
+      return __fmtAcciones(a);
+    };
+
+    const __getExcelDaniosMIDIS = (em)=>{
+      const rc = __lastExcelRC(em);
+      if(rc){
+        const rcDanios = __coalesceExcelObject(rc.daniosMIDIS, rc.dañosMIDIS, rc.danosMIDIS, rc.daniosSector, rc.daniosSectorMidis, rc.daniosSectorDesarrollo);
+        if(rcDanios) return rcDanios;
       }
-      if(!Array.isArray(rcs) || !rcs.length) return "";
-      const all = [];
-      rcs.forEach(rc=>{
-        let a = (typeof __dashGetAccionesComplementarioFromRC==="function")
-          ? __dashGetAccionesComplementarioFromRC(rc)
-          : (rc && (rc.acciones ?? rc.accionesRC ?? rc.accionesComplementario ?? rc.accionesComplementarias ?? rc.accionesComp));
-        const t = __fmtAcciones(a);
-        if(String(t||"").trim()) all.push(String(t).trim());
-      });
-      return all.join("\n");
+      return __coalesceExcelObject(em.daniosMIDIS, em.dañosMIDIS, em.danosMIDIS, em.daniosSector, em.daniosSectorMidis, em.daniosSectorDesarrollo);
+    };
+
+    const __getExcelDaniosOtros = (em)=>{
+      const rc = __lastExcelRC(em);
+      return __firstExcelText(
+        rc && (rc.daniosOtros ?? rc.dañosOtros ?? rc.danosOtros ?? rc.daniosOtrosSectores ?? rc.danosOtrosSectores ?? rc.afectacionOtrosSectores),
+        em.daniosOtros, em.dañosOtros, em.danosOtros, em.daniosOtrosSectores, em.danosOtrosSectores, em.afectacionOtrosSectores
+      );
+    };
+
+    const __getExcelHechos = (em)=>{
+      return __firstExcelText(em.hechos, em.hecho, em.descripcionHechos, em.detalleHechos, em.descripcion, em.resumenHechos);
     };
 
     const __getElabDateOnly = (em)=>{
@@ -13133,15 +13009,11 @@ async function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO, peligrosS
     };
 
     const __getDanioPrograma = (src, programa)=>{
-      let o = src;
-      if(typeof o === "string"){
-        try{ o = JSON.parse(o); }catch(_e){}
-      }
-      if(!o || typeof o !== "object") return {};
+      let o = __excelParseMaybeJson(src);
+      if(!o || typeof o !== "object" || Array.isArray(o)) return {};
       const name = String(programa||"").trim();
-      const keyUp = name.toUpperCase();
-      const keyLo = name.toLowerCase();
-      return (o[name] || o[keyUp] || o[keyLo] || {});
+      const key = Object.keys(o).find(k=>String(k||"").trim().toLowerCase() === name.toLowerCase()) || name;
+      return (o[key] && typeof o[key] === "object") ? o[key] : {};
     };
 
     const programaMap = new Map();
@@ -13158,11 +13030,11 @@ async function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO, peligrosS
         if(!programaMap.has(name)) programaMap.set(name, { programa:name, ua:0, sa:0, ups:0, uf:0, ma:0 });
         const d = __getDanioPrograma(src, name);
         const agg = programaMap.get(name);
-        agg.ua  += Number(d?.usuariosAfectados || 0);
-        agg.sa  += Number(d?.serviciosAfectados || 0);
-        agg.ups += Number(d?.usuariosPorServicios || 0);
-        agg.uf  += Number(d?.usuariosFallecidos || 0);
-        agg.ma  += Number(d?.moduloAfectado || 0);
+        agg.ua  += __numExcel(d?.usuariosAfectados, d?.usuarios_afectados, d?.ua, d?.UA);
+        agg.sa  += __numExcel(d?.serviciosAfectados, d?.servicios_afectados, d?.sa, d?.SA);
+        agg.ups += __numExcel(d?.usuariosPorServicios, d?.usuarios_por_servicios, d?.uas, d?.ups, d?.UPS, d?.UAS);
+        agg.uf  += __numExcel(d?.usuariosFallecidos, d?.fallecidos, d?.uf, d?.UF);
+        agg.ma  += __numExcel(d?.moduloAfectado, d?.modulo_afectado, d?.ma, d?.MA);
       });
     };
 
@@ -13185,8 +13057,8 @@ async function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO, peligrosS
     });
 
     if(selectedEmergencias.length === 0){
-      alert("No se encontraron emergencias en ese rango y peligro seleccionado (según la fecha de elaboración).\n\nVerifique la fecha inicial, fecha final y el filtro de peligros.");
-      return;
+      alert("No se encontraron emergencias para exportar con el rango de fechas y peligro seleccionado.\n\nVerifique la fecha inicial, fecha final y el filtro de peligros.");
+      return false;
     }
 
     await __hydrateExcelItems(selectedEmergencias);
@@ -13201,12 +13073,12 @@ async function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO, peligrosS
         if(elabDate < desde || elabDate > hasta) return;
         if(filtrarPorPeligro && !peligrosSet.has(String(em.peligro||"").trim().toLowerCase())) return;
 
-        const danosOtros = __firstExcelText(em.daniosOtros, em.dañosOtros, em.danosOtros, em.daniosOtrosSectores, em.danosOtrosSectores, em.afectacionOtrosSectores);
-        const danosObj = __coalesceExcelObject(em.daniosMIDIS, em.dañosMIDIS, em.danosMIDIS, em.daniosSector, em.daniosSectorMidis, em.daniosSectorDesarrollo);
+        const danosOtros = __getExcelDaniosOtros(em);
+        const danosObj = __getExcelDaniosMIDIS(em);
         const danosInfo  = __fmtDaniosMIDIS(danosObj);
         const danosMIDIS = danosInfo.text;
         __addDaniosPorPrograma(danosObj);
-        const accPre     = __fmtAccionesPreliminar(em.accionesPreliminar ?? em.accionesPreliminares ?? em.accionesRP ?? em.accionesPreliminarRP ?? em.accionesSectorPreliminar);
+        const accPre     = __fmtAccionesPreliminar(em.accionesPreliminar ?? em.accionesPreliminares ?? em.accionesRP ?? em.accionesPreliminarRP ?? em.accionesSectorPreliminar ?? em.accionesSector);
         const accComp    = __fmtAccionesComplementario(em);
 
         const row = [
@@ -13216,7 +13088,7 @@ async function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO, peligrosS
           String(em.departamento||""),
           String(em.provincia||""),
           String(em.distrito||""),
-          __firstExcelText(em.hechos, em.hecho, em.descripcionHechos, em.detalleHechos, em.descripcion),
+          __getExcelHechos(em),
           danosOtros,
           danosMIDIS,
           accPre,
@@ -13254,8 +13126,8 @@ async function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO, peligrosS
     });
 
     if(items.length === 0){
-      alert("No se encontraron emergencias en ese rango y peligro seleccionado (según la fecha de elaboración).\n\nVerifique la fecha inicial, fecha final y el filtro de peligros.");
-      return;
+      alert("No se encontraron emergencias para exportar con el rango de fechas y peligro seleccionado.\n\nVerifique la fecha inicial, fecha final y el filtro de peligros.");
+      return false;
     }
 
     items.sort((a,b)=>{
@@ -13363,9 +13235,11 @@ async function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO, peligrosS
 
     const fname = `Lista_Emergencias_${desde.replace(/-/g,"")}_${hasta.replace(/-/g,"")}.xlsx`;
     XLSX.writeFile(wb, fname);
+    return true;
   }catch(e){
     console.error(e);
-    alert("Ocurrió un error al exportar a Excel.");
+    alert("Ocurrió un error al exportar a Excel: " + (e && e.message ? e.message : e));
+    return false;
   }
 }
 
@@ -13498,8 +13372,11 @@ try{
           try{
             btnDo.disabled = true;
             btnDo.textContent = "Exportando...";
-            await __exportExcelListaEmergenciasByElab(d, h, peligros);
-            try{ modal.hide(); }catch(_e){}
+            const ok = await __exportExcelListaEmergenciasByElab(d, h, peligros);
+            if(ok) try{ modal.hide(); }catch(_e){}
+          }catch(err){
+            console.error(err);
+            alert("No se pudo exportar a Excel." + (err && err.message ? "\n" + err.message : ""));
           }finally{
             btnDo.disabled = false;
             btnDo.textContent = oldTxt || "Exportar";
