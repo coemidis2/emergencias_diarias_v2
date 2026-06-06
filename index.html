@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-<!-- BUILD: 2026-02-20 autopull-cooldown-v206-fix-sync-v3-stage5-print-compat -->
-<script>window.__BUILD_ID='2026-02-20 autopull-cooldown-v206-fix-sync-v3-sync-lock-v247-stage5-print-compat';console.log('BUILD',window.__BUILD_ID);</script>
+<!-- BUILD: 2026-02-20 autopull-cooldown-v206-fix-sync-v3-stage6-sync-detail-conflicts -->
+<script>window.__BUILD_ID='2026-02-20 autopull-cooldown-v206-fix-sync-v3-sync-lock-v248-stage6-sync-detail-conflicts';console.log('BUILD',window.__BUILD_ID);</script>
 
 <!-- build: VER_PRINT_RC_ALWAYS_VISIBLE v4 2026-01-11 -->
 <meta charset="UTF-8" />
@@ -18,7 +18,7 @@ body { background: #f5f5f5; }
 .card { margin-top: 1rem; }
 .table td input { width: 100%; }
 .hidden { display: none; }
-/* ======= VERSION 247 05/06/2026 - fix RP approve fresh detail/sync ======= */
+/* ======= VERSION 248 05/06/2026 - fix RP approve fresh detail/sync ======= */
 /* ======= VER (Listado de Emergencias): Formato de visualización/impresión ======= */
 .ver-report-wrap{ font-family: Calibri, Arial, sans-serif; font-size: 11pt; color:#111; }
 .ver-report-title{ font-family: Calibri, Arial, sans-serif; font-size:15pt; font-weight:700; color:#1F4E79; margin:0 0 6px 0; }
@@ -3748,47 +3748,17 @@ function __syncConfDeleteCodigo(codigo){
 }
 
 async function __syncFetchServerRecordByCodigo(codigo){
+  // Etapa 6: resolver conflictos usando /sync/detail bajo demanda.
+  // Antes esta función recorría /sync/pull desde 1970 con lotes grandes; con miles de registros
+  // eso generaba lentitud, timeouts y el error fetch_failed al presionar "Servidor" en Conflictos Sync.
   const code = String(codigo || "").trim();
   if(!code) throw new Error("codigo_invalido");
   if(!__isApiConfigured()) throw new Error("server_not_configured");
   if(!navigator.onLine) throw new Error("offline");
 
-  const token = __tokenGet();
-  const limit = 5000;
-  let since = '1970-01-01T00:00:00.000Z';
-  let guard = 0;
-  let found = null;
-
-  while(guard < 25){
-    const out = await __api('/sync/pull?since=' + encodeURIComponent(since) + '&limit=' + limit, { method:'GET', token: token });
-    if(out.res && out.res.status === 401) throw new Error('unauthorized');
-    if(!out.res || !out.res.ok){
-      const err = out.data && out.data.error ? out.data.error : 'pull_failed';
-      throw new Error(err);
-    }
-
-    const recs = (out.data && Array.isArray(out.data.records)) ? out.data.records : [];
-    if(recs.length === 0) break;
-
-    let maxUpdated = since;
-    for(const r of recs){
-      const upd = String(r && r.updated_at ? r.updated_at : '');
-      if(upd && upd > maxUpdated) maxUpdated = upd;
-      const rc = String(r && r.codigo ? r.codigo : '').trim();
-      if(rc === code){
-        if(!found || String(r && r.updated_at ? r.updated_at : '') >= String(found && found.updated_at ? found.updated_at : '')){
-          found = r;
-        }
-      }
-    }
-
-    if(recs.length < limit) break;
-    if(maxUpdated === since) break;
-    since = maxUpdated;
-    guard++;
-  }
-
-  return found;
+  const rec = await __syncFetchDetail(code);
+  if(!rec || !rec.payload) throw new Error("server_record_not_found");
+  return rec;
 }
 
 function __syncApplyServerRecord(codigo, rec){
