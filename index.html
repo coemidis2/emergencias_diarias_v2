@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <!-- BUILD: 2026-02-20 autopull-cooldown-v206-fix-sync-v3 -->
-<script>window.__BUILD_ID='2026-02-20 autopull-cooldown-v206-fix-sync-v3-sync-lock-v237-ver-modal-stability';console.log('BUILD',window.__BUILD_ID);</script>
+<script>window.__BUILD_ID='2026-02-20 autopull-cooldown-v206-fix-sync-v3-sync-lock-v240-dashboard-charts-fix';console.log('BUILD',window.__BUILD_ID);</script>
 
 <!-- build: VER_PRINT_RC_ALWAYS_VISIBLE v4 2026-01-11 -->
 <meta charset="UTF-8" />
@@ -18,9 +18,9 @@ body { background: #f5f5f5; }
 .card { margin-top: 1rem; }
 .table td input { width: 100%; }
 .hidden { display: none; }
-/* ======= VERSION 238 04/06/2026 - Estabilidad modal Ver: evita cuelgue por instancias/backdrops duplicados ======= */
+/* ======= VERSION 240 05/06/2026 - Estabilidad modal Ver: evita cuelgue por instancias/backdrops duplicados ======= */
 .ver-detail-loading{display:flex;align-items:center;gap:.5rem;}
-/* ======= VERSION 238 03/06/2026 - Detalle emergencia: N° Global saneado ======= */
+/* ======= VERSION 240 05/06/2026 - Detalle emergencia: N° Global saneado ======= */
 /* ======= VER (Listado de Emergencias): Formato de visualización/impresión ======= */
 .ver-report-wrap{ font-family: Calibri, Arial, sans-serif; font-size: 11pt; color:#111; }
 .ver-report-title{ font-family: Calibri, Arial, sans-serif; font-size:15pt; font-weight:700; color:#1F4E79; margin:0 0 6px 0; }
@@ -303,6 +303,38 @@ body { background: #f5f5f5; }
   }
 }
 
+
+
+/* ======= VERSION 240: Dashboard - gráficos y datos MIDIS completos ======= */
+#dashTab #dashChartEvento,
+#dashTab #dashChartRegion{
+  display:block !important;
+  width:100% !important;
+  height:360px !important;
+  max-height:360px !important;
+}
+#dashTab #dashHistEvento,
+#dashTab #dashHistRegion{
+  min-height:420px;
+}
+#dashTab .dash-impact-chart-box canvas{
+  display:block !important;
+  width:100% !important;
+}
+#dashTab .table-responsive{
+  max-width:100%;
+}
+@media (max-width: 768px){
+  #dashTab #dashChartEvento,
+  #dashTab #dashChartRegion{
+    height:300px !important;
+    max-height:300px !important;
+  }
+  #dashTab #dashHistEvento,
+  #dashTab #dashHistRegion{
+    min-height:350px;
+  }
+}
 </style>
 
  <script src="./patch_cf_sync.js?v=20260527_syncfix"></script>
@@ -9874,6 +9906,200 @@ document.addEventListener("DOMContentLoaded", ()=>{
   document.getElementById("dashPillEvento")?.addEventListener("shown.bs.tab", ()=>dashboardRefresh({force:true}));
   document.getElementById("dashPillRegion")?.addEventListener("shown.bs.tab", ()=>dashboardRefresh({force:true}));
 });
+
+// ======= VERSION 240: Dashboard - corrección de visualización y fuente de datos MIDIS =======
+// Motivo: los gráficos de Impacto y la relación MIDIS estaban leyendo solo daniosMIDIS del RP.
+// Ahora toman la última matriz disponible (RC más reciente si existe; si no RP) y normalizan llaves históricas.
+(function(){
+  function esc(v){
+    try{ if(typeof __dashHtmlEscape === "function") return __dashHtmlEscape(v); }catch(_e){}
+    return String(v ?? "").replace(/[&<>'"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;","\"":"&quot;"}[c]));
+  }
+  function norm(v){
+    try{
+      return String(v || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toUpperCase().replace(/\s+/g," ");
+    }catch(_e){ return String(v || "").trim().toUpperCase(); }
+  }
+  function num(v){
+    const n = Number(v || 0);
+    return Number.isFinite(n) ? n : 0;
+  }
+  window.__dashCanonProgKeyV240 = function(k){
+    const n = norm(k);
+    if(n.includes("CUNA")) return "CUNA MAS";
+    if(n.includes("PENSION")) return "PENSION 65";
+    if(n.includes("ALIMENTACION")) return "ALIMENTACION ESCOLAR";
+    if(n.includes("CONTIGO")) return "CONTIGO";
+    if(n.includes("FONCODES")) return "FONCODES";
+    if(n.includes("JUNTOS")) return "JUNTOS";
+    if(n.includes("PAIS")) return "PAIS";
+    if(n === "PCA" || n.includes("COMPLEMENTACION")) return "PCA";
+    return n || "SIN DATO";
+  };
+  window.__dashCurrentDaniosMidis = function(e){
+    try{
+      const rcList = (typeof __getRCList === "function") ? __getRCList(e) : (Array.isArray(e && e.rcReportes) ? e.rcReportes : []);
+      if(Array.isArray(rcList) && rcList.length){
+        for(let i = rcList.length - 1; i >= 0; i--){
+          const rc = rcList[i] || {};
+          const dm = rc.daniosMIDIS || rc.daniosMidis || rc.daniosSectorMIDIS || rc.daniosSector || rc.danios || null;
+          if(dm && typeof dm === "object" && Object.keys(dm).length) return dm;
+        }
+      }
+      const rp = (e && (e.daniosMIDIS || e.daniosMidis || e.daniosSectorMIDIS || e.daniosSector || e.danios)) || {};
+      return (rp && typeof rp === "object") ? rp : {};
+    }catch(_e){ return (e && e.daniosMIDIS) ? e.daniosMIDIS : {}; }
+  };
+  window.__dashProgramDataV240 = function(danios, programKey){
+    const wanted = window.__dashCanonProgKeyV240(programKey);
+    const out = {usuariosAfectados:0, serviciosAfectados:0, usuariosPorServicios:0, usuariosFallecidos:0, moduloAfectado:0};
+    Object.keys(danios || {}).forEach(k=>{
+      if(window.__dashCanonProgKeyV240(k) !== wanted) return;
+      const d = danios[k] || {};
+      out.usuariosAfectados += num(d.usuariosAfectados ?? d.usuarios_afectados ?? d.totalUsuariosAfectados);
+      out.serviciosAfectados += num(d.serviciosAfectados ?? d.servicios_afectados ?? d.totalServiciosAfectados);
+      out.usuariosPorServicios += num(d.usuariosPorServicios ?? d.usuarios_por_servicios ?? d.usuariosServicios ?? d.totalUsuariosPorServicios);
+      out.usuariosFallecidos += num(d.usuariosFallecidos ?? d.fallecidos ?? d.totalFallecidos);
+      out.moduloAfectado += num(d.moduloAfectado ?? d.modulosAfectados);
+    });
+    return out;
+  };
+  window.__dashSumDanios = function(daniosMIDIS){
+    const out = {usuarios:0, servicios:0, ups:0, fallecidos:0};
+    Object.keys(daniosMIDIS || {}).forEach(k=>{
+      const d = daniosMIDIS[k] || {};
+      out.usuarios += num(d.usuariosAfectados ?? d.usuarios_afectados ?? d.totalUsuariosAfectados);
+      out.servicios += num(d.serviciosAfectados ?? d.servicios_afectados ?? d.totalServiciosAfectados);
+      out.ups += num(d.usuariosPorServicios ?? d.usuarios_por_servicios ?? d.usuariosServicios ?? d.totalUsuariosPorServicios);
+      out.fallecidos += num(d.usuariosFallecidos ?? d.fallecidos ?? d.totalFallecidos);
+    });
+    return out;
+  };
+  window.__dashTotalesMidis = function(daniosMIDIS){
+    const t = window.__dashSumDanios(daniosMIDIS);
+    return {usuarios:t.usuarios, servicios:t.servicios, fallecidos:t.fallecidos};
+  };
+  window.__dashAfectaMidis = function(e){
+    const dm = window.__dashCurrentDaniosMidis(e);
+    const t = window.__dashSumDanios(dm);
+    if(t.usuarios > 0 || t.servicios > 0 || t.ups > 0 || t.fallecidos > 0) return true;
+    // compatibilidad con módulo afectado/FONCODES y otros nombres de campos
+    return Object.keys(dm || {}).some(k=>{
+      const d = dm[k] || {};
+      return num(d.moduloAfectado ?? d.modulosAfectados) > 0;
+    });
+  };
+  window.__dashEnsureChartBoxV240 = function(){
+    try{
+      ["dashChartEvento","dashChartRegion"].forEach(id=>{
+        const el = document.getElementById(id);
+        if(el){ el.style.height = el.style.height || "360px"; el.style.maxHeight = "360px"; }
+      });
+      [dashChartEvento, dashChartRegion, dashChartUsuariosProg, dashChartServiciosProg, dashChartAfectProg].forEach(ch=>{
+        if(!ch) return;
+        ch.options = ch.options || {};
+        ch.options.maintainAspectRatio = false;
+        if(ch.options.scales && ch.options.scales.y) ch.options.scales.y.beginAtZero = true;
+        if(ch.options.scales && ch.options.scales.y && ch.options.scales.y.ticks) ch.options.scales.y.ticks.precision = 0;
+      });
+    }catch(_e){}
+  };
+  window.__dashRenderHistogramas = function(data){
+    data = Array.isArray(data) ? data : [];
+    window.__dashEnsureChartBoxV240();
+    const byEvento = {};
+    data.forEach(e=>{ const k = String((e && e.peligro) || "Sin dato").trim() || "Sin dato"; byEvento[k] = (byEvento[k]||0) + 1; });
+    const evEntries = Object.entries(byEvento).sort((a,b)=> (b[1]-a[1]) || a[0].localeCompare(b[0],"es"));
+    if(dashChartEvento){
+      dashChartEvento.data.labels = evEntries.map(x=>x[0]);
+      dashChartEvento.data.datasets[0].label = "Emergencias";
+      dashChartEvento.data.datasets[0].data = evEntries.map(x=>x[1]);
+      dashChartEvento.update();
+      try{ dashChartEvento.resize(); }catch(_e){}
+    }
+    const byDep = {};
+    data.forEach(e=>{ const k = String((e && e.departamento) || "Sin dato").trim() || "Sin dato"; byDep[k] = (byDep[k]||0) + 1; });
+    const depEntries = Object.entries(byDep).sort((a,b)=> (b[1]-a[1]) || a[0].localeCompare(b[0],"es"));
+    if(dashChartRegion){
+      dashChartRegion.data.labels = depEntries.map(x=>x[0]);
+      dashChartRegion.data.datasets[0].label = "Emergencias";
+      dashChartRegion.data.datasets[0].data = depEntries.map(x=>x[1]);
+      dashChartRegion.update();
+      try{ dashChartRegion.resize(); }catch(_e){}
+    }
+    const total = data.length;
+    const elTotEv = document.getElementById("dashTotalEmergenciasEvento"); if(elTotEv) elTotEv.textContent = String(total);
+    const elTotReg = document.getElementById("dashTotalEmergenciasRegion"); if(elTotReg) elTotReg.textContent = String(total);
+  };
+  window.__dashRenderImpacto = function(data, groupBy){
+    data = Array.isArray(data) ? data : [];
+    groupBy = groupBy || "programa";
+    if(typeof __dashSetImpactoLabels === "function") __dashSetImpactoLabels(groupBy);
+    window.__dashEnsureChartBoxV240();
+    let labels=[], u=[], s=[], ups=[], f=[];
+    let totalU=0,totalS=0,totalUPS=0,totalF=0;
+    if(groupBy === "programa"){
+      const progs = (Array.isArray(window.__DASH_PROGRAMAS) ? window.__DASH_PROGRAMAS : null) || __DASH_PROGRAMAS;
+      labels = progs.map(p=>p.label);
+      u = new Array(labels.length).fill(0); s = new Array(labels.length).fill(0); ups = new Array(labels.length).fill(0); f = new Array(labels.length).fill(0);
+      data.forEach(e=>{
+        const dm = window.__dashCurrentDaniosMidis(e);
+        progs.forEach((p,i)=>{
+          const d = window.__dashProgramDataV240(dm, p.key || p.label);
+          u[i]+=d.usuariosAfectados; s[i]+=d.serviciosAfectados; ups[i]+=d.usuariosPorServicios; f[i]+=d.usuariosFallecidos;
+          totalU+=d.usuariosAfectados; totalS+=d.serviciosAfectados; totalUPS+=d.usuariosPorServicios; totalF+=d.usuariosFallecidos;
+        });
+      });
+    }else{
+      const map = {};
+      data.forEach(e=>{
+        const k = (groupBy === "evento") ? (e.peligro || "Sin dato") : (e.departamento || "Sin dato");
+        const t = window.__dashSumDanios(window.__dashCurrentDaniosMidis(e));
+        if(!map[k]) map[k] = {usuarios:0, servicios:0, ups:0, fallecidos:0};
+        map[k].usuarios += t.usuarios; map[k].servicios += t.servicios; map[k].ups += t.ups; map[k].fallecidos += t.fallecidos;
+        totalU+=t.usuarios; totalS+=t.servicios; totalUPS+=t.ups; totalF+=t.fallecidos;
+      });
+      const entries = Object.entries(map).map(([k,v])=>({k,...v})).sort((a,b)=> (b.usuarios-a.usuarios) || (b.servicios-a.servicios) || a.k.localeCompare(b.k,"es"));
+      labels = entries.map(x=>x.k); u=entries.map(x=>x.usuarios); s=entries.map(x=>x.servicios); ups=entries.map(x=>x.ups); f=entries.map(x=>x.fallecidos);
+    }
+    const setTxt=(id,val)=>{ const el=document.getElementById(id); if(el) el.textContent=String(val); };
+    setTxt("dashTotalUsuarios", totalU); setTxt("dashTotalServicios", totalS); setTxt("dashTotalUsuariosPorServicios", totalUPS); setTxt("dashTotalFallecidos", totalF);
+    if(dashChartUsuariosProg){ dashChartUsuariosProg.data.labels=labels; dashChartUsuariosProg.data.datasets[0].label="Usuarios afectados"; dashChartUsuariosProg.data.datasets[0].data=u; dashChartUsuariosProg.update(); }
+    if(dashChartServiciosProg){
+      dashChartServiciosProg.data.labels=labels;
+      dashChartServiciosProg.data.datasets[0].label="Servicios afectados";
+      dashChartServiciosProg.data.datasets[0].data=s;
+      if(!dashChartServiciosProg.data.datasets[1]) dashChartServiciosProg.data.datasets.push({label:"Usuarios por servicios", data:[]});
+      dashChartServiciosProg.data.datasets[1].label="Usuarios por servicios";
+      dashChartServiciosProg.data.datasets[1].data=ups;
+      dashChartServiciosProg.update();
+    }
+    if(dashChartAfectProg){ dashChartAfectProg.data.labels=labels; dashChartAfectProg.data.datasets[0].label="Usuarios fallecidos"; dashChartAfectProg.data.datasets[0].data=f; dashChartAfectProg.update(); }
+    try{ __dashResizeImpactCharts(); }catch(_e){}
+  };
+  window.__dashRenderAfectaMidisTable = function(data){
+    const tbody = document.getElementById("dashAfectaMidisTbody");
+    if(tbody) tbody.innerHTML = "";
+    const list = (Array.isArray(data) ? data : []).filter(window.__dashAfectaMidis).sort((a,b)=>String(b.fechaPeligro||"").localeCompare(String(a.fechaPeligro||"")) || String(b.codigo||"").localeCompare(String(a.codigo||"")));
+    __dashPagerMidis.size = __dashReadPageSize("dashAfectaMidisPageSize", __dashPagerMidis.size || 10);
+    const page = __dashSliceForPager(list, __dashPagerMidis);
+    __dashUpdatePagerUI(__dashPagerMidis, list.length, "dashAfectaMidisPageInfo", "dashAfectaMidisPrev", "dashAfectaMidisNext");
+    if(!tbody) return;
+    if(!list.length){ tbody.innerHTML = '<tr><td colspan="10" class="text-muted small">Sin emergencias con afectación MIDIS para el filtro seleccionado.</td></tr>'; return; }
+    page.slice.forEach(e=>{
+      const st = __dashGetStatus(e);
+      const badge = `<span class="badge" style="background:${st.color}"> </span>`;
+      const t = window.__dashTotalesMidis(window.__dashCurrentDaniosMidis(e));
+      tbody.innerHTML += `<tr>
+        <td>${esc(e.codigo||"")}</td><td>${badge} ${esc(st.name)}</td><td>${esc(e.peligro||"")}</td>
+        <td>${esc(e.departamento||"")}</td><td>${esc(e.provincia||"")}</td><td>${esc(e.distrito||"")}</td>
+        <td>${esc(e.fechaPeligro||"")}</td><td>${t.usuarios}</td><td>${t.servicios}</td>
+        <td class="text-center"><button type="button" class="btn btn-sm btn-outline-primary" title="Ver RP/RC" onclick='__openVerByCodigo(${JSON.stringify(String(e.codigo||""))})'>👁</button></td>
+      </tr>`;
+    });
+  };
+})();
+
 </script>
 
 <script>
@@ -12534,34 +12760,76 @@ async function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO, peligrosS
       return null;
     };
 
+    // FIX v239: Exportar Excel no debe quedarse esperando por hidratación secuencial.
+    // Se identifica mejor cuándo un registro requiere /sync/detail y se hidrata en paralelo controlado.
+    const __hasExcelUsefulText = (...vals)=> !!__firstExcelText(...vals);
+    const __hasExcelUsefulObj = (...vals)=>{
+      const o = __coalesceExcelObject(...vals);
+      if(!o || typeof o !== "object") return false;
+      try{
+        return Object.keys(o).some(k=>{
+          const v = o[k];
+          if(v === null || v === undefined) return false;
+          if(typeof v !== "object") return String(v).trim() !== "";
+          return Object.values(v).some(x=> Number(x||0) !== 0 || String(x||"").trim() !== "");
+        });
+      }catch(_e){ return true; }
+    };
+
     const __needsExcelDetail = (em)=>{
       try{
-        if(!em) return false;
+        if(!em || !em.codigo) return false;
+        if(em.__detailHydratedAt) return false;
         if(typeof __syncIsSummaryOnly === "function" && __syncIsSummaryOnly(em)) return true;
-        return !(
-          __firstExcelText(em.hechos, em.hecho, em.descripcionHechos, em.detalleHechos) ||
-          __firstExcelText(em.daniosOtros, em.dañosOtros, em.danosOtros, em.daniosOtrosSectores, em.danosOtrosSectores) ||
-          __coalesceExcelObject(em.daniosMIDIS, em.dañosMIDIS, em.danosMIDIS, em.daniosSector, em.daniosSectorMidis, em.daniosSectorDesarrollo) ||
-          em.accionesPreliminar || em.accionesRP || em.accionesPreliminares || em.acciones ||
-          (Array.isArray(em.rcReportes) && em.rcReportes.some(rc => rc && !rc.__summaryOnly && (rc.acciones || rc.accionesRC || rc.accionesComplementario || rc.accionesComplementarias || rc.accionesComp || rc.daniosMIDIS)))
-        );
+        if(em.__summaryOnly || em.__needsDetail) return true;
+
+        const hasHechos = __hasExcelUsefulText(em.hechos, em.hecho, em.descripcionHechos, em.detalleHechos, em.descripcion);
+        const hasDaniosOtros = __hasExcelUsefulText(em.daniosOtros, em.dañosOtros, em.danosOtros, em.daniosOtrosSectores, em.danosOtrosSectores, em.afectacionOtrosSectores);
+        const hasDaniosMidis = __hasExcelUsefulObj(em.daniosMIDIS, em.dañosMIDIS, em.danosMIDIS, em.daniosSector, em.daniosSectorMidis, em.daniosSectorDesarrollo);
+        const hasAccPre = !!(em.accionesPreliminar || em.accionesPreliminares || em.accionesRP || em.accionesPreliminarRP || em.accionesSectorPreliminar);
+        const hasRcFull = Array.isArray(em.rcReportes) && em.rcReportes.some(rc => rc && !rc.__summaryOnly && (rc.acciones || rc.accionesRC || rc.accionesComplementario || rc.accionesComplementarias || rc.accionesComp || rc.daniosMIDIS || rc.dañosMIDIS || rc.danosMIDIS));
+
+        // Si faltan campos largos que deberían venir del payload completo, se consulta detalle.
+        return !(hasHechos && (hasDaniosOtros || hasDaniosMidis || hasAccPre || hasRcFull));
       }catch(e){ return false; }
     };
 
     const __hydrateExcelItems = async (selected)=>{
       const arr = Array.isArray(selected) ? selected : [];
-      let fullCount = 0;
+      const queue = [];
       for(let i=0; i<arr.length; i++){
         const em = arr[i];
-        if(!em || !em.codigo || !__needsExcelDetail(em)) continue;
-        try{
-          if(typeof __ensureFullEmergencia === "function"){
-            const full = await __ensureFullEmergencia(em.codigo);
-            if(full){ arr[i] = full; fullCount++; }
+        if(em && em.codigo && __needsExcelDetail(em)) queue.push({i, codigo: em.codigo});
+      }
+      if(queue.length === 0) return 0;
+
+      const btnProgress = document.getElementById("btnDoExportExcelLista");
+      const oldTxtProgress = btnProgress ? btnProgress.textContent : "";
+      let done = 0, fullCount = 0;
+      const concurrency = Math.min(8, queue.length);
+      let cursor = 0;
+
+      const worker = async ()=>{
+        while(cursor < queue.length){
+          const job = queue[cursor++];
+          try{
+            if(btnProgress) btnProgress.textContent = `Cargando detalle ${done + 1}/${queue.length}...`;
+            if(typeof __ensureFullEmergencia === "function"){
+              const full = await __ensureFullEmergencia(job.codigo);
+              if(full){ arr[job.i] = full; fullCount++; }
+            }
+          }catch(_e){
+            // Si un detalle falla, no se detiene toda la exportación; se exporta lo disponible.
+          }finally{
+            done++;
           }
-        }catch(_e){
-          // Si un detalle falla, no se detiene toda la exportación; se exporta lo disponible.
         }
+      };
+
+      try{
+        await Promise.all(Array.from({length: concurrency}, worker));
+      }finally{
+        if(btnProgress) btnProgress.textContent = oldTxtProgress || "Exportar";
       }
       return fullCount;
     };
