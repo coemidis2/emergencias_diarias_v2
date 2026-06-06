@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-<!-- BUILD: 2026-02-20 autopull-cooldown-v206-fix-sync-v3-stage2-users-fallback -->
-<script>window.__BUILD_ID='2026-02-20 autopull-cooldown-v206-fix-sync-v3-sync-lock-v244-stage2-users-fallback';console.log('BUILD',window.__BUILD_ID);</script>
+<!-- BUILD: 2026-02-20 autopull-cooldown-v206-fix-sync-v3-stage4-cobertura-fallback -->
+<script>window.__BUILD_ID='2026-02-20 autopull-cooldown-v206-fix-sync-v3-sync-lock-v246-stage4-cobertura-fallback';console.log('BUILD',window.__BUILD_ID);</script>
 
 <!-- build: VER_PRINT_RC_ALWAYS_VISIBLE v4 2026-01-11 -->
 <meta charset="UTF-8" />
@@ -18,7 +18,7 @@ body { background: #f5f5f5; }
 .card { margin-top: 1rem; }
 .table td input { width: 100%; }
 .hidden { display: none; }
-/* ======= VERSION 245 05/06/2026 - fix RP approve fresh detail/sync ======= */
+/* ======= VERSION 246 05/06/2026 - fix RP approve fresh detail/sync ======= */
 /* ======= VER (Listado de Emergencias): Formato de visualización/impresión ======= */
 .ver-report-wrap{ font-family: Calibri, Arial, sans-serif; font-size: 11pt; color:#111; }
 .ver-report-title{ font-family: Calibri, Arial, sans-serif; font-size:15pt; font-weight:700; color:#1F4E79; margin:0 0 6px 0; }
@@ -5415,17 +5415,56 @@ document.getElementById("btnGuardarEnviarRP").onclick = async () => {
 // ===================== COBERTURA PROGRAMAS (ANEXO JSON, SIN BD) =====================
 // Archivo: cobertura_programas.json (se reemplaza bimensualmente)
 window.__COBERTURA_PROGRAMAS_CACHE = window.__COBERTURA_PROGRAMAS_CACHE || null;
+const __COBERTURA_PROGRAMAS_LS_KEY = "midis_cobertura_programas_cache_v1";
+
+function __readCoberturaProgramasLocalCache(){
+  try{
+    const raw = __lsGet(__COBERTURA_PROGRAMAS_LS_KEY);
+    if(!raw) return null;
+    const cached = JSON.parse(raw);
+    if(cached && cached.data && Array.isArray(cached.data.rows)) return cached.data;
+  }catch(e){}
+  return null;
+}
+
+function __writeCoberturaProgramasLocalCache(data){
+  try{
+    if(data && Array.isArray(data.rows)){
+      __lsSet(__COBERTURA_PROGRAMAS_LS_KEY, JSON.stringify({ at: __nowIso(), data }));
+    }
+  }catch(e){}
+}
 
 async function __loadCoberturaProgramas(){
-  // Cache en memoria para no hacer múltiples fetch
+  // Cache en memoria para no hacer múltiples fetch durante la sesión.
   if(window.__COBERTURA_PROGRAMAS_CACHE) return window.__COBERTURA_PROGRAMAS_CACHE;
-  const url = 'cobertura_programas.json?v=' + Date.now(); // bust cache
-  const res = await fetch(url, { cache: 'no-store' });
-  if(!res.ok) throw new Error('No se pudo cargar cobertura_programas.json');
-  const data = await res.json();
-  // Esperado: { version, labels, rows }
-  window.__COBERTURA_PROGRAMAS_CACHE = data;
-  return data;
+
+  // Etapa 4: cache-bust controlado. Date.now() forzaba descarga en cada recarga y hacía más lenta la app.
+  // Si el archivo se actualiza, basta cambiar el BUILD_ID o el nombre/versionado del JSON.
+  const buildVersion = encodeURIComponent(String(window.__BUILD_ID || 'stage4-cobertura-fallback'));
+  const url = 'cobertura_programas.json?v=' + buildVersion;
+
+  try{
+    const res = await fetch(url, { cache: 'default' });
+    if(!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    if(!data || !Array.isArray(data.rows)) throw new Error('estructura_json_invalida');
+    // Esperado: { version, labels, rows }
+    window.__COBERTURA_PROGRAMAS_CACHE = data;
+    __writeCoberturaProgramasLocalCache(data);
+    return data;
+  }catch(err){
+    const cached = __readCoberturaProgramasLocalCache();
+    if(cached){
+      window.__COBERTURA_PROGRAMAS_CACHE = cached;
+      return cached;
+    }
+    const isFile = String(location && location.protocol || '').toLowerCase() === 'file:';
+    const msg = isFile
+      ? 'No se pudo cargar cobertura_programas.json porque el aplicativo está abierto como archivo local. Ejecútalo desde GitHub Pages o un servidor HTTP.'
+      : 'No se pudo cargar cobertura_programas.json desde el servidor.';
+    throw new Error(msg + ' Detalle: ' + ((err && err.message) ? err.message : err));
+  }
 }
 
 function __normKey(s){
@@ -5518,7 +5557,7 @@ async function __renderCoberturaAnexo(em, containerId){
     console.error(err);
     try{
       const el = document.getElementById(containerId);
-      if(el) el.innerHTML = '<div class="text-danger"><strong>Anexo 1:</strong> No se pudo cargar cobertura_programas.json.</div>';
+      if(el) el.innerHTML = '<div class="text-danger"><strong>Anexo 1:</strong> ' + ((err && err.message) ? err.message : 'No se pudo cargar cobertura_programas.json.') + '</div>';
     }catch(_e){}
   }
 }
