@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-<!-- BUILD: 2026-02-20 autopull-cooldown-v206-fix-sync-v3-stage6-sync-detail-conflicts -->
-<script>window.__BUILD_ID='2026-02-20 autopull-cooldown-v206-fix-sync-v3-sync-lock-v248-stage6-sync-detail-conflicts';console.log('BUILD',window.__BUILD_ID);</script>
+<!-- BUILD: 2026-02-20 autopull-cooldown-v206-fix-sync-v3-stage7-light-list-detail-demand -->
+<script>window.__BUILD_ID='2026-02-20 autopull-cooldown-v206-fix-sync-v3-sync-lock-v248-stage7-light-list-detail-demand';console.log('BUILD',window.__BUILD_ID);</script>
 
 <!-- build: VER_PRINT_RC_ALWAYS_VISIBLE v4 2026-01-11 -->
 <meta charset="UTF-8" />
@@ -18,7 +18,7 @@ body { background: #f5f5f5; }
 .card { margin-top: 1rem; }
 .table td input { width: 100%; }
 .hidden { display: none; }
-/* ======= VERSION 248 05/06/2026 - fix RP approve fresh detail/sync ======= */
+/* ======= VERSION 249 12/06/2026 - fix RP approve fresh detail/sync ======= */
 /* ======= VER (Listado de Emergencias): Formato de visualización/impresión ======= */
 .ver-report-wrap{ font-family: Calibri, Arial, sans-serif; font-size: 11pt; color:#111; }
 .ver-report-title{ font-family: Calibri, Arial, sans-serif; font-size:15pt; font-weight:700; color:#1F4E79; margin:0 0 6px 0; }
@@ -8186,7 +8186,7 @@ function __markRCWordDownloaded(emBase){
 }
 
 // ===================== WORD RP (solo una vez) =====================
-document.getElementById("btnWordRP").onclick = () => {
+document.getElementById("btnWordRP").onclick = async () => {
   if (!rpGrabado) {
     alert("Primero debe grabar el Reporte Preliminar.");
     return;
@@ -8209,6 +8209,7 @@ document.getElementById("btnWordRP").onclick = () => {
     alert("No se encontró ningún reporte preliminar registrado.");
     return;
   }
+  try{ em = await __ensureFullEmergencia(em.codigo || codigo); }catch(_e){}
 
   em.departamento = document.getElementById("departamentoRP").value || em.departamento;
   em.provincia = document.getElementById("provinciaRP").value || em.provincia;
@@ -8269,7 +8270,7 @@ document.getElementById("btnWordRP").onclick = () => {
 };
 
 // ===================== WORD RC (solo una vez) =====================
-document.getElementById("btnWordRC").onclick = () => {
+document.getElementById("btnWordRC").onclick = async () => {
   if (!emergenciaSeleccionada) {
     alert("Seleccione una emergencia desde la Lista (botón RC).");
     return;
@@ -8288,6 +8289,7 @@ document.getElementById("btnWordRC").onclick = () => {
   }
 
   let emBase = emergenciaSeleccionada;
+  try{ emBase = await __ensureFullEmergencia(emBase.codigo || emBase); emergenciaSeleccionada = emBase || emergenciaSeleccionada; }catch(_e){}
   if (!Array.isArray(emBase.rcReportes) || emBase.rcReportes.length === 0) {
     alert("Primero guarde un RC para esta emergencia.");
     return;
@@ -8595,6 +8597,15 @@ function __dashProgramaTieneAfectacion(d){
 }
 
 function __dashAfectaMidis(e){
+  try{
+    if(e && (e.afectaMidis === true || e.afecta_midis === true || e.__listHasImpactoResumen === true)){
+      const tu = Number(e.totalUsuariosAfectados || e.total_usuarios_afectados || 0) || 0;
+      const ts = Number(e.totalServiciosAfectados || e.total_servicios_afectados || 0) || 0;
+      const ups = Number(e.totalUsuariosPorServicios || e.total_usuarios_por_servicios || 0) || 0;
+      const tf = Number(e.totalFallecidos || e.total_fallecidos || 0) || 0;
+      if(tu || ts || ups || tf || e.afectaMidis === true || e.afecta_midis === true) return true;
+    }
+  }catch(_e){}
   const dm = __dashCurrentDaniosMidis(e);
   if(!dm || typeof dm !== "object") return false;
   return Object.keys(dm).some(k => __dashProgramaTieneAfectacion(dm[k]));
@@ -8871,10 +8882,11 @@ function __dashImpactoDetailSignature(data, groupBy){
 function __dashNeedsImpactoDetail(e, force){
   try{
     if(!e || !String(e.codigo || "").trim()) return false;
-    if(typeof __syncIsSummaryOnly === "function" && __syncIsSummaryOnly(e)) return true;
-    if(e.__summaryOnly === true || e.__needsDetail === true) return true;
-    // Al presionar Aplicar, se permite refrescar el detalle para evitar datos MIDIS antiguos.
-    if(force) return true;
+    // Etapa 2: si /sync/list trae resumen MIDIS, Dashboard NO hidrata detalles masivos.
+    if(e.__listHasImpactoResumen === true || e.afectaMidis === true || e.afecta_midis === true) return false;
+    if(typeof __syncIsSummaryOnly === "function" && __syncIsSummaryOnly(e)) return false;
+    if(e.__summaryOnly === true || e.__needsDetail === true) return false;
+    if(force) return false;
   }catch(_e){}
   return false;
 }
@@ -9844,8 +9856,8 @@ function dashboardRefresh(opts){
 
   __dashRenderAfectaMidisTable(dataImpactoMidis);
 
-  // Rehidratación no bloqueante: corrige histogramas MIDIS sin apagar el mapa ni la estadística general.
-  try{ __dashHydrateImpactoMidisAsync(data, groupBy, force); }catch(_e){}
+  // Etapa 2: Dashboard trabaja con resumen liviano de /sync/list; no hidrata detalles masivos.
+  // El detalle se pide solo al presionar Ver/RP/RC/PDF/Word.
 
   setTimeout(()=>{ if(dashMap) dashMap.invalidateSize(); }, 150);
 }
@@ -10321,9 +10333,7 @@ function __setHashMap(m){
   try{ __lsSet(__SYNC_KEYS.hashMap, JSON.stringify(m || {})); }catch(e){}
 }
 
-function __syncEpoch(){
-  return "1970-01-01T00:00:00.000Z";
-}
+function __syncEpoch(){ return "2026-01-01T00:00:00.000Z"; }
 
 function __syncLocalState(){
   let arr = [];
@@ -11397,6 +11407,17 @@ function __syncSummaryToLocalRecord(r, previous){
   const closedFlag = !!(r && (r.cerrada === true || r.closed === true));
   const cierreEstado = String((r && (r.cierre_estado || r.cierreEstado || "")) || "").trim();
   const rpEstado = String((r && (r.rp_estado || r.rpEstado || "")) || "").trim();
+  const rcUltEstado = String((r && (r.rc_ultimo_estado || r.rcUltimoEstado || r.rc_estado_ultimo || "")) || "").trim();
+  let daniosResumen = null;
+  try{
+    const rawDm = r && (r.danios_midis_resumen || r.daniosMidisResumen || r.danios_resumen_json);
+    if(rawDm) daniosResumen = (typeof rawDm === "string") ? JSON.parse(rawDm) : rawDm;
+  }catch(_e){ daniosResumen = null; }
+  const totalUsuarios = Number(r && (r.total_usuarios_afectados ?? r.totalUsuariosAfectados) || 0) || 0;
+  const totalServicios = Number(r && (r.total_servicios_afectados ?? r.totalServiciosAfectados) || 0) || 0;
+  const totalUPS = Number(r && (r.total_usuarios_por_servicios ?? r.totalUsuariosPorServicios) || 0) || 0;
+  const totalFallecidos = Number(r && (r.total_fallecidos ?? r.totalFallecidos) || 0) || 0;
+  const afectaMidis = !!(r && (r.afecta_midis === true || r.afecta_midis === 1 || r.afectaMidis === true || r.afectaMidis === 1 || totalUsuarios || totalServicios || totalUPS || totalFallecidos));
 
   const out = Object.assign({}, prev, {
     codigo,
@@ -11410,10 +11431,22 @@ function __syncSummaryToLocalRecord(r, previous){
     updatedAt: String((r && r.updated_at) || prev.updatedAt || "").trim(),
     createdByEmail: String((r && r.created_by) || prev.createdByEmail || "").trim(),
     updatedByEmail: String((r && r.updated_by) || prev.updatedByEmail || "").trim(),
-    ownerEmail: String((r && r.created_by) || prev.ownerEmail || "").trim(),
+    ownerEmail: String((r && (r.owner_email || r.created_by)) || prev.ownerEmail || "").trim(),
+    elaboradoPor: String((r && (r.elaborado_por || r.elaboradoPor)) || prev.elaboradoPor || "").trim(),
+    numeroGlobal: String((r && (r.numero_global || r.numeroGlobal)) || prev.numeroGlobal || prev.numeroReporte || "").trim(),
+    numeroReporte: String((r && (r.numero_global || r.numeroGlobal)) || prev.numeroReporte || prev.numeroGlobal || "").trim(),
     rpAprobEstado: rpEstado || prev.rpAprobEstado || "Borrador",
     cierreEstado: cierreEstado || prev.cierreEstado || null,
     cerrada: closedFlag || cierreEstado.toLowerCase() === "aprobado" || cierreEstado.toLowerCase() === "cerrada" || !!prev.cerrada,
+    latitud: String((r && (r.latitud || r.lat)) || prev.latitud || "").trim(),
+    longitud: String((r && (r.longitud || r.lon || r.lng)) || prev.longitud || "").trim(),
+    totalUsuariosAfectados: totalUsuarios,
+    totalServiciosAfectados: totalServicios,
+    totalUsuariosPorServicios: totalUPS,
+    totalFallecidos: totalFallecidos,
+    afectaMidis: afectaMidis,
+    daniosMIDIS: (daniosResumen && typeof daniosResumen === "object") ? daniosResumen : (prev.daniosMIDIS || {}),
+    __listHasImpactoResumen: !!(daniosResumen || totalUsuarios || totalServicios || totalUPS || totalFallecidos || afectaMidis),
     __summaryOnly: true,
     __needsDetail: true,
     __serverHash: String((r && (r.hash || r.payload_hash)) || prev.__serverHash || ""),
@@ -11422,7 +11455,7 @@ function __syncSummaryToLocalRecord(r, previous){
 
   // Para que la Lista pueda saber si existe RC sin traer payload completo.
   if(rcTotal > 0){
-    out.rcReportes = Array.from({length: rcTotal}, (_, i)=>({ __summaryOnly:true, numeroReporteRC: i + 1 }));
+    out.rcReportes = Array.from({length: rcTotal}, (_, i)=>({ __summaryOnly:true, numeroReporteRC: i + 1, aprobEstado: (i === rcTotal - 1 ? rcUltEstado : "") }));
   }else if(!Array.isArray(out.rcReportes) || (Array.isArray(out.rcReportes) && out.rcReportes.every(x => x && x.__summaryOnly))){
     out.rcReportes = [];
   }
@@ -11769,7 +11802,7 @@ async function __syncAll(){
       const lastPull = __getLastPull();
       const firstBoot = (!did && arrSizeX === 0 && (!lastPull || lastPull === '1970-01-01T00:00:00.000Z'));
       if(role === __ROLES.ADMIN && firstBoot){
-        await __syncPull('1970-01-01T00:00:00.000Z');
+        await __syncPull(__syncEpoch());
         try{ __lsSet(__SYNC_KEYS.fullPullAdmin, __nowIso()); }catch(_e){}
       }
     }catch(e){}
@@ -12183,14 +12216,14 @@ async function __segPullSnapshotFromD1(){
   if(!navigator.onLine) throw new Error("offline");
 
   const limit = 5000;
-  let since = "1970-01-01T00:00:00.000Z";
+  let since = "2026-01-01T00:00:00.000Z";
   const byCodigo = {};
   let guard = 0;
 
   while(guard < 6){
-    const out = await __api("/sync/pull?since=" + encodeURIComponent(since) + "&limit=" + limit, { method:"GET", token: token });
+    const out = await __api("/sync/list?since=" + encodeURIComponent(since) + "&limit=" + limit, { method:"GET", token: token });
     if(out.res && out.res.status === 401) throw new Error("unauthorized");
-    if(!out.res || !out.res.ok) throw new Error((out.data && out.data.error) ? out.data.error : "pull_failed");
+    if(!out.res || !out.res.ok) throw new Error((out.data && out.data.error) ? out.data.error : "list_failed");
 
     const recs = (out.data && Array.isArray(out.data.records)) ? out.data.records : [];
     if(recs.length === 0) break;
@@ -12202,7 +12235,7 @@ async function __segPullSnapshotFromD1(){
       const upd = String(r?.updated_at || "");
       if(upd && upd > maxUpdated) maxUpdated = upd;
 
-      const payload = r?.payload || {};
+      const payload = (typeof __syncSummaryToLocalRecord === "function") ? __syncSummaryToLocalRecord(r, byCodigo[codigo] || null) : Object.assign({}, r || {});
       payload.__serverUpdatedAt = r?.updated_at || null;
       payload.__serverCreatedAt = r?.created_at || null;
 
@@ -12935,44 +12968,9 @@ async function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO, peligrosS
     };
 
     const __excelFetchSnapshotMap = async ()=>{
-      const map = new Map();
-      if(!__excelCanApi() || typeof __api !== "function") return map;
-      const token = (typeof __tokenGet === "function") ? __tokenGet() : null;
-      const limit = 5000;
-      let since = "1970-01-01T00:00:00.000Z";
-      let guard = 0;
-      while(guard < 8){
-        const out = await __excelWithTimeout(
-          __api("/sync/pull?since=" + encodeURIComponent(since) + "&limit=" + limit, { method:"GET", token: token }),
-          25000,
-          "timeout_snapshot_excel"
-        );
-        if(out.res && out.res.status === 401) throw new Error("unauthorized");
-        if(!out.res || !out.res.ok) throw new Error((out.data && out.data.error) ? out.data.error : "pull_failed");
-        const recs = (out.data && Array.isArray(out.data.records)) ? out.data.records : [];
-        if(recs.length === 0) break;
-        let maxUpdated = since;
-        for(const r of recs){
-          const code = String(r && r.codigo ? r.codigo : "").trim();
-          const payload = r && r.payload ? JSON.parse(JSON.stringify(r.payload)) : null;
-          if(code && payload){
-            try{ payload.__serverHash = String(r.hash || r.payload_hash || ""); }catch(_e){}
-            try{ payload.__serverUpdatedAt = String(r.updated_at || ""); }catch(_e){}
-            try{ payload.__serverCreatedAt = String(r.created_at || ""); }catch(_e){}
-            try{ payload.__summaryOnly = false; delete payload.__needsDetail; }catch(_e){}
-            const prev = map.get(code);
-            if(!prev || String(payload.__serverUpdatedAt || "") >= String(prev.__serverUpdatedAt || "")) map.set(code, payload);
-          }
-          const upd = String(r && r.updated_at ? r.updated_at : "");
-          if(upd && upd > maxUpdated) maxUpdated = upd;
-        }
-        if(recs.length < limit) break;
-        if(maxUpdated === since) break;
-        since = maxUpdated;
-        guard++;
-        await __excelSleep(0);
-      }
-      return map;
+      // Etapa 2: evitar snapshot completo por /sync/pull desde 1970.
+      // El Excel hidrata solo los códigos filtrados mediante /sync/detail cuando realmente lo necesita.
+      return new Map();
     };
 
     const __replaceLocalWithFull = (code, full)=>{
