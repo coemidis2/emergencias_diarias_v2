@@ -5,6 +5,7 @@
 <script>window.__BUILD_ID='2026-02-20 autopull-cooldown-v206-fix-sync-v3-sync-lock-v248-stage7-light-list-detail-demand';console.log('BUILD',window.__BUILD_ID);</script>
 
 <!-- build: VER_PRINT_RC_ALWAYS_VISIBLE v4 2026-01-11 -->
+<!-- build: ETAPA1_ACCIONES_RC_RESUMEN_DETALLE v251 2026-06-15 -->
 <meta charset="UTF-8" />
 <title>Registro de Emergencias MIDIS</title>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -18,7 +19,7 @@ body { background: #f5f5f5; }
 .card { margin-top: 1rem; }
 .table td input { width: 100%; }
 .hidden { display: none; }
-/* ======= VERSION 250 15/06/2026 - fix RP approve fresh detail/sync ======= */
+/* ======= VERSION 251 15/06/2026 - fix RP approve fresh detail/sync ======= */
 /* ======= VER (Listado de Emergencias): Formato de visualización/impresión ======= */
 .ver-report-wrap{ font-family: Calibri, Arial, sans-serif; font-size: 11pt; color:#111; }
 .ver-report-title{ font-family: Calibri, Arial, sans-serif; font-size:15pt; font-weight:700; color:#1F4E79; margin:0 0 6px 0; }
@@ -29,6 +30,14 @@ body { background: #f5f5f5; }
 .ver-section-title{ font-family: Calibri, Arial, sans-serif; font-size:11pt; font-weight:700; color:#111; margin:10px 0 6px 0; }
 .ver-rc-hist{ margin-top:6px; }
 .ver-rc-hist .rc-block{ display:inline; }
+
+/* ======= VER/PDF/WORD: Acciones RC ordenadas ======= */
+.ver-actions-summary{ font-family: Calibri, Arial, sans-serif; font-size:10pt; margin:4px 0 8px 0; }
+.ver-actions-summary th,
+.ver-actions-summary td{ vertical-align:top; }
+.ver-acciones-nota{ font-family: Calibri, Arial, sans-serif; font-size:10pt; color:#555; margin:4px 0 6px 0; }
+.ver-rc-action-detail{ border-left:3px solid #d9e2f3; padding-left:8px; margin:8px 0 10px 0; }
+.ver-rc-action-detail h6{ font-family: Calibri, Arial, sans-serif; font-size:10.5pt; font-weight:700; color:#1F4E79; margin:0 0 4px 0; }
 
 /* ======= AUTH (Login/Roles) ======= */
 .auth-screen{
@@ -5604,6 +5613,128 @@ function __buildAccionesCompUnique(rcList){
   return { all: out, byRc };
 }
 
+function __verAccionText(item){
+  try{
+    let fecha = "";
+    let detalle = "";
+    if(item && typeof item === "object"){
+      fecha = String(item.fecha || item.fechaAccion || item.fechaRegistro || item.fechaHora || "").trim();
+      detalle = String(item.descripcion || item.detalle || item.texto || item.accion || "").trim();
+    }else{
+      detalle = String(item ?? "").trim();
+    }
+    return { fecha, detalle: detalle.replace(/\s+/g, " ").trim() };
+  }catch(_e){
+    return { fecha:"", detalle:"" };
+  }
+}
+
+function __verResumenAccion(detalle, maxLen=230){
+  const txt = String(detalle || "").replace(/\s+/g, " ").trim();
+  if(txt.length <= maxLen) return txt;
+  return txt.slice(0, Math.max(0, maxLen-1)).trim() + "…";
+}
+
+function __verInferProgramaAccion(detalle){
+  const t = String(detalle || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
+  if(/CUNA\s*MAS/.test(t)) return "Cuna Más";
+  if(/PENSION\s*65/.test(t)) return "Pensión 65";
+  if(/\bJUNTOS\b/.test(t)) return "Juntos";
+  if(/\bCONTIGO\b/.test(t)) return "Contigo";
+  if(/\bFONCODES\b/.test(t)) return "FONCODES";
+  if(/\bPAIS\b/.test(t)) return "PAIS";
+  if(/ALIMENTACION\s+ESCOLAR|\bPAE\b|QALI/.test(t)) return "Alimentación Escolar";
+  if(/COMPLEMENTACION\s+ALIMENTARIA|\bPCA\b/.test(t)) return "PCA";
+  if(/COE\s*MIDIS|OSDN|VICEMINIST|MINISTR|DESPACHO|OGCAI|SECTOR/.test(t)) return "COE MIDIS / Sector";
+  return "Sector / Programas Nacionales";
+}
+
+function __verInferTipoAccion(detalle){
+  const t = String(detalle || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
+  if(/CIERRE|CERRAR/.test(t)) return "Cierre de seguimiento";
+  if(/NO\s+SE\s+(REGISTR|REPORT)|SIN\s+AFECTACION|NO\s+FORMA\s+PARTE/.test(t)) return "Monitoreo sin afectación";
+  if(/SUSPENSION|SUSPEND/.test(t)) return "Suspensión del servicio";
+  if(/RESTABLEC|RESTITU|REANUD|MUDANZA|TRASLADO\s+DE\s+CARPAS|CONDICIONES\s+OPTIMAS/.test(t)) return "Restablecimiento / adecuación del servicio";
+  if(/CONTINUIDAD|SE\s+DESARROLLA\s+CON\s+NORMALIDAD|ATENCION\s+DEL\s+SERVICIO|SERVICIO\s+DE\s+CUIDADO\s+DIURNO/.test(t)) return "Continuidad del servicio";
+  if(/CONTENCION\s+EMOCIONAL|APOYO\s+PSICOLOG/.test(t)) return "Contención emocional";
+  if(/VISITA|VERIFIC|IDENTIFIC|PADRON|RELACION\s+NOMINAL|EMPADRON/.test(t)) return "Verificación y seguimiento";
+  if(/ENTREGA|DONACION|DONACIONES|VIVERES|AYUDA\s+HUMANITARIA|KITS|RACIONES/.test(t)) return "Entrega de apoyo / donaciones";
+  if(/DESPLAZ|SE\s+ENCUENTRAN\s+EN\s+LA\s+ZONA|ARRIB|TRASLADO\s+A\s+LA\s+ZONA/.test(t)) return "Desplazamiento de personal";
+  if(/REUNION|COORDIN/.test(t)) return "Coordinación sectorial/interinstitucional";
+  if(/MONITOREO|SEGUIMIENTO|MAPEO/.test(t)) return "Monitoreo y seguimiento";
+  return "Seguimiento";
+}
+
+function __verInferEstadoAccion(detalle){
+  const t = String(detalle || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
+  if(/CIERRE|CERRAR|CERRADO/.test(t)) return "Cerrado";
+  if(/CULMIN|RESTABLECID|ATENDID|RECIBIENDO|SE\s+PROCEDIO|REALIZO|REALIZADO/.test(t)) return "Ejecutado";
+  if(/SE\s+MANTIENE|CONTINUA|CONTINUAN|PROSIGUE|EN\s+SEGUIMIENTO/.test(t)) return "En seguimiento";
+  if(/PROGRAM|PREVISTO|SE\s+TIENE\s+PREVISTO/.test(t)) return "Programado";
+  if(/NO\s+SE\s+(REGISTR|REPORT)|SIN\s+ACCIONES|SIN\s+AFECTACION/.test(t)) return "Sin intervención";
+  return "Ejecutado";
+}
+
+function __verRcHeaderText(rcList, idx){
+  try{
+    const rc = (Array.isArray(rcList) ? rcList[idx] : null) || {};
+    const num = String(rc.numeroGlobal || rc.numeroReporteRC || rc.numGlobal || rc.nroGlobal || "").trim();
+    const fecha = String(rc.fechaHoraRC || rc.fechaHora || rc.fechaElaboracion || rc.fechaRegistro || rc.updatedAt || "").trim();
+    const est = String(rc.aprobEstado || rc.estado || rc.status || "").trim();
+    let out = `RC ${Number(idx)+1}`;
+    if(num) out += ` - N° Global: ${num}`;
+    if(fecha) out += ` - Fecha de registro: ${__verDateOnly(fecha)}`;
+    if(est) out += ` - Estado: ${est}`;
+    return out;
+  }catch(_e){
+    return `RC ${Number(idx)+1}`;
+  }
+}
+
+function __verAccionesCompHtml(rcList, accionesCompUnique){
+  const build = accionesCompUnique || __buildAccionesCompUnique(rcList);
+  const all = Array.isArray(build && build.all) ? build.all : [];
+  const byRc = Array.isArray(build && build.byRc) ? build.byRc : [];
+  if(!all.length){
+    return `<p><em>Sin acciones complementarias registradas.</em></p>`;
+  }
+
+  let html = `<div class="ver-acciones-nota">Resumen ordenado de las acciones complementarias registradas en los RC. El detalle completo se mantiene debajo, agrupado por RC.</div>`;
+  html += `<div class="table-responsive"><table class="table table-sm table-bordered ver-actions-summary"><thead><tr>`;
+  html += `<th style="width:8%">RC</th><th style="width:11%">Fecha</th><th style="width:17%">Programa / Sector</th><th style="width:18%">Tipo de acción</th><th>Resumen</th><th style="width:12%">Estado</th>`;
+  html += `</tr></thead><tbody>`;
+
+  all.forEach(({__rcIdx, item})=>{
+    const a = __verAccionText(item);
+    const programa = __verInferProgramaAccion(a.detalle);
+    const tipo = __verInferTipoAccion(a.detalle);
+    const estado = __verInferEstadoAccion(a.detalle);
+    html += `<tr>`
+      + `<td>RC ${Number(__rcIdx)+1}</td>`
+      + `<td>${__escapeHtml(__verDateOnly(a.fecha))}</td>`
+      + `<td>${__escapeHtml(programa)}</td>`
+      + `<td>${__escapeHtml(tipo)}</td>`
+      + `<td class="ver-just">${__escapeHtml(__verResumenAccion(a.detalle, 260))}</td>`
+      + `<td>${__escapeHtml(estado)}</td>`
+      + `</tr>`;
+  });
+  html += `</tbody></table></div>`;
+
+  html += `<div class="ver-section-title" style="margin-top:8px">Detalle cronológico de acciones complementarias</div>`;
+  for(let idx = (Array.isArray(rcList) ? rcList.length : 0) - 1; idx >= 0; idx--){
+    const rows = Array.isArray(byRc[idx]) ? byRc[idx] : [];
+    if(!rows.length) continue;
+    html += `<div class="ver-rc-action-detail"><h6>${__escapeHtml(__verRcHeaderText(rcList, idx))}</h6>`;
+    rows.forEach(({item})=>{
+      const a = __verAccionText(item);
+      const prefix = a.fecha ? `[${__verDateOnly(a.fecha)}] ` : ``;
+      html += `<p class="mb-1 ver-just ver-prewrap">${__escapeHtml(prefix + a.detalle)}</p>`;
+    });
+    html += `</div>`;
+  }
+  return html;
+}
+
 
 // ===================== HELPERS: ENCABEZADO VER / PDF / WORD =====================
 function __verBaseTitulo(e){
@@ -5738,6 +5869,7 @@ function verEmergencia(e) {
     coords,
     daniosSrc,
     accionesCompAll,
+    accionesCompByRc: accionesCompUnique.byRc,
     elaboradoPorTxt,
     aprobadoPorTxt,
     nroGlobalWord,
@@ -5804,24 +5936,9 @@ function verEmergencia(e) {
   });
   html += `</tbody></table></div>`;
 
-  // Acciones Complementario (párrafos justificados)
+  // Acciones Complementario: resumen + detalle agrupado por RC
   html += `<div class="ver-section-title">Acciones del sector Desarrollo e Inclusión Social (Complementario)</div>`;
-  if (accionesCompAll.length > 0) {
-    accionesCompAll.forEach(({__rcIdx, item}) => {
-      let f = "";
-      let d = "";
-      if(item && typeof item === "object"){
-        f = __safe(item.fecha || item.fechaAccion || item.fechaRegistro || "");
-        d = __txt(item.descripcion || item.detalle || item.texto || "");
-      } else {
-        d = __txt(item);
-      }
-      const tag = `RC ${(__rcIdx+1)}`;
-      html += `<p class="mb-1 ver-just ver-prewrap">[${tag}${f ? " - " + f : ""}] ${d}</p>`;
-    });
-  } else {
-    html += `<p><em>Sin acciones complementarias registradas.</em></p>`;
-  }
+  html += __verAccionesCompHtml(rcList, accionesCompUnique);
 
   // Acciones Preliminar (párrafos justificados)
   html += `<div class="ver-section-title">Acciones del Sector Desarrollo e Inclusión Social (Preliminar)</div>`;
@@ -6065,6 +6182,11 @@ async function __printRC_PDF(idxOpt){
         .ver-prewrap{ white-space: pre-wrap; }
         .ver-just{ text-align: justify; text-justify: inter-word; }
         .ver-rc-hist .rc-block{ display:inline; }
+        .ver-actions-summary{ font-size:9pt; margin:4px 0 8px 0; }
+        .ver-actions-summary th, .ver-actions-summary td{ vertical-align:top; }
+        .ver-acciones-nota{ font-size:9pt; color:#555; margin:4px 0 6px 0; }
+        .ver-rc-action-detail{ border-left:3px solid #d9e2f3; padding-left:8px; margin:8px 0 10px 0; }
+        .ver-rc-action-detail h6{ color:#1F4E79; font-size:10pt; margin:0 0 4px 0; }
         h5,h6 { color:#1F4E79; margin: 8px 0 6px; }
         p { margin: 4px 0; }
         ul { margin: 6px 0 10px 18px; }
@@ -6221,8 +6343,11 @@ if(!window.docx){
 
     // Acciones Complementario: solo acciones únicas para no repetir contenido entre RC
     let accionesCompAll = (ctx && Array.isArray(ctx.accionesCompAll)) ? ctx.accionesCompAll : null;
-    if(!accionesCompAll){
-      accionesCompAll = __buildAccionesCompUnique(rcList).all;
+    let accionesCompByRc = (ctx && Array.isArray(ctx.accionesCompByRc)) ? ctx.accionesCompByRc : null;
+    if(!accionesCompAll || !accionesCompByRc){
+      const accionesBuild = __buildAccionesCompUnique(rcList);
+      if(!accionesCompAll) accionesCompAll = accionesBuild.all;
+      if(!accionesCompByRc) accionesCompByRc = accionesBuild.byRc;
     }
 
     const elaboradoPorTxt = (ctx && ctx.elaboradoPorTxt!==undefined) ? ctx.elaboradoPorTxt : ((lastRC && lastRC.elaboradoPor) ? lastRC.elaboradoPor : (e.elaboradoPor || ''));
@@ -6322,25 +6447,42 @@ if(!window.docx){
 
     children.push(new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, rows }));
 
-    // Acciones Complementario
+    // Acciones Complementario: resumen + detalle agrupado por RC
     children.push(new Paragraph({ spacing:{ before: 180 }, children:[new TextRun({ text:'Acciones del sector Desarrollo e Inclusión Social (Complementario)', bold: true, font:'Calibri', size: 22 })] }));
     if(Array.isArray(accionesCompAll) && accionesCompAll.length){
+      children.push(new Paragraph({ spacing:{ after: 60 }, children:[new TextRun({ text:'Resumen ordenado de las acciones complementarias registradas en los RC. El detalle completo se mantiene debajo, agrupado por RC.', font:'Calibri', size: 18, italics: true })] }));
+
+      const actionHeader = ['RC','Fecha','Programa / Sector','Tipo de acción','Resumen','Estado'].map(t=>
+        new TableCell({ children:[new Paragraph({ children:[new TextRun({ text:t, bold:true, font:'Calibri', size:18 })] })] })
+      );
+      const actionRows = [new TableRow({ children: actionHeader })];
       accionesCompAll.forEach(({__rcIdx, item})=>{
-        let f = '';
-        let d = '';
-        if(item && typeof item === 'object'){
-          f = safe(item.fecha || item.fechaAccion || item.fechaRegistro || '');
-          d = txt(item.descripcion || item.detalle || item.texto || '');
-        }else{
-          d = txt(item);
-        }
-        const tag = `RC ${(__rcIdx+1)}`;
-        const prefix = `[${tag}${f ? ' - ' + f : ''}] `;
-        const lines = (prefix + d).replace(/\r\n/g,'\n').split('\n');
-        lines.forEach((ln)=>{
-          children.push(new Paragraph({ alignment: AlignmentType.JUSTIFIED, children:[new TextRun({ text: ln, font:'Calibri', size: 22 })] }));
-        });
+        const a = __verAccionText(item);
+        const vals = [
+          `RC ${Number(__rcIdx)+1}`,
+          __verDateOnly(a.fecha),
+          __verInferProgramaAccion(a.detalle),
+          __verInferTipoAccion(a.detalle),
+          __verResumenAccion(a.detalle, 220),
+          __verInferEstadoAccion(a.detalle)
+        ];
+        actionRows.push(new TableRow({ children: vals.map(v=> new TableCell({ children:[new Paragraph({ children:[new TextRun({ text: safe(v), font:'Calibri', size:18 })] })] })) }));
       });
+      children.push(new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, rows: actionRows }));
+
+      children.push(new Paragraph({ spacing:{ before: 120, after: 60 }, children:[new TextRun({ text:'Detalle cronológico de acciones complementarias', bold: true, font:'Calibri', size: 22 })] }));
+      for(let idx = (Array.isArray(rcList) ? rcList.length : 0) - 1; idx >= 0; idx--){
+        const rowsRc = Array.isArray(accionesCompByRc && accionesCompByRc[idx]) ? accionesCompByRc[idx] : [];
+        if(!rowsRc.length) continue;
+        children.push(new Paragraph({ spacing:{ before: 80, after: 40 }, children:[new TextRun({ text: __verRcHeaderText(rcList, idx), bold:true, color:'1F4E79', font:'Calibri', size:20 })] }));
+        rowsRc.forEach(({item})=>{
+          const a = __verAccionText(item);
+          const prefix = a.fecha ? `[${__verDateOnly(a.fecha)}] ` : '';
+          (prefix + a.detalle).replace(/\r\n/g,'\n').split('\n').forEach((ln)=>{
+            children.push(new Paragraph({ alignment: AlignmentType.JUSTIFIED, children:[new TextRun({ text: ln, font:'Calibri', size: 22 })] }));
+          });
+        });
+      }
     }else{
       children.push(new Paragraph({ children:[new TextRun({ text:'Sin acciones complementarias registradas.', font:'Calibri', size: 22, italics: true })] }));
     }
