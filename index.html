@@ -7,6 +7,7 @@
 <!-- build: VER_PRINT_RC_ALWAYS_VISIBLE v4 2026-01-11 -->
 <!-- build: ETAPA1_ACCIONES_RC_RESUMEN_DETALLE v251 2026-06-15 -->
 <!-- build: ETAPA2_ACCIONES_RC_ESTRUCTURADAS v252 2026-06-16 -->
+<!-- build: ETAPA2_RC_MONITOREO_NO_INTERVENCION v253 2026-06-16 -->
 <meta charset="UTF-8" />
 <title>Registro de Emergencias MIDIS</title>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -20,7 +21,7 @@ body { background: #f5f5f5; }
 .card { margin-top: 1rem; }
 .table td input { width: 100%; }
 .hidden { display: none; }
-/* ======= VERSION 252 16/06/2026 - fix RP approve fresh detail/sync ======= */
+/* ======= VERSION 253 16/06/2026 - fix RP approve fresh detail/sync ======= */
 /* ======= VER (Listado de Emergencias): Formato de visualización/impresión ======= */
 .ver-report-wrap{ font-family: Calibri, Arial, sans-serif; font-size: 11pt; color:#111; }
 .ver-report-title{ font-family: Calibri, Arial, sans-serif; font-size:15pt; font-weight:700; color:#1F4E79; margin:0 0 6px 0; }
@@ -3096,6 +3097,9 @@ function __applyRCLockUI(){
   document.querySelectorAll('#accionesRCTabla button[data-rc-act="edit"], #accionesRCTabla button[data-rc-act="del"]').forEach(btn=>{
     btn.disabled = locked;
   });
+  if(!locked){
+    try{ __rcSyncInterventionCheckboxByType(); }catch(_e){}
+  }
 }
 
 function __syncRCActionButtons(){
@@ -5712,17 +5716,44 @@ function __verAccionEstado(item, detalle){
     return v || __verInferEstadoAccion(detalle);
   }catch(_e){ return __verInferEstadoAccion(detalle); }
 }
+function __accionNormInstitucional(v){
+  return String(v || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toUpperCase();
+}
+function __accionEsSeguimientoNoIntervencion(tipo, estado){
+  const t = __accionNormInstitucional(tipo);
+  const e = __accionNormInstitucional(estado);
+  return (
+    t === "SOLICITUD DE SEGUIMIENTO" ||
+    t === "MONITOREO SIN AFECTACION" ||
+    t === "CIERRE / SIN NUEVA ACCION" ||
+    t === "CIERRE SIN NUEVA ACCION" ||
+    t === "SIN ACCION" ||
+    e === "SIN ACCION" ||
+    e === "SIN INTERVENCION"
+  );
+}
+function __accionBoolLike(v){
+  if(v === true || v === 1) return true;
+  if(v === false || v === 0) return false;
+  const s = __accionNormInstitucional(v);
+  if(["TRUE", "1", "SI", "SÍ", "YES"].includes(s)) return true;
+  if(["FALSE", "0", "NO"].includes(s)) return false;
+  return !!v;
+}
 function __verAccionIntervencionLabel(item, detalle){
   try{
     const raw = (item && typeof item === "object") ? item : {};
+    const tipo = __verAccionTipo(raw, detalle);
+    const estado = __verAccionEstado(raw, detalle);
+
+    // Regla institucional dura: seguimiento/monitoreo/cierre/sin acción NUNCA es intervención real,
+    // aunque registros antiguos tengan guardado cuentaComoIntervencion=true.
+    if(__accionEsSeguimientoNoIntervencion(tipo, estado)) return "No";
+
     let v = raw.cuentaComoIntervencion;
     if(v === undefined || v === null) v = raw.intervencionReal;
-    if(v === undefined || v === null){
-      const tipo = __verAccionTipo(raw, detalle);
-      const estado = __verAccionEstado(raw, detalle);
-      v = !(tipo === "Solicitud de seguimiento" || tipo === "Monitoreo sin afectación" || tipo === "Cierre / sin nueva acción" || estado === "Sin acción" || estado === "Sin intervención");
-    }
-    return v ? "Sí" : "No";
+    if(v === undefined || v === null) v = true;
+    return __accionBoolLike(v) ? "Sí" : "No";
   }catch(_e){ return ""; }
 }
 
@@ -7575,6 +7606,29 @@ function __rcTextNorm(v){
   return String(v || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
 }
 
+function __rcEsSeguimientoNoIntervencion(tipo, estado){
+  const t = __rcTextNorm(tipo).trim();
+  const e = __rcTextNorm(estado).trim();
+  return (
+    t === "SOLICITUD DE SEGUIMIENTO" ||
+    t === "MONITOREO SIN AFECTACION" ||
+    t === "CIERRE / SIN NUEVA ACCION" ||
+    t === "CIERRE SIN NUEVA ACCION" ||
+    t === "SIN ACCION" ||
+    e === "SIN ACCION" ||
+    e === "SIN INTERVENCION"
+  );
+}
+
+function __rcBoolLike(v){
+  if(v === true || v === 1) return true;
+  if(v === false || v === 0) return false;
+  const s = __rcTextNorm(v).trim();
+  if(["TRUE", "1", "SI", "SÍ", "YES"].includes(s)) return true;
+  if(["FALSE", "0", "NO"].includes(s)) return false;
+  return !!v;
+}
+
 function __rcInferActionFromText(desc){
   const t = __rcTextNorm(desc);
   let programa = "Sector MIDIS";
@@ -7611,7 +7665,7 @@ function __rcInferActionFromText(desc){
   else if(/PROGRAM|PREVISTO/.test(t)) estadoAccion = "Programada";
   else if(/CULMIN|RESTABLECID|ATENDID/.test(t)) estadoAccion = "Culminada";
 
-  const cuentaComoIntervencion = !(tipoAccion === "Solicitud de seguimiento" || tipoAccion === "Monitoreo sin afectación" || tipoAccion === "Cierre / sin nueva acción" || estadoAccion === "Sin acción");
+  const cuentaComoIntervencion = !__rcEsSeguimientoNoIntervencion(tipoAccion, estadoAccion);
   return { programa, tipoAccion, estadoAccion, cuentaComoIntervencion };
 }
 
@@ -7628,7 +7682,7 @@ function __rcNormalizeAction(a){
   let cuentaComoIntervencion = item.cuentaComoIntervencion;
   if(cuentaComoIntervencion === undefined || cuentaComoIntervencion === null) cuentaComoIntervencion = item.intervencionReal;
   if(cuentaComoIntervencion === undefined || cuentaComoIntervencion === null) cuentaComoIntervencion = inferred.cuentaComoIntervencion;
-  cuentaComoIntervencion = !!cuentaComoIntervencion;
+  cuentaComoIntervencion = __rcEsSeguimientoNoIntervencion(tipoAccion, estadoAccion) ? false : __rcBoolLike(cuentaComoIntervencion);
   return { fecha, descripcion, programa, tipoAccion, estadoAccion, usuariosAtendidos, serviciosRestablecidos, cuentaComoIntervencion };
 }
 
@@ -7645,6 +7699,7 @@ function __rcSetActionForm(action){
   set("descAccionRC", a.descripcion);
   const ck = document.getElementById("cuentaIntervencionRC");
   if(ck) ck.checked = !!a.cuentaComoIntervencion;
+  try{ __rcSyncInterventionCheckboxByType(); }catch(_e){}
 }
 
 function __resetRCActionForm(){
@@ -7653,7 +7708,7 @@ function __resetRCActionForm(){
   ["fechaAccionRC","descAccionRC"].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=""; });
   ["usuariosAtendidosRC","serviciosRestablecidosRC"].forEach(id=>{ const el=document.getElementById(id); if(el) el.value="0"; });
   ["programaAccionRC","tipoAccionRC","estadoAccionRC"].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=""; });
-  const ck = document.getElementById("cuentaIntervencionRC"); if(ck) ck.checked = false;
+  const ck = document.getElementById("cuentaIntervencionRC"); if(ck){ ck.checked = false; ck.disabled = false; ck.title = ""; }
   const btn = document.getElementById("btnAddAccionRC"); if(btn) btn.textContent = "Agregar acción";
 }
 
@@ -7666,7 +7721,7 @@ function __rcGetActionFormValues(){
   const estadoAccion = String(document.getElementById("estadoAccionRC")?.value || inferred.estadoAccion || "").trim();
   const usuariosAtendidos = Math.max(0, Number(document.getElementById("usuariosAtendidosRC")?.value || 0) || 0);
   const serviciosRestablecidos = Math.max(0, Number(document.getElementById("serviciosRestablecidosRC")?.value || 0) || 0);
-  const cuentaComoIntervencion = !!document.getElementById("cuentaIntervencionRC")?.checked;
+  const cuentaComoIntervencion = __rcEsSeguimientoNoIntervencion(tipoAccion, estadoAccion) ? false : !!document.getElementById("cuentaIntervencionRC")?.checked;
   return { fecha, descripcion, programa, tipoAccion, estadoAccion, usuariosAtendidos, serviciosRestablecidos, cuentaComoIntervencion };
 }
 
@@ -7683,6 +7738,7 @@ function __rcAutoSuggestFromDescription(){
     if(t && !String(t.value||"").trim()) t.value = inf.tipoAccion;
     if(e && !String(e.value||"").trim()) e.value = inf.estadoAccion;
     if(ck && !ck.checked) ck.checked = !!inf.cuentaComoIntervencion;
+    try{ __rcSyncInterventionCheckboxByType(); }catch(_x){}
   }catch(_e){}
 }
 
@@ -7692,7 +7748,25 @@ function __rcSyncInterventionCheckboxByType(){
     const estado = String(document.getElementById("estadoAccionRC")?.value || "").trim();
     const ck = document.getElementById("cuentaIntervencionRC");
     if(!ck) return;
-    ck.checked = !(tipo === "Solicitud de seguimiento" || tipo === "Monitoreo sin afectación" || tipo === "Cierre / sin nueva acción" || estado === "Sin acción");
+
+    const sinTipoEstado = !tipo && !estado;
+    if(sinTipoEstado){
+      ck.disabled = false;
+      ck.checked = false;
+      ck.title = "";
+      return;
+    }
+
+    const forceNo = __rcEsSeguimientoNoIntervencion(tipo, estado);
+    if(forceNo){
+      ck.checked = false;
+      ck.disabled = true;
+      ck.title = "No cuenta como intervención real: seguimiento, monitoreo sin afectación, cierre o sin acción.";
+    }else{
+      ck.disabled = false;
+      ck.title = "";
+      if(!ck.checked) ck.checked = true;
+    }
   }catch(_e){}
 }
 
@@ -7768,6 +7842,7 @@ document.getElementById("btnCancelEditAccionRC")?.addEventListener("click", ()=>
 document.getElementById("descAccionRC")?.addEventListener("blur", __rcAutoSuggestFromDescription);
 document.getElementById("tipoAccionRC")?.addEventListener("change", __rcSyncInterventionCheckboxByType);
 document.getElementById("estadoAccionRC")?.addEventListener("change", __rcSyncInterventionCheckboxByType);
+document.getElementById("cuentaIntervencionRC")?.addEventListener("change", __rcSyncInterventionCheckboxByType);
 document.addEventListener("DOMContentLoaded", ()=>{
   try{ __rcPopulateStructuredActionSelectors(); __resetRCActionForm(); }catch(_e){}
 });
