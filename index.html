@@ -10,6 +10,8 @@
 <!-- build: ETAPA2_RC_MONITOREO_NO_INTERVENCION v253 2026-06-16 -->
 <!-- build: ETAPA3B_TAB_INTERVENCIONES v254 2026-06-16 -->
 <!-- build: ETAPA3B_FIX_CHART_SIZE v255 2026-06-16 -->
+<!-- build: VER_DETAIL_ON_DEMAND_UNIFIED v256 2026-06-16 -->
+<!-- build: VER_DETAIL_PRESERVE_INTERV_META v257 2026-06-16 -->
 <meta charset="UTF-8" />
 <title>Registro de Emergencias MIDIS</title>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -23,7 +25,7 @@ body { background: #f5f5f5; }
 .card { margin-top: 1rem; }
 .table td input { width: 100%; }
 .hidden { display: none; }
-/* ======= VERSION 255 16/06/2026 - fix RP approve fresh detail/sync ======= */
+/* ======= VERSION 257 16/06/2026 - fix RP approve fresh detail/sync ======= */
 /* ======= VER (Listado de Emergencias): Formato de visualización/impresión ======= */
 .ver-report-wrap{ font-family: Calibri, Arial, sans-serif; font-size: 11pt; color:#111; }
 .ver-report-title{ font-family: Calibri, Arial, sans-serif; font-size:15pt; font-weight:700; color:#1F4E79; margin:0 0 6px 0; }
@@ -6336,16 +6338,77 @@ function __scrollVerToLastRC(){
   }, 250);
 }
 
-function __openVerByCodigo(codigo){
+function __verSetExportButtonsEnabled(enabled){
   try{
-    const cod = String(codigo||"");
-    const em = (Array.isArray(emergencias) ? emergencias : []).find(x=>String(x.codigo||"")===cod) || null;
-    if(!em){ alert("No se encontró la emergencia: " + cod); return; }
-    verEmergencia(em);
-    if(__getRCList(em).length>0) __scrollVerToLastRC();
+    const btnPdf = document.getElementById("btnPrintRCLast");
+    const btnWord = document.getElementById("btnVerWord");
+    const btnCompat = document.getElementById("btnPrintRCCompat");
+    if(btnPdf) btnPdf.disabled = !enabled;
+    if(btnWord) btnWord.disabled = !enabled;
+    if(btnCompat) btnCompat.disabled = !enabled;
+  }catch(_e){}
+}
+
+function __verNeedsFullDetail(em){
+  try{
+    if(!em) return true;
+    if(typeof __syncIsSummaryOnly === "function" && __syncIsSummaryOnly(em)) return true;
+    if(em.__needsDetail === true || em.__summaryOnly === true) return true;
+    const rcs = Array.isArray(em.rcReportes) ? em.rcReportes : [];
+    if(rcs.length && rcs.some(rc => rc && (rc.__summaryOnly === true || rc.__needsDetail === true))) return true;
+    return false;
+  }catch(_e){ return true; }
+}
+
+async function __abrirVerDetallePorCodigo(codigo){
+  const cod = String(codigo || "").trim();
+  if(!cod){ alert("Código de emergencia no válido."); return; }
+
+  const modalEl = document.getElementById("modalVerEmergencia");
+  const cont = document.getElementById("contenidoVerEmergencia");
+
+  try{
+    // Mientras se trae el detalle completo, no se permite PDF/Word.
+    __verSetExportButtonsEnabled(false);
+    if(cont){
+      cont.innerHTML = `<div class="text-muted small p-2">Cargando detalle completo de ${cod} desde el servidor...</div>`;
+    }
+    try{
+      if(modalEl && window.bootstrap){
+        bootstrap.Modal.getOrCreateInstance(modalEl).show();
+      }
+    }catch(_e){}
+
+    let arr = Array.isArray(emergencias) ? emergencias : [];
+    let local = arr.find(x => String((x && x.codigo) || "").trim() === cod) || null;
+    let full = null;
+
+    if(local && !__verNeedsFullDetail(local)){
+      full = local;
+    }else{
+      full = await __ensureFullEmergencia(cod);
+    }
+
+    if(!full){
+      throw new Error("No se encontró el detalle completo para " + cod);
+    }
+
+    // Garantiza que PDF/Word se habiliten recién después de tener el payload completo.
+    verEmergencia(full);
+    if(__getRCList(full).length > 0) __scrollVerToLastRC();
   }catch(err){
-    alert("No se pudo abrir el detalle: " + (err?.message || String(err)));
+    __verSetExportButtonsEnabled(false);
+    const msg = (err && err.message) ? err.message : String(err);
+    if(cont){
+      cont.innerHTML = `<div class="alert alert-warning small mb-0">No se pudo cargar el detalle completo de <strong>${cod}</strong>.<br>${__escapeHtml ? __escapeHtml(msg) : msg}</div>`;
+    }
+    alert("No se pudo abrir el detalle desde D1: " + msg);
   }
+}
+
+// Alias de compatibilidad: todos los botones Ver deben terminar usando la misma función.
+function __openVerByCodigo(codigo){
+  return __abrirVerDetallePorCodigo(codigo);
 }
 
 
@@ -7584,7 +7647,7 @@ function cargarTablaEmergencias() {
     // Handlers de botones según disponibilidad
     const btnVer = tr.querySelector(".btnVer");
     if (btnVer && !btnVer.disabled && btnVer.style.display !== "none") {
-      btnVer.onclick = () => __withFullEmergencia(e, (full)=>{ verEmergencia(full); if(__getRCList(full).length>0) __scrollVerToLastRC(); });
+      btnVer.onclick = () => __abrirVerDetallePorCodigo(e.codigo);
     }
 
     const btnRP = tr.querySelector(".btnRP");
@@ -10995,6 +11058,15 @@ function __syncCleanPayload(obj){
   delete x.__needsExcelDetail;
   delete x.__detailLoading;
   delete x.__detailPromise;
+
+  // v257: los metadatos livianos de Intervenciones son columnas D1/lista,
+  // no deben viajar dentro del payload_json ni alterar el hash local.
+  try{
+    (typeof __INTERV_META_FIELDS !== 'undefined' ? __INTERV_META_FIELDS : []).forEach(pair=>{
+      delete x[pair[0]];
+      delete x[pair[1]];
+    });
+  }catch(_e){}
   return x;
 }
 async function __syncHash(obj){
@@ -12415,14 +12487,14 @@ function __syncSummaryToLocalRecord(r, previous){
     daniosMIDIS: (daniosResumen && typeof daniosResumen === "object") ? daniosResumen : (prev.daniosMIDIS || {}),
 
     // Etapa 3B: metadatos livianos de intervenciones entregados por /sync/list
-    intervencionesTotal: Number(((r && (r.intervenciones_total ?? r.intervencionesTotal)) ?? prev.intervencionesTotal ?? 0)) || 0,
-    intervencionesRealesTotal: Number(((r && (r.intervenciones_reales_total ?? r.intervencionesRealesTotal)) ?? prev.intervencionesRealesTotal ?? 0)) || 0,
-    intervencionesSeguimientoTotal: Number(((r && (r.intervenciones_seguimiento_total ?? r.intervencionesSeguimientoTotal)) ?? prev.intervencionesSeguimientoTotal ?? 0)) || 0,
-    intervencionesUsuariosAtendidos: Number(((r && (r.intervenciones_usuarios_atendidos ?? r.intervencionesUsuariosAtendidos)) ?? prev.intervencionesUsuariosAtendidos ?? 0)) || 0,
-    intervencionesServiciosRestablecidos: Number(((r && (r.intervenciones_servicios_restablecidos ?? r.intervencionesServiciosRestablecidos)) ?? prev.intervencionesServiciosRestablecidos ?? 0)) || 0,
-    intervencionesProgramasResumen: ((r && (r.intervenciones_programas_resumen ?? r.intervencionesProgramasResumen)) ?? prev.intervencionesProgramasResumen ?? null),
-    intervencionesTiposResumen: ((r && (r.intervenciones_tipos_resumen ?? r.intervencionesTiposResumen)) ?? prev.intervencionesTiposResumen ?? null),
-    intervencionesEstadosResumen: ((r && (r.intervenciones_estados_resumen ?? r.intervencionesEstadosResumen)) ?? prev.intervencionesEstadosResumen ?? null),
+    intervencionesTotal: Number(((r ? (r.intervenciones_total ?? r.intervencionesTotal) : undefined) ?? prev.intervencionesTotal ?? 0)) || 0,
+    intervencionesRealesTotal: Number(((r ? (r.intervenciones_reales_total ?? r.intervencionesRealesTotal) : undefined) ?? prev.intervencionesRealesTotal ?? 0)) || 0,
+    intervencionesSeguimientoTotal: Number(((r ? (r.intervenciones_seguimiento_total ?? r.intervencionesSeguimientoTotal) : undefined) ?? prev.intervencionesSeguimientoTotal ?? 0)) || 0,
+    intervencionesUsuariosAtendidos: Number(((r ? (r.intervenciones_usuarios_atendidos ?? r.intervencionesUsuariosAtendidos) : undefined) ?? prev.intervencionesUsuariosAtendidos ?? 0)) || 0,
+    intervencionesServiciosRestablecidos: Number(((r ? (r.intervenciones_servicios_restablecidos ?? r.intervencionesServiciosRestablecidos) : undefined) ?? prev.intervencionesServiciosRestablecidos ?? 0)) || 0,
+    intervencionesProgramasResumen: ((r ? (r.intervenciones_programas_resumen ?? r.intervencionesProgramasResumen) : undefined) ?? prev.intervencionesProgramasResumen ?? null),
+    intervencionesTiposResumen: ((r ? (r.intervenciones_tipos_resumen ?? r.intervencionesTiposResumen) : undefined) ?? prev.intervencionesTiposResumen ?? null),
+    intervencionesEstadosResumen: ((r ? (r.intervenciones_estados_resumen ?? r.intervencionesEstadosResumen) : undefined) ?? prev.intervencionesEstadosResumen ?? null),
     primeraIntervencionFecha: String((r && (r.primera_intervencion_fecha || r.primeraIntervencionFecha)) || prev.primeraIntervencionFecha || "").trim(),
     ultimaIntervencionFecha: String((r && (r.ultima_intervencion_fecha || r.ultimaIntervencionFecha)) || prev.ultimaIntervencionFecha || "").trim(),
 
@@ -12443,7 +12515,80 @@ function __syncSummaryToLocalRecord(r, previous){
 }
 
 function __syncIsSummaryOnly(em){
-  return !!(em && (em.__summaryOnly === true || em.__needsDetail === true));
+  try{
+    if(!em) return false;
+    if(em.__summaryOnly === true || em.__needsDetail === true) return true;
+    const rcs = Array.isArray(em.rcReportes) ? em.rcReportes : [];
+    if(rcs.length && rcs.every(rc => rc && (rc.__summaryOnly === true || rc.__needsDetail === true))) return true;
+    return false;
+  }catch(_e){
+    return !!(em && (em.__summaryOnly === true || em.__needsDetail === true));
+  }
+}
+
+
+// v257: conservar metadatos livianos de Intervenciones al hidratar detalle completo.
+// /sync/detail devuelve payload_json completo, pero esas columnas estadísticas vienen de /sync/list.
+// Por ello, al mezclar ambos no se debe dejar que el payload completo borre el resumen liviano.
+const __INTERV_META_FIELDS = [
+  ['intervencionesTotal', 'intervenciones_total'],
+  ['intervencionesRealesTotal', 'intervenciones_reales_total'],
+  ['intervencionesSeguimientoTotal', 'intervenciones_seguimiento_total'],
+  ['intervencionesUsuariosAtendidos', 'intervenciones_usuarios_atendidos'],
+  ['intervencionesServiciosRestablecidos', 'intervenciones_servicios_restablecidos'],
+  ['intervencionesProgramasResumen', 'intervenciones_programas_resumen'],
+  ['intervencionesTiposResumen', 'intervenciones_tipos_resumen'],
+  ['intervencionesEstadosResumen', 'intervenciones_estados_resumen'],
+  ['primeraIntervencionFecha', 'primera_intervencion_fecha'],
+  ['ultimaIntervencionFecha', 'ultima_intervencion_fecha']
+];
+
+function __intervMetaHasValue(v){
+  return v !== undefined && v !== null && v !== '';
+}
+
+function __captureIntervencionesMeta(){
+  const meta = {};
+  try{
+    const sources = Array.from(arguments || []).filter(Boolean);
+    for(const pair of __INTERV_META_FIELDS){
+      const camel = pair[0];
+      const snake = pair[1];
+      let found = false;
+      for(const src of sources){
+        if(!src || typeof src !== 'object') continue;
+        let v = src[camel];
+        if(!__intervMetaHasValue(v)) v = src[snake];
+        if(__intervMetaHasValue(v)){
+          meta[camel] = v;
+          meta[snake] = v;
+          found = true;
+          break;
+        }
+      }
+      if(!found){
+        // Mantener fechas vacías como vacío; no inventar valores.
+      }
+    }
+  }catch(_e){}
+  return meta;
+}
+
+function __applyIntervencionesMeta(target, meta){
+  try{
+    if(!target || !meta || typeof meta !== 'object') return target;
+    for(const pair of __INTERV_META_FIELDS){
+      const camel = pair[0];
+      const snake = pair[1];
+      let v = meta[camel];
+      if(!__intervMetaHasValue(v)) v = meta[snake];
+      if(__intervMetaHasValue(v)){
+        target[camel] = v;
+        target[snake] = v;
+      }
+    }
+  }catch(_e){}
+  return target;
 }
 
 async function __syncFetchDetail(codigo){
@@ -12469,9 +12614,27 @@ async function __ensureFullEmergencia(objOrCodigo){
   let idx = arr.findIndex(e => String(e && e.codigo ? e.codigo : '').trim() === code);
   let cur = idx >= 0 ? arr[idx] : (typeof objOrCodigo === 'object' ? objOrCodigo : null);
   if(cur && !__syncIsSummaryOnly(cur) && cur.codigo) return cur;
+  const prev = (idx >= 0 && arr[idx]) ? arr[idx] : (cur || {});
+  const metaAntesDetalle = __captureIntervencionesMeta(prev, cur);
   const rec = await __syncFetchDetail(code);
   if(!rec || !rec.payload) return cur;
   const payload = JSON.parse(JSON.stringify(rec.payload || {}));
+  try{
+    // Prioridad: columnas D1 del registro /sync/detail si vinieran > columnas livianas ya existentes de /sync/list > payload.
+    // Esto evita que el payload_json completo, que no necesariamente trae columnas D1, borre los KPIs de Intervenciones.
+    const metaDetalle = __captureIntervencionesMeta(rec);
+    const metaPayload = __captureIntervencionesMeta(payload);
+    const metaFinal = Object.assign({}, metaPayload, metaAntesDetalle, metaDetalle);
+    __applyIntervencionesMeta(payload, metaFinal);
+
+    [
+      'totalUsuariosAfectados','totalServiciosAfectados','totalUsuariosPorServicios','totalFallecidos','afectaMidis'
+    ].forEach(k=>{
+      if((payload[k] === undefined || payload[k] === null || payload[k] === '') && prev && prev[k] !== undefined){
+        payload[k] = prev[k];
+      }
+    });
+  }catch(_e){}
   try{ payload.estado_sync = 'Sincronizado'; }catch(_e){}
   try{ payload.__serverHash = String(rec.hash || ''); }catch(_e){}
   try{ payload.__serverUpdatedAt = String(rec.updated_at || ''); }catch(_e){}
@@ -12704,9 +12867,14 @@ async function __syncPull(since){
         continue;
       }
 
-      // Si el hash es igual y ya tenemos payload completo, conservarlo.
+      // Si el hash es igual y ya tenemos payload completo, conservarlo,
+      // pero actualizar metadatos livianos de Intervenciones que vienen de /sync/list.
       if(serverHash && lastSynced === serverHash && !__syncIsSummaryOnly(local[i])){
-        try{ local[i].__serverUpdatedAt = serverUpdated; local[i].__serverHash = serverHash; }catch(_e){}
+        try{
+          local[i].__serverUpdatedAt = serverUpdated;
+          local[i].__serverHash = serverHash;
+          __applyIntervencionesMeta(local[i], __captureIntervencionesMeta(r, local[i]));
+        }catch(_e){}
       }else{
         local[i] = __syncSummaryToLocalRecord(r, local[i]);
       }
