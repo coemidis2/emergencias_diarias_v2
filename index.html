@@ -9,6 +9,7 @@
 <!-- build: ETAPA2_ACCIONES_RC_ESTRUCTURADAS v252 2026-06-16 -->
 <!-- build: ETAPA2_RC_MONITOREO_NO_INTERVENCION v253 2026-06-16 -->
 <!-- build: ETAPA3B_TAB_INTERVENCIONES v254 2026-06-16 -->
+<!-- build: ETAPA3B_FIX_CHART_SIZE v255 2026-06-16 -->
 <meta charset="UTF-8" />
 <title>Registro de Emergencias MIDIS</title>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -22,7 +23,7 @@ body { background: #f5f5f5; }
 .card { margin-top: 1rem; }
 .table td input { width: 100%; }
 .hidden { display: none; }
-/* ======= VERSION 254 16/06/2026 - fix RP approve fresh detail/sync ======= */
+/* ======= VERSION 255 16/06/2026 - fix RP approve fresh detail/sync ======= */
 /* ======= VER (Listado de Emergencias): Formato de visualización/impresión ======= */
 .ver-report-wrap{ font-family: Calibri, Arial, sans-serif; font-size: 11pt; color:#111; }
 .ver-report-title{ font-family: Calibri, Arial, sans-serif; font-size:15pt; font-weight:700; color:#1F4E79; margin:0 0 6px 0; }
@@ -55,7 +56,37 @@ body { background: #f5f5f5; }
 .interv-kpi-card{ border:0; border-radius:12px; box-shadow:0 1px 4px rgba(0,0,0,.08); }
 .interv-kpi-label{ font-size:.78rem; color:#6c757d; line-height:1.15; }
 .interv-kpi-value{ font-size:1.35rem; font-weight:800; color:#1F4E79; }
-.interv-chart-box{ min-height:260px; }
+.interv-chart-box{
+  position:relative;
+  height:320px;
+  min-height:320px;
+  max-height:320px;
+  overflow:hidden;
+  display:flex;
+  flex-direction:column;
+}
+.interv-chart-box-lg{
+  height:340px;
+  min-height:340px;
+  max-height:340px;
+}
+.interv-chart-canvas{
+  position:relative;
+  flex:1 1 auto;
+  min-height:0;
+  height:250px;
+  max-height:250px;
+}
+.interv-chart-box-lg .interv-chart-canvas{
+  height:270px;
+  max-height:270px;
+}
+#intervTab .interv-chart-canvas canvas{
+  display:block !important;
+  width:100% !important;
+  height:100% !important;
+  max-height:100% !important;
+}
 #intervTab .table th{ white-space:nowrap; }
 #intervTab .table td{ vertical-align:middle; }
 .interv-program-pill{ display:inline-block; padding:2px 6px; margin:1px 2px 1px 0; border-radius:10px; background:#e9ecef; font-size:.78rem; }
@@ -1303,25 +1334,25 @@ body { background: #f5f5f5; }
         <div class="col-lg-6">
           <div class="border rounded bg-white p-2 interv-chart-box">
             <h5 class="text-primary mb-2">Acciones por Programa / Sector</h5>
-            <canvas id="intervChartPrograma"></canvas>
+            <div class="interv-chart-canvas"><canvas id="intervChartPrograma"></canvas></div>
           </div>
         </div>
         <div class="col-lg-6">
           <div class="border rounded bg-white p-2 interv-chart-box">
             <h5 class="text-primary mb-2">Acciones por tipo</h5>
-            <canvas id="intervChartTipo"></canvas>
+            <div class="interv-chart-canvas"><canvas id="intervChartTipo"></canvas></div>
           </div>
         </div>
         <div class="col-lg-6">
           <div class="border rounded bg-white p-2 interv-chart-box">
             <h5 class="text-primary mb-2">Acciones por estado</h5>
-            <canvas id="intervChartEstado"></canvas>
+            <div class="interv-chart-canvas"><canvas id="intervChartEstado"></canvas></div>
           </div>
         </div>
         <div class="col-lg-6">
-          <div class="border rounded bg-white p-2 interv-chart-box">
+          <div class="border rounded bg-white p-2 interv-chart-box interv-chart-box-lg">
             <h5 class="text-primary mb-2">Intervenciones y seguimientos por departamento</h5>
-            <canvas id="intervChartDepartamento"></canvas>
+            <div class="interv-chart-canvas"><canvas id="intervChartDepartamento"></canvas></div>
           </div>
         </div>
       </div>
@@ -10724,11 +10755,37 @@ function __intervMakeChart(id, label, multi){
   if(typeof Chart === "undefined") return null;
   const el = document.getElementById(id);
   if(!el) return null;
+  try{
+    el.removeAttribute("height");
+    el.removeAttribute("width");
+    el.style.height = "100%";
+    el.style.width = "100%";
+  }catch(e){}
   return new Chart(el, {
     type:"bar",
-    data:{labels:[], datasets: multi ? [] : [{label, data:[]}]},
-    options:{responsive:true, maintainAspectRatio:false, indexAxis:'y', plugins:{legend:{display:!!multi}}, scales:{x:{beginAtZero:true, ticks:{precision:0}}, y:{ticks:{autoSkip:false}}}}
+    data:{labels:[], datasets: multi ? [] : [{label, data:[], maxBarThickness:22}]},
+    options:{
+      responsive:true,
+      maintainAspectRatio:false,
+      resizeDelay:120,
+      animation:false,
+      indexAxis:'y',
+      layout:{padding:{top:4,right:8,bottom:2,left:4}},
+      plugins:{legend:{display:!!multi, labels:{boxWidth:14, font:{size:10}}}},
+      scales:{
+        x:{beginAtZero:true, ticks:{precision:0}},
+        y:{ticks:{autoSkip:false, font:{size:10}}}
+      }
+    }
   });
+}
+
+function __intervResizeCharts(){
+  try{
+    [__intervChartPrograma, __intervChartTipo, __intervChartEstado, __intervChartDepartamento].forEach(ch=>{
+      if(ch && typeof ch.resize === "function") ch.resize();
+    });
+  }catch(e){}
 }
 
 function __intervInitCharts(){
@@ -10747,8 +10804,8 @@ function __intervUpdateSingleChart(chart, counter){
   if(!chart) return;
   const entries = __intervTopEntries(counter, 12);
   chart.data.labels = entries.map(x=>x[0]);
-  chart.data.datasets = [{ label:"Acciones", data: entries.map(x=>__intervNum(x[1])) }];
-  chart.update();
+  chart.data.datasets = [{ label:"Acciones", data: entries.map(x=>__intervNum(x[1])), maxBarThickness:22 }];
+  chart.update("none");
 }
 
 function __intervUpdateDepartamentoChart(chart, depCounter){
@@ -10756,10 +10813,10 @@ function __intervUpdateDepartamentoChart(chart, depCounter){
   const rows = Object.entries(depCounter || {}).map(([dep,v])=>({dep, reales:__intervNum(v.reales), seguimiento:__intervNum(v.seguimiento), total:__intervNum(v.reales)+__intervNum(v.seguimiento)})).filter(r=>r.total>0).sort((a,b)=>b.total-a.total).slice(0,12);
   chart.data.labels = rows.map(r=>r.dep);
   chart.data.datasets = [
-    {label:"Intervenciones reales", data: rows.map(r=>r.reales)},
-    {label:"Seguimientos / monitoreos", data: rows.map(r=>r.seguimiento)}
+    {label:"Intervenciones reales", data: rows.map(r=>r.reales), maxBarThickness:20},
+    {label:"Seguimientos / monitoreos", data: rows.map(r=>r.seguimiento), maxBarThickness:20}
   ];
-  chart.update();
+  chart.update("none");
 }
 
 function __intervRenderTable(data){
@@ -10838,6 +10895,8 @@ function intervencionesRefresh(opts){
   __intervUpdateSingleChart(__intervChartTipo, byTipo);
   __intervUpdateSingleChart(__intervChartEstado, byEstado);
   __intervUpdateDepartamentoChart(__intervChartDepartamento, byDep);
+  __intervResizeCharts();
+  setTimeout(__intervResizeCharts, 120);
   __intervRenderTable(data);
 }
 
@@ -10850,7 +10909,12 @@ document.addEventListener("DOMContentLoaded", ()=>{
   document.getElementById("intervPrev")?.addEventListener("click", ()=>{ __intervPager.page = Math.max(1, (__intervPager.page||1)-1); __intervRenderTable(__intervLastFiltered || []); });
   document.getElementById("intervNext")?.addEventListener("click", ()=>{ __intervPager.page = (__intervPager.page||1)+1; __intervRenderTable(__intervLastFiltered || []); });
   document.querySelector('a[href="#intervTab"]')?.addEventListener("shown.bs.tab", ()=>{
-    setTimeout(()=>intervencionesRefresh({force:true}), 50);
+    setTimeout(()=>{ intervencionesRefresh({force:true}); __intervResizeCharts(); }, 120);
+    setTimeout(__intervResizeCharts, 350);
+  });
+  window.addEventListener("resize", ()=>{
+    const isActive = document.querySelector('a[href="#intervTab"]')?.classList.contains("active");
+    if(isActive) setTimeout(__intervResizeCharts, 120);
   });
   setInterval(()=>{
     const isActive = document.querySelector('a[href="#intervTab"]')?.classList.contains("active");
