@@ -8,6 +8,7 @@
 <!-- build: ETAPA1_ACCIONES_RC_RESUMEN_DETALLE v251 2026-06-15 -->
 <!-- build: ETAPA2_ACCIONES_RC_ESTRUCTURADAS v252 2026-06-16 -->
 <!-- build: ETAPA2_RC_MONITOREO_NO_INTERVENCION v253 2026-06-16 -->
+<!-- build: ETAPA3B_TAB_INTERVENCIONES v254 2026-06-16 -->
 <meta charset="UTF-8" />
 <title>Registro de Emergencias MIDIS</title>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -21,7 +22,7 @@ body { background: #f5f5f5; }
 .card { margin-top: 1rem; }
 .table td input { width: 100%; }
 .hidden { display: none; }
-/* ======= VERSION 253 16/06/2026 - fix RP approve fresh detail/sync ======= */
+/* ======= VERSION 254 16/06/2026 - fix RP approve fresh detail/sync ======= */
 /* ======= VER (Listado de Emergencias): Formato de visualización/impresión ======= */
 .ver-report-wrap{ font-family: Calibri, Arial, sans-serif; font-size: 11pt; color:#111; }
 .ver-report-title{ font-family: Calibri, Arial, sans-serif; font-size:15pt; font-weight:700; color:#1F4E79; margin:0 0 6px 0; }
@@ -48,6 +49,16 @@ body { background: #f5f5f5; }
 .rc-action-pill.interv-si{ background:#d1e7dd; color:#0f5132; }
 .rc-action-pill.interv-no{ background:#f8d7da; color:#842029; }
 .rc-action-detail-cell{ min-width:260px; white-space:normal; }
+
+
+/* ======= ETAPA 3B: Pestaña Intervenciones ======= */
+.interv-kpi-card{ border:0; border-radius:12px; box-shadow:0 1px 4px rgba(0,0,0,.08); }
+.interv-kpi-label{ font-size:.78rem; color:#6c757d; line-height:1.15; }
+.interv-kpi-value{ font-size:1.35rem; font-weight:800; color:#1F4E79; }
+.interv-chart-box{ min-height:260px; }
+#intervTab .table th{ white-space:nowrap; }
+#intervTab .table td{ vertical-align:middle; }
+.interv-program-pill{ display:inline-block; padding:2px 6px; margin:1px 2px 1px 0; border-radius:10px; background:#e9ecef; font-size:.78rem; }
 
 /* ======= AUTH (Login/Roles) ======= */
 .auth-screen{
@@ -398,6 +409,9 @@ body { background: #f5f5f5; }
 
   <li class="nav-item">
     <a class="nav-link" data-bs-toggle="tab" href="#dashTab">Dashboard</a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" data-bs-toggle="tab" href="#intervTab">Intervenciones</a>
   </li>
   <li class="nav-item d-none" id="segTabLi">
     <a class="nav-link" data-bs-toggle="tab" href="#segTab">Seguimiento Reportes</a>
@@ -1227,6 +1241,138 @@ body { background: #f5f5f5; }
   </div>
 </div>
 
+
+
+<!-- ====================== INTERVENCIONES ======================= -->
+<div class="tab-pane fade" id="intervTab">
+  <div class="card mt-3">
+    <div class="card-body">
+      <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+        <div>
+          <h4 class="text-primary mb-0">Intervenciones</h4>
+          <div class="text-muted small">Dashboard de acciones e intervenciones del Sector Desarrollo e Inclusión Social. Usa solo columnas livianas de /sync/list.</div>
+        </div>
+        <button class="btn btn-sm btn-outline-primary" id="btnIntervActualizar" type="button">Actualizar</button>
+      </div>
+
+      <div class="border rounded bg-white p-3 mb-3">
+        <div class="row g-2 align-items-end">
+          <div class="col-md-3">
+            <label class="form-label mb-1">Departamento</label>
+            <select id="intervDepartamento" class="form-control form-control-sm">
+              <option value="">(Todos)</option>
+            </select>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label mb-1">Peligro</label>
+            <select id="intervPeligro" class="form-control form-control-sm">
+              <option value="">(Todos)</option>
+            </select>
+          </div>
+          <div class="col-md-2">
+            <label class="form-label mb-1">Fecha inicial</label>
+            <input type="date" id="intervFechaInicial" class="form-control form-control-sm">
+          </div>
+          <div class="col-md-2">
+            <label class="form-label mb-1">Fecha final</label>
+            <input type="date" id="intervFechaFinal" class="form-control form-control-sm">
+          </div>
+          <div class="col-md-2">
+            <div class="form-check mb-1">
+              <input class="form-check-input" type="checkbox" id="intervSoloReales">
+              <label class="form-check-label small" for="intervSoloReales">Solo con intervención real</label>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="row g-2 mb-3" id="intervResumenCards">
+        <div class="col-lg-2 col-md-4 col-6"><div class="card interv-kpi-card"><div class="card-body py-2"><div class="interv-kpi-label">Acciones registradas</div><div class="interv-kpi-value" id="intervKpiTotal">0</div></div></div></div>
+        <div class="col-lg-2 col-md-4 col-6"><div class="card interv-kpi-card"><div class="card-body py-2"><div class="interv-kpi-label">Intervenciones reales</div><div class="interv-kpi-value" id="intervKpiReales">0</div></div></div></div>
+        <div class="col-lg-2 col-md-4 col-6"><div class="card interv-kpi-card"><div class="card-body py-2"><div class="interv-kpi-label">Seguimientos / monitoreos</div><div class="interv-kpi-value" id="intervKpiSeguimientos">0</div></div></div></div>
+        <div class="col-lg-2 col-md-4 col-6"><div class="card interv-kpi-card"><div class="card-body py-2"><div class="interv-kpi-label">Emergencias con intervención</div><div class="interv-kpi-value" id="intervKpiEmergencias">0</div></div></div></div>
+        <div class="col-lg-2 col-md-4 col-6"><div class="card interv-kpi-card"><div class="card-body py-2"><div class="interv-kpi-label">Usuarios atendidos</div><div class="interv-kpi-value" id="intervKpiUsuarios">0</div></div></div></div>
+        <div class="col-lg-2 col-md-4 col-6"><div class="card interv-kpi-card"><div class="card-body py-2"><div class="interv-kpi-label">Servicios restablecidos</div><div class="interv-kpi-value" id="intervKpiServicios">0</div></div></div></div>
+      </div>
+
+      <div class="alert alert-info small py-2">
+        <strong>Nota:</strong> “Intervenciones reales” usa la regla del Worker. “Monitoreo sin afectación”, “Solicitud de seguimiento”, “Cierre / sin nueva acción” y “Sin acción” se consideran seguimiento, no intervención real.
+      </div>
+
+      <div class="row g-3 mb-3">
+        <div class="col-lg-6">
+          <div class="border rounded bg-white p-2 interv-chart-box">
+            <h5 class="text-primary mb-2">Acciones por Programa / Sector</h5>
+            <canvas id="intervChartPrograma"></canvas>
+          </div>
+        </div>
+        <div class="col-lg-6">
+          <div class="border rounded bg-white p-2 interv-chart-box">
+            <h5 class="text-primary mb-2">Acciones por tipo</h5>
+            <canvas id="intervChartTipo"></canvas>
+          </div>
+        </div>
+        <div class="col-lg-6">
+          <div class="border rounded bg-white p-2 interv-chart-box">
+            <h5 class="text-primary mb-2">Acciones por estado</h5>
+            <canvas id="intervChartEstado"></canvas>
+          </div>
+        </div>
+        <div class="col-lg-6">
+          <div class="border rounded bg-white p-2 interv-chart-box">
+            <h5 class="text-primary mb-2">Intervenciones y seguimientos por departamento</h5>
+            <canvas id="intervChartDepartamento"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <div class="border rounded bg-white p-3">
+        <div class="d-flex flex-wrap justify-content-between align-items-center mb-2 gap-2">
+          <h5 class="text-primary mb-0">Relación de emergencias con acciones/intervenciones</h5>
+          <div class="d-flex align-items-center gap-2">
+            <span class="small text-muted">Mostrar</span>
+            <select id="intervPageSize" class="form-select form-select-sm" style="width:auto">
+              <option value="10" selected>10</option>
+              <option value="25">25</option>
+              <option value="50">50</option>
+              <option value="100">100</option>
+            </select>
+            <span class="small text-muted">registros</span>
+          </div>
+        </div>
+        <div id="intervPageInfo" class="small text-muted mb-1">0 a 0 de 0 registros</div>
+        <div class="table-responsive">
+          <table class="table table-sm table-bordered align-middle mb-0">
+            <thead>
+              <tr>
+                <th>Código</th>
+                <th>Peligro</th>
+                <th>Departamento</th>
+                <th>Programas / Sector</th>
+                <th class="text-end">Acciones</th>
+                <th class="text-end">Interv. reales</th>
+                <th class="text-end">Seguimientos</th>
+                <th class="text-end">Usuarios</th>
+                <th class="text-end">Servicios</th>
+                <th>Última intervención</th>
+                <th class="text-center" style="width:54px">Ver</th>
+              </tr>
+            </thead>
+            <tbody id="intervTbody">
+              <tr><td colspan="11" class="text-muted text-center">Sin datos para mostrar.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="d-flex justify-content-end mt-2">
+          <div class="btn-group btn-group-sm" role="group" aria-label="Paginación intervenciones">
+            <button id="intervPrev" type="button" class="btn btn-outline-secondary">Anterior</button>
+            <button id="intervNext" type="button" class="btn btn-outline-secondary">Siguiente</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
 
 
 <!-- ====================== SEGUIMIENTO REPORTES (ADMIN) ======================= -->
@@ -10452,6 +10598,266 @@ document.addEventListener("DOMContentLoaded", ()=>{
   document.getElementById("dashPillEvento")?.addEventListener("shown.bs.tab", ()=>dashboardRefresh({force:true}));
   document.getElementById("dashPillRegion")?.addEventListener("shown.bs.tab", ()=>dashboardRefresh({force:true}));
 });
+
+
+/* ===================== ETAPA 3B: DASHBOARD DE INTERVENCIONES ===================== */
+let __intervChartPrograma = null;
+let __intervChartTipo = null;
+let __intervChartEstado = null;
+let __intervChartDepartamento = null;
+let __intervPager = { size: 10, page: 1 };
+let __intervLastFiltered = [];
+
+function __intervNum(v){
+  if(v === null || v === undefined || v === "") return 0;
+  const n = Number(String(v).replace(",", "."));
+  return Number.isFinite(n) ? n : 0;
+}
+
+function __intervParseObj(v){
+  if(!v) return {};
+  if(typeof v === "object" && !Array.isArray(v)) return v;
+  if(typeof v === "string"){
+    const t = v.trim();
+    if(!t) return {};
+    try{
+      const o = JSON.parse(t);
+      return (o && typeof o === "object" && !Array.isArray(o)) ? o : {};
+    }catch(e){ return {}; }
+  }
+  return {};
+}
+
+function __intervNorm(v){
+  try{
+    return String(v || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().replace(/\s+/g," ").trim();
+  }catch(e){ return String(v || "").toUpperCase().trim(); }
+}
+
+function __intervFields(e){
+  e = e || {};
+  return {
+    total: __intervNum(e.intervencionesTotal ?? e.intervenciones_total),
+    reales: __intervNum(e.intervencionesRealesTotal ?? e.intervenciones_reales_total),
+    seguimiento: __intervNum(e.intervencionesSeguimientoTotal ?? e.intervenciones_seguimiento_total),
+    usuarios: __intervNum(e.intervencionesUsuariosAtendidos ?? e.intervenciones_usuarios_atendidos),
+    servicios: __intervNum(e.intervencionesServiciosRestablecidos ?? e.intervenciones_servicios_restablecidos),
+    programas: __intervParseObj(e.intervencionesProgramasResumen ?? e.intervenciones_programas_resumen),
+    tipos: __intervParseObj(e.intervencionesTiposResumen ?? e.intervenciones_tipos_resumen),
+    estados: __intervParseObj(e.intervencionesEstadosResumen ?? e.intervenciones_estados_resumen),
+    primera: String(e.primeraIntervencionFecha ?? e.primera_intervencion_fecha ?? "").trim(),
+    ultima: String(e.ultimaIntervencionFecha ?? e.ultima_intervencion_fecha ?? "").trim()
+  };
+}
+
+function __intervMergeCounter(target, obj){
+  obj = __intervParseObj(obj);
+  Object.keys(obj || {}).forEach(k=>{
+    const key = String(k || "").trim() || "Sin clasificar";
+    target[key] = (target[key] || 0) + (__intervNum(obj[k]) || 0);
+  });
+}
+
+function __intervSetText(id, v){
+  const el = document.getElementById(id);
+  if(el) el.textContent = String(v ?? "0");
+}
+
+function __intervDateOnly(v){
+  try{
+    if(!v) return "";
+    const s = String(v).trim();
+    const m = s.match(/^(\d{4}-\d{2}-\d{2})/);
+    if(m) return m[1];
+    const d = new Date(s);
+    if(!isNaN(d.getTime())) return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+  }catch(e){}
+  return "";
+}
+
+function __intervAllRecords(){
+  try{
+    const arr = (typeof emergencias !== "undefined" && Array.isArray(emergencias)) ? emergencias : [];
+    return arr.filter(e => !(typeof __isDeleted === "function" && __isDeleted(e)));
+  }catch(e){ return []; }
+}
+
+function __intervPopulateSelects(data){
+  try{
+    const depSel = document.getElementById("intervDepartamento");
+    const pelSel = document.getElementById("intervPeligro");
+    if(!depSel || !pelSel) return;
+    const curDep = depSel.value || "";
+    const curPel = pelSel.value || "";
+    const deps = Array.from(new Set((data||[]).map(e=>String(e.departamento||"").trim()).filter(Boolean))).sort();
+    const pels = Array.from(new Set((data||[]).map(e=>String(e.peligro||"").trim()).filter(Boolean))).sort();
+    depSel.innerHTML = '<option value="">(Todos)</option>' + deps.map(v=>`<option value="${__escapeHtml(v)}">${__escapeHtml(v)}</option>`).join("");
+    pelSel.innerHTML = '<option value="">(Todos)</option>' + pels.map(v=>`<option value="${__escapeHtml(v)}">${__escapeHtml(v)}</option>`).join("");
+    depSel.value = deps.includes(curDep) ? curDep : "";
+    pelSel.value = pels.includes(curPel) ? curPel : "";
+  }catch(e){}
+}
+
+function __intervGetFiltered(){
+  const all = __intervAllRecords();
+  const dep = __intervNorm(document.getElementById("intervDepartamento")?.value || "");
+  const pel = __intervNorm(document.getElementById("intervPeligro")?.value || "");
+  const fi = String(document.getElementById("intervFechaInicial")?.value || "").trim();
+  const ff = String(document.getElementById("intervFechaFinal")?.value || "").trim();
+  const soloReales = !!document.getElementById("intervSoloReales")?.checked;
+
+  return all.filter(e=>{
+    const f = __intervFields(e);
+    const any = f.total > 0 || f.reales > 0 || f.seguimiento > 0 || Object.keys(f.programas).length || Object.keys(f.tipos).length || Object.keys(f.estados).length;
+    if(!any) return false;
+    if(soloReales && f.reales <= 0) return false;
+    if(dep && __intervNorm(e.departamento) !== dep) return false;
+    if(pel && __intervNorm(e.peligro) !== pel) return false;
+    const date = __intervDateOnly(e.fechaPeligro || e.fecha_peligro || e.fechaHora || e.fecha_hora);
+    if(fi && (!date || date < fi)) return false;
+    if(ff && (!date || date > ff)) return false;
+    return true;
+  });
+}
+
+function __intervMakeChart(id, label, multi){
+  if(typeof Chart === "undefined") return null;
+  const el = document.getElementById(id);
+  if(!el) return null;
+  return new Chart(el, {
+    type:"bar",
+    data:{labels:[], datasets: multi ? [] : [{label, data:[]}]},
+    options:{responsive:true, maintainAspectRatio:false, indexAxis:'y', plugins:{legend:{display:!!multi}}, scales:{x:{beginAtZero:true, ticks:{precision:0}}, y:{ticks:{autoSkip:false}}}}
+  });
+}
+
+function __intervInitCharts(){
+  if(typeof Chart === "undefined") return;
+  if(!__intervChartPrograma) __intervChartPrograma = __intervMakeChart("intervChartPrograma", "Acciones", false);
+  if(!__intervChartTipo) __intervChartTipo = __intervMakeChart("intervChartTipo", "Acciones", false);
+  if(!__intervChartEstado) __intervChartEstado = __intervMakeChart("intervChartEstado", "Acciones", false);
+  if(!__intervChartDepartamento) __intervChartDepartamento = __intervMakeChart("intervChartDepartamento", "Acciones", true);
+}
+
+function __intervTopEntries(obj, limit){
+  return Object.entries(obj || {}).filter(x=>__intervNum(x[1])>0).sort((a,b)=>__intervNum(b[1])-__intervNum(a[1])).slice(0, limit || 12);
+}
+
+function __intervUpdateSingleChart(chart, counter){
+  if(!chart) return;
+  const entries = __intervTopEntries(counter, 12);
+  chart.data.labels = entries.map(x=>x[0]);
+  chart.data.datasets = [{ label:"Acciones", data: entries.map(x=>__intervNum(x[1])) }];
+  chart.update();
+}
+
+function __intervUpdateDepartamentoChart(chart, depCounter){
+  if(!chart) return;
+  const rows = Object.entries(depCounter || {}).map(([dep,v])=>({dep, reales:__intervNum(v.reales), seguimiento:__intervNum(v.seguimiento), total:__intervNum(v.reales)+__intervNum(v.seguimiento)})).filter(r=>r.total>0).sort((a,b)=>b.total-a.total).slice(0,12);
+  chart.data.labels = rows.map(r=>r.dep);
+  chart.data.datasets = [
+    {label:"Intervenciones reales", data: rows.map(r=>r.reales)},
+    {label:"Seguimientos / monitoreos", data: rows.map(r=>r.seguimiento)}
+  ];
+  chart.update();
+}
+
+function __intervRenderTable(data){
+  const tbody = document.getElementById("intervTbody");
+  if(!tbody) return;
+  const pageSize = Number(document.getElementById("intervPageSize")?.value || __intervPager.size || 10) || 10;
+  __intervPager.size = pageSize;
+  const total = Array.isArray(data) ? data.length : 0;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  __intervPager.page = Math.min(Math.max(1, __intervPager.page || 1), totalPages);
+  const start = (__intervPager.page - 1) * pageSize;
+  const slice = (data || []).slice(start, start + pageSize);
+  const info = document.getElementById("intervPageInfo");
+  if(info) info.textContent = total ? `${start+1} a ${Math.min(start+pageSize,total)} de ${total} registros` : "0 a 0 de 0 registros";
+  const prev = document.getElementById("intervPrev");
+  const next = document.getElementById("intervNext");
+  if(prev) prev.disabled = __intervPager.page <= 1;
+  if(next) next.disabled = __intervPager.page >= totalPages;
+
+  if(!slice.length){
+    tbody.innerHTML = '<tr><td colspan="11" class="text-muted text-center">Sin acciones/intervenciones para el filtro seleccionado.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = slice.map(e=>{
+    const f = __intervFields(e);
+    const programs = Object.keys(f.programas || {}).filter(k=>__intervNum(f.programas[k])>0);
+    const pills = programs.length ? programs.slice(0,5).map(p=>`<span class="interv-program-pill">${__escapeHtml(p)}</span>`).join("") + (programs.length>5 ? `<span class="interv-program-pill">+${programs.length-5}</span>` : "") : "—";
+    return `<tr>
+      <td class="fw-semibold">${__escapeHtml(e.codigo || "")}</td>
+      <td>${__escapeHtml(e.peligro || "")}</td>
+      <td>${__escapeHtml(e.departamento || "")}</td>
+      <td>${pills}</td>
+      <td class="text-end">${f.total}</td>
+      <td class="text-end fw-semibold">${f.reales}</td>
+      <td class="text-end">${f.seguimiento}</td>
+      <td class="text-end">${f.usuarios}</td>
+      <td class="text-end">${f.servicios}</td>
+      <td>${__escapeHtml(f.ultima || "—")}</td>
+      <td class="text-center"><button type="button" class="btn btn-sm btn-outline-primary" title="Ver RP/RC" onclick='__openVerByCodigo(${JSON.stringify(String(e.codigo||""))})'>👁</button></td>
+    </tr>`;
+  }).join("");
+}
+
+function intervencionesRefresh(opts){
+  opts = opts || {};
+  __intervInitCharts();
+  const all = __intervAllRecords();
+  __intervPopulateSelects(all);
+  const data = __intervGetFiltered().sort((a,b)=>String(b.ultimaIntervencionFecha || b.updatedAt || b.fechaHora || "").localeCompare(String(a.ultimaIntervencionFecha || a.updatedAt || a.fechaHora || "")));
+  __intervLastFiltered = data;
+
+  let total=0, reales=0, seg=0, usuarios=0, servicios=0, emergConReal=0;
+  const byProg = {}, byTipo = {}, byEstado = {}, byDep = {};
+  data.forEach(e=>{
+    const f = __intervFields(e);
+    total += f.total; reales += f.reales; seg += f.seguimiento; usuarios += f.usuarios; servicios += f.servicios;
+    if(f.reales > 0) emergConReal += 1;
+    __intervMergeCounter(byProg, f.programas);
+    __intervMergeCounter(byTipo, f.tipos);
+    __intervMergeCounter(byEstado, f.estados);
+    const dep = String(e.departamento || "Sin departamento").trim() || "Sin departamento";
+    if(!byDep[dep]) byDep[dep] = {reales:0, seguimiento:0};
+    byDep[dep].reales += f.reales;
+    byDep[dep].seguimiento += f.seguimiento;
+  });
+
+  __intervSetText("intervKpiTotal", total);
+  __intervSetText("intervKpiReales", reales);
+  __intervSetText("intervKpiSeguimientos", seg);
+  __intervSetText("intervKpiEmergencias", emergConReal);
+  __intervSetText("intervKpiUsuarios", usuarios);
+  __intervSetText("intervKpiServicios", servicios);
+
+  __intervUpdateSingleChart(__intervChartPrograma, byProg);
+  __intervUpdateSingleChart(__intervChartTipo, byTipo);
+  __intervUpdateSingleChart(__intervChartEstado, byEstado);
+  __intervUpdateDepartamentoChart(__intervChartDepartamento, byDep);
+  __intervRenderTable(data);
+}
+
+document.addEventListener("DOMContentLoaded", ()=>{
+  ["intervDepartamento","intervPeligro","intervFechaInicial","intervFechaFinal","intervSoloReales"].forEach(id=>{
+    document.getElementById(id)?.addEventListener("change", ()=>{ __intervPager.page = 1; intervencionesRefresh({force:true}); });
+  });
+  document.getElementById("btnIntervActualizar")?.addEventListener("click", ()=>intervencionesRefresh({force:true}));
+  document.getElementById("intervPageSize")?.addEventListener("change", ()=>{ __intervPager.page = 1; intervencionesRefresh({force:true}); });
+  document.getElementById("intervPrev")?.addEventListener("click", ()=>{ __intervPager.page = Math.max(1, (__intervPager.page||1)-1); __intervRenderTable(__intervLastFiltered || []); });
+  document.getElementById("intervNext")?.addEventListener("click", ()=>{ __intervPager.page = (__intervPager.page||1)+1; __intervRenderTable(__intervLastFiltered || []); });
+  document.querySelector('a[href="#intervTab"]')?.addEventListener("shown.bs.tab", ()=>{
+    setTimeout(()=>intervencionesRefresh({force:true}), 50);
+  });
+  setInterval(()=>{
+    const isActive = document.querySelector('a[href="#intervTab"]')?.classList.contains("active");
+    if(isActive) intervencionesRefresh();
+  }, 60000);
+});
+
 </script>
 
 <script>
@@ -11943,6 +12349,19 @@ function __syncSummaryToLocalRecord(r, previous){
     totalFallecidos: totalFallecidos,
     afectaMidis: afectaMidis,
     daniosMIDIS: (daniosResumen && typeof daniosResumen === "object") ? daniosResumen : (prev.daniosMIDIS || {}),
+
+    // Etapa 3B: metadatos livianos de intervenciones entregados por /sync/list
+    intervencionesTotal: Number(((r && (r.intervenciones_total ?? r.intervencionesTotal)) ?? prev.intervencionesTotal ?? 0)) || 0,
+    intervencionesRealesTotal: Number(((r && (r.intervenciones_reales_total ?? r.intervencionesRealesTotal)) ?? prev.intervencionesRealesTotal ?? 0)) || 0,
+    intervencionesSeguimientoTotal: Number(((r && (r.intervenciones_seguimiento_total ?? r.intervencionesSeguimientoTotal)) ?? prev.intervencionesSeguimientoTotal ?? 0)) || 0,
+    intervencionesUsuariosAtendidos: Number(((r && (r.intervenciones_usuarios_atendidos ?? r.intervencionesUsuariosAtendidos)) ?? prev.intervencionesUsuariosAtendidos ?? 0)) || 0,
+    intervencionesServiciosRestablecidos: Number(((r && (r.intervenciones_servicios_restablecidos ?? r.intervencionesServiciosRestablecidos)) ?? prev.intervencionesServiciosRestablecidos ?? 0)) || 0,
+    intervencionesProgramasResumen: ((r && (r.intervenciones_programas_resumen ?? r.intervencionesProgramasResumen)) ?? prev.intervencionesProgramasResumen ?? null),
+    intervencionesTiposResumen: ((r && (r.intervenciones_tipos_resumen ?? r.intervencionesTiposResumen)) ?? prev.intervencionesTiposResumen ?? null),
+    intervencionesEstadosResumen: ((r && (r.intervenciones_estados_resumen ?? r.intervencionesEstadosResumen)) ?? prev.intervencionesEstadosResumen ?? null),
+    primeraIntervencionFecha: String((r && (r.primera_intervencion_fecha || r.primeraIntervencionFecha)) || prev.primeraIntervencionFecha || "").trim(),
+    ultimaIntervencionFecha: String((r && (r.ultima_intervencion_fecha || r.ultimaIntervencionFecha)) || prev.ultimaIntervencionFecha || "").trim(),
+
     __listHasImpactoResumen: !!(daniosResumen || totalUsuarios || totalServicios || totalUPS || totalFallecidos || afectaMidis),
     __summaryOnly: true,
     __needsDetail: true,
