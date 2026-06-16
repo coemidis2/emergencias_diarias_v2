@@ -12,6 +12,7 @@
 <!-- build: ETAPA3B_FIX_CHART_SIZE v255 2026-06-16 -->
 <!-- build: VER_DETAIL_ON_DEMAND_UNIFIED v256 2026-06-16 -->
 <!-- build: VER_DETAIL_PRESERVE_INTERV_META v257 2026-06-16 -->
+<!-- build: MODAL_VER_BACKDROP_CLEANUP v258 2026-06-16 -->
 <meta charset="UTF-8" />
 <title>Registro de Emergencias MIDIS</title>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -25,7 +26,7 @@ body { background: #f5f5f5; }
 .card { margin-top: 1rem; }
 .table td input { width: 100%; }
 .hidden { display: none; }
-/* ======= VERSION 257 16/06/2026 - fix RP approve fresh detail/sync ======= */
+/* ======= VERSION 258 16/06/2026 - fix RP approve fresh detail/sync ======= */
 /* ======= VER (Listado de Emergencias): Formato de visualización/impresión ======= */
 .ver-report-wrap{ font-family: Calibri, Arial, sans-serif; font-size: 11pt; color:#111; }
 .ver-report-title{ font-family: Calibri, Arial, sans-serif; font-size:15pt; font-weight:700; color:#1F4E79; margin:0 0 6px 0; }
@@ -6120,6 +6121,63 @@ function __verNrosGlobalesHistorial(e, rcList){
   return parts.join(', ');
 }
 
+
+// ======= FIX v258: Modal Ver con instancia única y limpieza de backdrop =======
+function __verModalCleanup(){
+  try{
+    // Solo limpiar backdrops huérfanos cuando no hay otro modal visible.
+    const visibleModal = document.querySelector('.modal.show');
+    if(!visibleModal){
+      document.querySelectorAll('.modal-backdrop').forEach(el => el.remove());
+      document.body.classList.remove('modal-open');
+      document.body.style.removeProperty('overflow');
+      document.body.style.removeProperty('padding-right');
+    }
+  }catch(_e){}
+}
+
+function __showVerEmergenciaModal(){
+  try{
+    const modalEl = document.getElementById('modalVerEmergencia');
+    if(!modalEl || !window.bootstrap) return;
+
+    // Evita acumular backdrops antes de abrir, sin tocar un modal ya visible.
+    if(!modalEl.classList.contains('show')){
+      __verModalCleanup();
+    }
+
+    const modal = bootstrap.Modal.getOrCreateInstance(modalEl, {
+      backdrop: true,
+      keyboard: true
+    });
+    modal.show();
+  }catch(_e){}
+}
+
+function __installVerModalCleanupOnce(){
+  try{
+    const modalEl = document.getElementById('modalVerEmergencia');
+    if(!modalEl || modalEl.__verCleanupInstalled) return;
+    modalEl.__verCleanupInstalled = true;
+
+    modalEl.addEventListener('hidden.bs.modal', () => {
+      // Bootstrap retira clases/backdrop al terminar la transición; este seguro limpia rezagos.
+      setTimeout(() => {
+        try{
+          if(!document.querySelector('.modal.show')){
+            document.querySelectorAll('.modal-backdrop').forEach(el => el.remove());
+            document.body.classList.remove('modal-open');
+            document.body.style.removeProperty('overflow');
+            document.body.style.removeProperty('padding-right');
+          }
+        }catch(_e){}
+      }, 50);
+    });
+  }catch(_e){}
+}
+
+document.addEventListener('DOMContentLoaded', __installVerModalCleanupOnce);
+
 function verEmergencia(e) {
   const cont = document.getElementById("contenidoVerEmergencia");
   if (!cont) return;
@@ -6319,8 +6377,7 @@ try{
   if(menu) menu.innerHTML = "";
 }catch(_e){}
 
-const modal = new bootstrap.Modal(document.getElementById("modalVerEmergencia"));
-  modal.show();
+__showVerEmergenciaModal();
 }
 
 
@@ -6375,7 +6432,7 @@ async function __abrirVerDetallePorCodigo(codigo){
     }
     try{
       if(modalEl && window.bootstrap){
-        bootstrap.Modal.getOrCreateInstance(modalEl).show();
+        __showVerEmergenciaModal();
       }
     }catch(_e){}
 
@@ -11058,15 +11115,6 @@ function __syncCleanPayload(obj){
   delete x.__needsExcelDetail;
   delete x.__detailLoading;
   delete x.__detailPromise;
-
-  // v257: los metadatos livianos de Intervenciones son columnas D1/lista,
-  // no deben viajar dentro del payload_json ni alterar el hash local.
-  try{
-    (typeof __INTERV_META_FIELDS !== 'undefined' ? __INTERV_META_FIELDS : []).forEach(pair=>{
-      delete x[pair[0]];
-      delete x[pair[1]];
-    });
-  }catch(_e){}
   return x;
 }
 async function __syncHash(obj){
@@ -12620,11 +12668,11 @@ async function __ensureFullEmergencia(objOrCodigo){
   if(!rec || !rec.payload) return cur;
   const payload = JSON.parse(JSON.stringify(rec.payload || {}));
   try{
-    // Prioridad: columnas D1 del registro /sync/detail si vinieran > columnas livianas ya existentes de /sync/list > payload.
+    // Prioridad: columnas livianas de /sync/list ya existentes > columnas del registro /sync/detail si vinieran > payload.
     // Esto evita que el payload_json completo, que no necesariamente trae columnas D1, borre los KPIs de Intervenciones.
     const metaDetalle = __captureIntervencionesMeta(rec);
     const metaPayload = __captureIntervencionesMeta(payload);
-    const metaFinal = Object.assign({}, metaPayload, metaAntesDetalle, metaDetalle);
+    const metaFinal = Object.assign({}, metaPayload, metaDetalle, metaAntesDetalle);
     __applyIntervencionesMeta(payload, metaFinal);
 
     [
