@@ -6,6 +6,7 @@
 
 <!-- build: VER_PRINT_RC_ALWAYS_VISIBLE v4 2026-01-11 -->
 <!-- build: ETAPA1_ACCIONES_RC_RESUMEN_DETALLE v251 2026-06-15 -->
+<!-- build: ETAPA2_ACCIONES_RC_ESTRUCTURADAS v252 2026-06-16 -->
 <meta charset="UTF-8" />
 <title>Registro de Emergencias MIDIS</title>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -19,7 +20,7 @@ body { background: #f5f5f5; }
 .card { margin-top: 1rem; }
 .table td input { width: 100%; }
 .hidden { display: none; }
-/* ======= VERSION 251 15/06/2026 - fix RP approve fresh detail/sync ======= */
+/* ======= VERSION 252 16/06/2026 - fix RP approve fresh detail/sync ======= */
 /* ======= VER (Listado de Emergencias): Formato de visualización/impresión ======= */
 .ver-report-wrap{ font-family: Calibri, Arial, sans-serif; font-size: 11pt; color:#111; }
 .ver-report-title{ font-family: Calibri, Arial, sans-serif; font-size:15pt; font-weight:700; color:#1F4E79; margin:0 0 6px 0; }
@@ -38,6 +39,14 @@ body { background: #f5f5f5; }
 .ver-acciones-nota{ font-family: Calibri, Arial, sans-serif; font-size:10pt; color:#555; margin:4px 0 6px 0; }
 .ver-rc-action-detail{ border-left:3px solid #d9e2f3; padding-left:8px; margin:8px 0 10px 0; }
 .ver-rc-action-detail h6{ font-family: Calibri, Arial, sans-serif; font-size:10.5pt; font-weight:700; color:#1F4E79; margin:0 0 4px 0; }
+
+/* ======= ETAPA 2: Registro estructurado de acciones RC ======= */
+.rc-actions-structured{ border:1px solid #d9e2f3; border-radius:10px; padding:10px; background:#f8fbff; }
+.rc-actions-structured .form-label{ font-size:.82rem; font-weight:600; margin-bottom:2px; }
+.rc-action-pill{ display:inline-block; padding:2px 6px; border-radius:10px; background:#e9ecef; font-size:.78rem; margin:1px 2px 1px 0; }
+.rc-action-pill.interv-si{ background:#d1e7dd; color:#0f5132; }
+.rc-action-pill.interv-no{ background:#f8d7da; color:#842029; }
+.rc-action-detail-cell{ min-width:260px; white-space:normal; }
 
 /* ======= AUTH (Login/Roles) ======= */
 .auth-screen{
@@ -789,23 +798,69 @@ body { background: #f5f5f5; }
       <div id="rcResumenPostDanios" class="mt-3"></div>
 
       <h5 class="mt-3 text-primary">Acciones RC</h5>
-      <div class="input-group mb-2">
-        <input type="date" id="fechaAccionRC" class="form-control">
-        <input type="text" id="descAccionRC" class="form-control" placeholder="Descripción">
-        <!-- Desactivado al inicio -->
-        <button class="btn btn-primary" id="btnAddAccionRC" disabled>Agregar</button>
+      <div id="rcAccionFormWrap" class="rc-actions-structured mb-2">
+        <div class="row g-2 align-items-end">
+          <div class="col-md-2">
+            <label class="form-label">Fecha</label>
+            <input type="date" id="fechaAccionRC" class="form-control form-control-sm">
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Programa / Sector</label>
+            <select id="programaAccionRC" class="form-select form-select-sm"></select>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Tipo de acción</label>
+            <select id="tipoAccionRC" class="form-select form-select-sm"></select>
+          </div>
+          <div class="col-md-2">
+            <label class="form-label">Estado</label>
+            <select id="estadoAccionRC" class="form-select form-select-sm"></select>
+          </div>
+          <div class="col-md-1">
+            <label class="form-label">Usuarios</label>
+            <input type="number" id="usuariosAtendidosRC" class="form-control form-control-sm" min="0" value="0">
+          </div>
+          <div class="col-md-1">
+            <label class="form-label">Servicios</label>
+            <input type="number" id="serviciosRestablecidosRC" class="form-control form-control-sm" min="0" value="0">
+          </div>
+          <div class="col-md-12">
+            <label class="form-label">Descripción de la acción</label>
+            <textarea id="descAccionRC" class="form-control form-control-sm" rows="2" placeholder="Detalle de la acción complementaria registrada en el RC"></textarea>
+          </div>
+          <div class="col-md-7">
+            <div class="form-check mt-1">
+              <input class="form-check-input" type="checkbox" id="cuentaIntervencionRC">
+              <label class="form-check-label small" for="cuentaIntervencionRC">Cuenta como intervención real para futura estadística</label>
+            </div>
+            <div class="small text-muted">Seguimiento, monitoreo sin afectación o cierre sin nuevas acciones no se considera intervención real.</div>
+          </div>
+          <div class="col-md-5 text-end">
+            <!-- Desactivado al inicio -->
+            <button class="btn btn-primary btn-sm" id="btnAddAccionRC" disabled>Agregar acción</button>
+            <button class="btn btn-outline-secondary btn-sm" id="btnCancelEditAccionRC" type="button">Limpiar</button>
+          </div>
+        </div>
       </div>
 
-      <table class="table table-bordered">
-        <thead>
-          <tr>
-            <th>Fecha</th>
-            <th>Detalle</th>
-            <th>Acciones</th>
-          </tr>
-        </thead>
-        <tbody id="accionesRCTabla"></tbody>
-      </table>
+      <div class="table-responsive" id="accionesRCWrap">
+        <table class="table table-bordered table-sm align-middle">
+          <thead>
+            <tr>
+              <th>Fecha</th>
+              <th>Programa / Sector</th>
+              <th>Tipo</th>
+              <th>Estado</th>
+              <th>Intervención</th>
+              <th class="text-end">Usuarios</th>
+              <th class="text-end">Servicios</th>
+              <th>Detalle</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="accionesRCTabla"></tbody>
+        </table>
+      </div>
 
       <div class="text-end mt-3">
         <!-- ORDEN: Guardar → Word → Cerrar → Retornar -->
@@ -3015,11 +3070,15 @@ function __applyRCLockUI(){
     el.disabled = locked;
   });
 
-  // Bloquear ingreso de nuevas acciones (si corresponde)
-  const f = document.getElementById("fechaAccionRC");
-  const d = document.getElementById("descAccionRC");
-  if(f) f.disabled = locked;
-  if(d) d.disabled = locked;
+  // Bloquear ingreso de nuevas acciones estructuradas (si corresponde)
+  [
+    "fechaAccionRC", "programaAccionRC", "tipoAccionRC", "estadoAccionRC",
+    "usuariosAtendidosRC", "serviciosRestablecidosRC", "cuentaIntervencionRC",
+    "descAccionRC", "btnCancelEditAccionRC"
+  ].forEach(id=>{
+    const el = document.getElementById(id);
+    if(el) el.disabled = locked;
+  });
 
   // Bloquear botones principales del RC cuando está bloqueado
   // (para RC Pendiente normalmente luego se re-habilita Word/Retorno en la lógica de UI,
@@ -4305,6 +4364,8 @@ function setRCViewActive(active) {
     "#rcTab #datosBasicosRC, " +
     "#rcTab h5, " +
     "#rcTab #rcResumenPostDanios, " +
+    "#rcTab #rcAccionFormWrap, " +
+    "#rcTab #accionesRCWrap, " +
     "#rcTab .input-group, " +
     "#rcTab table, " +
     "#rcTab .text-end.mt-3"
@@ -5584,12 +5645,12 @@ function __buildAccionesCompUnique(rcList){
       let detalle = "";
       if(item && typeof item === "object"){
         fecha = String(item.fecha || item.fechaAccion || item.fechaRegistro || "").trim();
-        detalle = String(item.descripcion || item.detalle || item.texto || "").trim();
+        detalle = String(item.descripcion || item.detalle || item.texto || item.accion || "").trim();
       }else{
         detalle = String(item ?? "").trim();
       }
 
-      const key = (fecha + "|" + detalle)
+      const key = (fecha + "|" + detalle + "|" + String(item && item.programa ? item.programa : "") + "|" + String(item && item.tipoAccion ? item.tipoAccion : ""))
         .toLowerCase()
         .replace(/\s+/g, ' ')
         .trim();
@@ -5617,16 +5678,52 @@ function __verAccionText(item){
   try{
     let fecha = "";
     let detalle = "";
+    let raw = (item && typeof item === "object") ? item : {};
     if(item && typeof item === "object"){
       fecha = String(item.fecha || item.fechaAccion || item.fechaRegistro || item.fechaHora || "").trim();
       detalle = String(item.descripcion || item.detalle || item.texto || item.accion || "").trim();
     }else{
       detalle = String(item ?? "").trim();
     }
-    return { fecha, detalle: detalle.replace(/\s+/g, " ").trim() };
+    return { fecha, detalle: detalle.replace(/\s+/g, " ").trim(), raw };
   }catch(_e){
-    return { fecha:"", detalle:"" };
+    return { fecha:"", detalle:"", raw:{} };
   }
+}
+
+function __verAccionPrograma(item, detalle){
+  try{
+    const raw = (item && typeof item === "object") ? item : {};
+    const v = String(raw.programa || raw.programaSector || raw.programaNacional || "").trim();
+    return v || __verInferProgramaAccion(detalle);
+  }catch(_e){ return __verInferProgramaAccion(detalle); }
+}
+function __verAccionTipo(item, detalle){
+  try{
+    const raw = (item && typeof item === "object") ? item : {};
+    const v = String(raw.tipoAccion || raw.tipo || raw.tipoIntervencion || "").trim();
+    return v || __verInferTipoAccion(detalle);
+  }catch(_e){ return __verInferTipoAccion(detalle); }
+}
+function __verAccionEstado(item, detalle){
+  try{
+    const raw = (item && typeof item === "object") ? item : {};
+    const v = String(raw.estadoAccion || raw.estado || raw.estadoIntervencion || "").trim();
+    return v || __verInferEstadoAccion(detalle);
+  }catch(_e){ return __verInferEstadoAccion(detalle); }
+}
+function __verAccionIntervencionLabel(item, detalle){
+  try{
+    const raw = (item && typeof item === "object") ? item : {};
+    let v = raw.cuentaComoIntervencion;
+    if(v === undefined || v === null) v = raw.intervencionReal;
+    if(v === undefined || v === null){
+      const tipo = __verAccionTipo(raw, detalle);
+      const estado = __verAccionEstado(raw, detalle);
+      v = !(tipo === "Solicitud de seguimiento" || tipo === "Monitoreo sin afectación" || tipo === "Cierre / sin nueva acción" || estado === "Sin acción" || estado === "Sin intervención");
+    }
+    return v ? "Sí" : "No";
+  }catch(_e){ return ""; }
 }
 
 function __verResumenAccion(detalle, maxLen=230){
@@ -5701,19 +5798,21 @@ function __verAccionesCompHtml(rcList, accionesCompUnique){
 
   let html = `<div class="ver-acciones-nota">Resumen ordenado de las acciones complementarias registradas en los RC. El detalle completo se mantiene debajo, agrupado por RC.</div>`;
   html += `<div class="table-responsive"><table class="table table-sm table-bordered ver-actions-summary"><thead><tr>`;
-  html += `<th style="width:8%">RC</th><th style="width:11%">Fecha</th><th style="width:17%">Programa / Sector</th><th style="width:18%">Tipo de acción</th><th>Resumen</th><th style="width:12%">Estado</th>`;
+  html += `<th style="width:7%">RC</th><th style="width:10%">Fecha</th><th style="width:15%">Programa / Sector</th><th style="width:16%">Tipo de acción</th><th style="width:9%">Interv.</th><th>Resumen</th><th style="width:11%">Estado</th>`;
   html += `</tr></thead><tbody>`;
 
   all.forEach(({__rcIdx, item})=>{
     const a = __verAccionText(item);
-    const programa = __verInferProgramaAccion(a.detalle);
-    const tipo = __verInferTipoAccion(a.detalle);
-    const estado = __verInferEstadoAccion(a.detalle);
+    const programa = __verAccionPrograma(item, a.detalle);
+    const tipo = __verAccionTipo(item, a.detalle);
+    const estado = __verAccionEstado(item, a.detalle);
+    const interv = __verAccionIntervencionLabel(item, a.detalle);
     html += `<tr>`
       + `<td>RC ${Number(__rcIdx)+1}</td>`
       + `<td>${__escapeHtml(__verDateOnly(a.fecha))}</td>`
       + `<td>${__escapeHtml(programa)}</td>`
       + `<td>${__escapeHtml(tipo)}</td>`
+      + `<td>${__escapeHtml(interv)}</td>`
       + `<td class="ver-just">${__escapeHtml(__verResumenAccion(a.detalle, 260))}</td>`
       + `<td>${__escapeHtml(estado)}</td>`
       + `</tr>`;
@@ -6115,9 +6214,13 @@ function __buildRCLecturaHtml(em, opts){
       let accionesHtml = '<span class="text-muted">Sin acciones registradas.</span>';
       if(Array.isArray(acciones) && acciones.length){
         accionesHtml = '<ul class="mb-0 small">' + acciones.map(a=>{
-          const f = (a && (a.fecha || a.fechaHora || a.fecha_accion)) ? (a.fecha || a.fechaHora || a.fecha_accion) : "";
-          const d = (a && (a.descripcion || a.detalle || a.accion)) ? (a.descripcion || a.detalle || a.accion) : "";
-          return `<li>[${__escapeHtml(f)}] ${__escapeHtml(d)}</li>`;
+          const at = __verAccionText(a);
+          const f = at.fecha || ((a && (a.fechaHora || a.fecha_accion)) ? (a.fechaHora || a.fecha_accion) : "");
+          const prog = __verAccionPrograma(a, at.detalle);
+          const tipo = __verAccionTipo(a, at.detalle);
+          const interv = __verAccionIntervencionLabel(a, at.detalle);
+          const meta = [prog, tipo, interv ? ('Intervención: ' + interv) : ''].filter(Boolean).join(' | ');
+          return `<li>[${__escapeHtml(f)}] <b>${__escapeHtml(meta)}</b>: ${__escapeHtml(at.detalle)}</li>`;
         }).join("") + '</ul>';
       }
 
@@ -6452,7 +6555,7 @@ if(!window.docx){
     if(Array.isArray(accionesCompAll) && accionesCompAll.length){
       children.push(new Paragraph({ spacing:{ after: 60 }, children:[new TextRun({ text:'Resumen ordenado de las acciones complementarias registradas en los RC. El detalle completo se mantiene debajo, agrupado por RC.', font:'Calibri', size: 18, italics: true })] }));
 
-      const actionHeader = ['RC','Fecha','Programa / Sector','Tipo de acción','Resumen','Estado'].map(t=>
+      const actionHeader = ['RC','Fecha','Programa / Sector','Tipo de acción','Intervención','Resumen','Estado'].map(t=>
         new TableCell({ children:[new Paragraph({ children:[new TextRun({ text:t, bold:true, font:'Calibri', size:18 })] })] })
       );
       const actionRows = [new TableRow({ children: actionHeader })];
@@ -6461,10 +6564,11 @@ if(!window.docx){
         const vals = [
           `RC ${Number(__rcIdx)+1}`,
           __verDateOnly(a.fecha),
-          __verInferProgramaAccion(a.detalle),
-          __verInferTipoAccion(a.detalle),
+          __verAccionPrograma(item, a.detalle),
+          __verAccionTipo(item, a.detalle),
+          __verAccionIntervencionLabel(item, a.detalle),
           __verResumenAccion(a.detalle, 220),
-          __verInferEstadoAccion(a.detalle)
+          __verAccionEstado(item, a.detalle)
         ];
         actionRows.push(new TableRow({ children: vals.map(v=> new TableCell({ children:[new Paragraph({ children:[new TextRun({ text: safe(v), font:'Calibri', size:18 })] })] })) }));
       });
@@ -7436,15 +7540,180 @@ function cargarTablaDaniosRC(obj) {
   });
 }
 
+// ======= ETAPA 2: Registro estructurado de acciones RC =======
+const __RC_ACCION_PROGRAMAS = [
+  "", "COE MIDIS", "OSDN", "Sector MIDIS", "Cuna Más", "Juntos", "Pensión 65", "Contigo",
+  "PAIS", "FONCODES", "PCA", "Alimentación Escolar", "OGCAI", "Otro"
+];
+const __RC_ACCION_TIPOS = [
+  "", "Solicitud de seguimiento", "Monitoreo sin afectación", "Verificación de usuarios",
+  "Identificación de usuarios afectados", "Visita domiciliaria / visita de campo",
+  "Suspensión preventiva del servicio", "Continuidad del servicio", "Restablecimiento del servicio",
+  "Entrega de ayuda / donaciones", "Contención emocional", "Acompañamiento a usuarios",
+  "Coordinación multisectorial", "Desplazamiento de personal", "Cierre / sin nueva acción", "Otro"
+];
+const __RC_ACCION_ESTADOS = [
+  "", "Programada", "En ejecución", "Ejecutada", "Culminada", "En seguimiento", "Cerrada", "Sin acción"
+];
+let __rcAccionEditIndex = -1;
+
+function __rcFillSelect(id, arr){
+  const el = document.getElementById(id);
+  if(!el) return;
+  const current = el.value;
+  el.innerHTML = (arr || []).map(v=>`<option value="${__escapeHtml(v)}">${v ? __escapeHtml(v) : 'Seleccione...'}</option>`).join("");
+  if(current && Array.from(el.options).some(o=>o.value===current)) el.value = current;
+}
+
+function __rcPopulateStructuredActionSelectors(){
+  __rcFillSelect("programaAccionRC", __RC_ACCION_PROGRAMAS);
+  __rcFillSelect("tipoAccionRC", __RC_ACCION_TIPOS);
+  __rcFillSelect("estadoAccionRC", __RC_ACCION_ESTADOS);
+}
+
+function __rcTextNorm(v){
+  return String(v || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
+}
+
+function __rcInferActionFromText(desc){
+  const t = __rcTextNorm(desc);
+  let programa = "Sector MIDIS";
+  if(/CUNA\s*MAS/.test(t)) programa = "Cuna Más";
+  else if(/PENSION\s*65/.test(t)) programa = "Pensión 65";
+  else if(/\bJUNTOS\b/.test(t)) programa = "Juntos";
+  else if(/\bCONTIGO\b/.test(t)) programa = "Contigo";
+  else if(/\bPAIS\b/.test(t)) programa = "PAIS";
+  else if(/\bFONCODES\b/.test(t)) programa = "FONCODES";
+  else if(/COMPLEMENTACION\s+ALIMENTARIA|\bPCA\b/.test(t)) programa = "PCA";
+  else if(/ALIMENTACION\s+ESCOLAR|QALI|\bPAE\b/.test(t)) programa = "Alimentación Escolar";
+  else if(/COE\s*MIDIS/.test(t)) programa = "COE MIDIS";
+  else if(/OSDN/.test(t)) programa = "OSDN";
+  else if(/OGCAI/.test(t)) programa = "OGCAI";
+
+  let tipoAccion = "Verificación de usuarios";
+  if(/CIERRE|CERRAR/.test(t)) tipoAccion = "Cierre / sin nueva acción";
+  else if(/NO\s+SE\s+(REGISTR|REPORT)|SIN\s+AFECTACION|SIN\s+ACCIONES|NO\s+FORMA\s+PARTE/.test(t)) tipoAccion = "Monitoreo sin afectación";
+  else if(/SOLICITA|SOLICITUD|MONITOREO|SEGUIMIENTO/.test(t)) tipoAccion = "Solicitud de seguimiento";
+  else if(/SUSPENSION|SUSPEND/.test(t)) tipoAccion = "Suspensión preventiva del servicio";
+  else if(/RESTABLEC|REANUD|MUDANZA|CONDICIONES\s+OPTIMAS|TRASLADO\s+DE\s+CARPAS/.test(t)) tipoAccion = "Restablecimiento del servicio";
+  else if(/CONTINUIDAD|ATENCION\s+DEL\s+SERVICIO|SERVICIO\s+DE\s+CUIDADO\s+DIURNO|RACIONES/.test(t)) tipoAccion = "Continuidad del servicio";
+  else if(/CONTENCION\s+EMOCIONAL|APOYO\s+PSICOLOG/.test(t)) tipoAccion = "Contención emocional";
+  else if(/VISITA/.test(t)) tipoAccion = "Visita domiciliaria / visita de campo";
+  else if(/IDENTIFIC|PADRON|RELACION\s+NOMINAL|EMPADRON/.test(t)) tipoAccion = "Identificación de usuarios afectados";
+  else if(/ENTREGA|DONACION|DONACIONES|VIVERES|AYUDA\s+HUMANITARIA|KITS/.test(t)) tipoAccion = "Entrega de ayuda / donaciones";
+  else if(/DESPLAZ|ARRIB|TRASLADO\s+A\s+LA\s+ZONA/.test(t)) tipoAccion = "Desplazamiento de personal";
+  else if(/REUNION|COORDIN/.test(t)) tipoAccion = "Coordinación multisectorial";
+
+  let estadoAccion = "Ejecutada";
+  if(/CIERRE|CERRAR|CERRADO/.test(t)) estadoAccion = "Cerrada";
+  else if(/NO\s+SE\s+(REGISTR|REPORT)|SIN\s+AFECTACION|SIN\s+ACCIONES/.test(t)) estadoAccion = "Sin acción";
+  else if(/SE\s+MANTIENE|CONTINUA|CONTINUAN|EN\s+SEGUIMIENTO/.test(t)) estadoAccion = "En seguimiento";
+  else if(/PROGRAM|PREVISTO/.test(t)) estadoAccion = "Programada";
+  else if(/CULMIN|RESTABLECID|ATENDID/.test(t)) estadoAccion = "Culminada";
+
+  const cuentaComoIntervencion = !(tipoAccion === "Solicitud de seguimiento" || tipoAccion === "Monitoreo sin afectación" || tipoAccion === "Cierre / sin nueva acción" || estadoAccion === "Sin acción");
+  return { programa, tipoAccion, estadoAccion, cuentaComoIntervencion };
+}
+
+function __rcNormalizeAction(a){
+  const item = (a && typeof a === "object") ? a : { descripcion: String(a || "") };
+  const descripcion = String(item.descripcion || item.detalle || item.texto || item.accion || "").trim();
+  const fecha = String(item.fecha || item.fechaAccion || item.fechaRegistro || item.fechaHora || "").trim();
+  const inferred = __rcInferActionFromText(descripcion);
+  const programa = String(item.programa || item.programaSector || item.programaNacional || inferred.programa || "Sector MIDIS").trim();
+  const tipoAccion = String(item.tipoAccion || item.tipo || item.tipoIntervencion || inferred.tipoAccion || "").trim();
+  const estadoAccion = String(item.estadoAccion || item.estado || item.estadoIntervencion || inferred.estadoAccion || "").trim();
+  const usuariosAtendidos = Math.max(0, Number(item.usuariosAtendidos || item.usuarios || 0) || 0);
+  const serviciosRestablecidos = Math.max(0, Number(item.serviciosRestablecidos || item.servicios || 0) || 0);
+  let cuentaComoIntervencion = item.cuentaComoIntervencion;
+  if(cuentaComoIntervencion === undefined || cuentaComoIntervencion === null) cuentaComoIntervencion = item.intervencionReal;
+  if(cuentaComoIntervencion === undefined || cuentaComoIntervencion === null) cuentaComoIntervencion = inferred.cuentaComoIntervencion;
+  cuentaComoIntervencion = !!cuentaComoIntervencion;
+  return { fecha, descripcion, programa, tipoAccion, estadoAccion, usuariosAtendidos, serviciosRestablecidos, cuentaComoIntervencion };
+}
+
+function __rcSetActionForm(action){
+  __rcPopulateStructuredActionSelectors();
+  const a = __rcNormalizeAction(action || {});
+  const set = (id, val)=>{ const el=document.getElementById(id); if(el) el.value = val == null ? "" : String(val); };
+  set("fechaAccionRC", a.fecha);
+  set("programaAccionRC", a.programa);
+  set("tipoAccionRC", a.tipoAccion);
+  set("estadoAccionRC", a.estadoAccion);
+  set("usuariosAtendidosRC", a.usuariosAtendidos);
+  set("serviciosRestablecidosRC", a.serviciosRestablecidos);
+  set("descAccionRC", a.descripcion);
+  const ck = document.getElementById("cuentaIntervencionRC");
+  if(ck) ck.checked = !!a.cuentaComoIntervencion;
+}
+
+function __resetRCActionForm(){
+  __rcAccionEditIndex = -1;
+  __rcPopulateStructuredActionSelectors();
+  ["fechaAccionRC","descAccionRC"].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=""; });
+  ["usuariosAtendidosRC","serviciosRestablecidosRC"].forEach(id=>{ const el=document.getElementById(id); if(el) el.value="0"; });
+  ["programaAccionRC","tipoAccionRC","estadoAccionRC"].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=""; });
+  const ck = document.getElementById("cuentaIntervencionRC"); if(ck) ck.checked = false;
+  const btn = document.getElementById("btnAddAccionRC"); if(btn) btn.textContent = "Agregar acción";
+}
+
+function __rcGetActionFormValues(){
+  const fecha = String(document.getElementById("fechaAccionRC")?.value || "").trim();
+  const descripcion = String(document.getElementById("descAccionRC")?.value || "").trim();
+  const inferred = __rcInferActionFromText(descripcion);
+  const programa = String(document.getElementById("programaAccionRC")?.value || inferred.programa || "").trim();
+  const tipoAccion = String(document.getElementById("tipoAccionRC")?.value || inferred.tipoAccion || "").trim();
+  const estadoAccion = String(document.getElementById("estadoAccionRC")?.value || inferred.estadoAccion || "").trim();
+  const usuariosAtendidos = Math.max(0, Number(document.getElementById("usuariosAtendidosRC")?.value || 0) || 0);
+  const serviciosRestablecidos = Math.max(0, Number(document.getElementById("serviciosRestablecidosRC")?.value || 0) || 0);
+  const cuentaComoIntervencion = !!document.getElementById("cuentaIntervencionRC")?.checked;
+  return { fecha, descripcion, programa, tipoAccion, estadoAccion, usuariosAtendidos, serviciosRestablecidos, cuentaComoIntervencion };
+}
+
+function __rcAutoSuggestFromDescription(){
+  try{
+    const desc = String(document.getElementById("descAccionRC")?.value || "").trim();
+    if(!desc) return;
+    const inf = __rcInferActionFromText(desc);
+    const p = document.getElementById("programaAccionRC");
+    const t = document.getElementById("tipoAccionRC");
+    const e = document.getElementById("estadoAccionRC");
+    const ck = document.getElementById("cuentaIntervencionRC");
+    if(p && !String(p.value||"").trim()) p.value = inf.programa;
+    if(t && !String(t.value||"").trim()) t.value = inf.tipoAccion;
+    if(e && !String(e.value||"").trim()) e.value = inf.estadoAccion;
+    if(ck && !ck.checked) ck.checked = !!inf.cuentaComoIntervencion;
+  }catch(_e){}
+}
+
+function __rcSyncInterventionCheckboxByType(){
+  try{
+    const tipo = String(document.getElementById("tipoAccionRC")?.value || "").trim();
+    const estado = String(document.getElementById("estadoAccionRC")?.value || "").trim();
+    const ck = document.getElementById("cuentaIntervencionRC");
+    if(!ck) return;
+    ck.checked = !(tipo === "Solicitud de seguimiento" || tipo === "Monitoreo sin afectación" || tipo === "Cierre / sin nueva acción" || estado === "Sin acción");
+  }catch(_e){}
+}
+
 function cargarAccionesRC() {
   let tbody = document.getElementById("accionesRCTabla");
   tbody.innerHTML = "";
   const locked = __isRCLockedForRegistrador();
-  accionesRCTemp.forEach((a, i) => {
+  accionesRCTemp = (Array.isArray(accionesRCTemp) ? accionesRCTemp : []).map(__rcNormalizeAction);
+  accionesRCTemp.forEach((raw, i) => {
+    const a = __rcNormalizeAction(raw);
+    const interv = a.cuentaComoIntervencion ? '<span class="rc-action-pill interv-si">Sí</span>' : '<span class="rc-action-pill interv-no">No</span>';
     tbody.innerHTML += `
 <tr>
-  <td>${a.fecha || ""}</td>
-  <td>${a.descripcion || ""}</td>
+  <td>${__escapeHtml(a.fecha || "")}</td>
+  <td>${__escapeHtml(a.programa || "")}</td>
+  <td>${__escapeHtml(a.tipoAccion || "")}</td>
+  <td>${__escapeHtml(a.estadoAccion || "")}</td>
+  <td>${interv}</td>
+  <td class="text-end">${Number(a.usuariosAtendidos || 0)}</td>
+  <td class="text-end">${Number(a.serviciosRestablecidos || 0)}</td>
+  <td class="rc-action-detail-cell">${__escapeHtml(a.descripcion || "")}</td>
   <td>
     <button class="btn btn-secondary btn-sm" data-rc-act="edit" ${locked ? "disabled" : ""} onclick="editarAccionRC(${i})">Editar</button>
     <button class="btn btn-danger btn-sm" data-rc-act="del" ${locked ? "disabled" : ""} onclick="eliminarAccionRC(${i})">Eliminar</button>
@@ -7455,14 +7724,12 @@ function cargarAccionesRC() {
 
 window.editarAccionRC = i => {
   if(__isRCLockedForRegistrador()){ alert("RC está Por aprobar. No se puede editar acciones hasta que el Administrador apruebe u observe."); return; }
-
   const a = accionesRCTemp[i];
-  const nuevaFecha = prompt("Fecha de la acción (YYYY-MM-DD):", a.fecha || "");
-  if (!nuevaFecha) return;
-  const nuevaDesc = prompt("Descripción de la acción:", a.descripcion || "");
-  if (!nuevaDesc) return;
-  accionesRCTemp[i] = {fecha: nuevaFecha, descripcion: nuevaDesc};
-  cargarAccionesRC();
+  if(!a) return;
+  __rcAccionEditIndex = i;
+  __rcSetActionForm(a);
+  const btn = document.getElementById("btnAddAccionRC");
+  if(btn) btn.textContent = "Actualizar acción";
 };
 
 window.eliminarAccionRC = i => {
@@ -7470,22 +7737,40 @@ window.eliminarAccionRC = i => {
 
   if (!confirm("¿Eliminar esta acción RC?")) return;
   accionesRCTemp.splice(i, 1);
+  if(__rcAccionEditIndex === i) __resetRCActionForm();
   cargarAccionesRC();
 };
 
 document.getElementById("btnAddAccionRC").onclick = () => {
-  let fecha = document.getElementById("fechaAccionRC").value;
-  let desc = document.getElementById("descAccionRC").value.trim();
-  if (!fecha || !desc) {
+  let vals = __rcGetActionFormValues();
+  if (!vals.fecha || !vals.descripcion) {
     alert("Complete fecha y descripción.");
     return;
   }
-  accionesRCTemp.push({fecha, descripcion: desc});
-  document.getElementById("fechaAccionRC").value = "";
-  document.getElementById("descAccionRC").value = "";
+  if(!vals.programa || !vals.tipoAccion || !vals.estadoAccion){
+    const inf = __rcInferActionFromText(vals.descripcion);
+    vals.programa = vals.programa || inf.programa;
+    vals.tipoAccion = vals.tipoAccion || inf.tipoAccion;
+    vals.estadoAccion = vals.estadoAccion || inf.estadoAccion;
+  }
+  if(__rcAccionEditIndex >= 0 && __rcAccionEditIndex < accionesRCTemp.length){
+    accionesRCTemp[__rcAccionEditIndex] = vals;
+  }else{
+    accionesRCTemp.push(vals);
+  }
+  __resetRCActionForm();
   cargarAccionesRC();
 };
 
+document.getElementById("btnCancelEditAccionRC")?.addEventListener("click", ()=>{
+  __resetRCActionForm();
+});
+document.getElementById("descAccionRC")?.addEventListener("blur", __rcAutoSuggestFromDescription);
+document.getElementById("tipoAccionRC")?.addEventListener("change", __rcSyncInterventionCheckboxByType);
+document.getElementById("estadoAccionRC")?.addEventListener("change", __rcSyncInterventionCheckboxByType);
+document.addEventListener("DOMContentLoaded", ()=>{
+  try{ __rcPopulateStructuredActionSelectors(); __resetRCActionForm(); }catch(_e){}
+});
 
 // Admin: desde el Listado (columna "Modificar"), permitir editar incluso si el RP está Aprobado
 // Sin tocar el comportamiento normal de "Ver"/"RP".
@@ -7916,8 +8201,7 @@ ${rcLecturaHtml ? `
   }
 
   // Limpiar campos de nueva acción RC
-  document.getElementById("fechaAccionRC").value = "";
-  document.getElementById("descAccionRC").value = "";
+  __resetRCActionForm();
 }
 
 // ===================== GUARDAR RC (solo una vez) =====================
@@ -8264,8 +8548,7 @@ document.getElementById("btnRetornarRC").onclick = () => {
   cargarAccionesRC();
   document.getElementById("datosBasicosRC").innerHTML = "";
   document.getElementById("tablaDaniosRC").innerHTML = "";
-  document.getElementById("fechaAccionRC").value = "";
-  document.getElementById("descAccionRC").value = "";
+  __resetRCActionForm();
   setRCViewActive(false);
   try{ window.__rcAdminEditFromList = false; window.__rcAdminEditIdx = null; }catch(e){}
 };
