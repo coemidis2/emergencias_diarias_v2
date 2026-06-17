@@ -13,6 +13,7 @@
 <!-- build: VER_DETAIL_ON_DEMAND_UNIFIED v256 2026-06-16 -->
 <!-- build: VER_DETAIL_PRESERVE_INTERV_META v257 2026-06-16 -->
 <!-- build: MODAL_VER_BACKDROP_CLEANUP v258 2026-06-16 -->
+<!-- build: VER_PDF_WORD_ANEXOS_RC v260 2026-06-17 -->
 <meta charset="UTF-8" />
 <title>Sistema de Información para el Monitoreo de Emergencias y Respuesta MIDIS (SIMER MIDIS)</title>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -26,7 +27,7 @@ body { background: #f5f5f5; }
 .card { margin-top: 1rem; }
 .table td input { width: 100%; }
 .hidden { display: none; }
-/* ======= VERSION 259 17/06/2026 - fix RP approve fresh detail/sync ======= */
+/* ======= VERSION 260 17/06/2026 - fix RP approve fresh detail/sync ======= */
 /* ======= VER (Listado de Emergencias): Formato de visualización/impresión ======= */
 .ver-report-wrap{ font-family: Calibri, Arial, sans-serif; font-size: 11pt; color:#111; }
 .ver-report-title{ font-family: Calibri, Arial, sans-serif; font-size:15pt; font-weight:700; color:#1F4E79; margin:0 0 6px 0; }
@@ -45,6 +46,14 @@ body { background: #f5f5f5; }
 .ver-acciones-nota{ font-family: Calibri, Arial, sans-serif; font-size:10pt; color:#555; margin:4px 0 6px 0; }
 .ver-rc-action-detail{ border-left:3px solid #d9e2f3; padding-left:8px; margin:8px 0 10px 0; }
 .ver-rc-action-detail h6{ font-family: Calibri, Arial, sans-serif; font-size:10.5pt; font-weight:700; color:#1F4E79; margin:0 0 4px 0; }
+.ver-anexos-wrap{ margin-top:16px; padding-top:10px; border-top:2px solid #1F4E79; }
+.ver-anexo-title{ font-family:Calibri, Arial, sans-serif; font-size:12pt; font-weight:700; color:#1F4E79; margin:0 0 8px 0; }
+@media print{
+  .ver-anexos-wrap{ page-break-before:always; break-before:page; border-top:0; padding-top:0; margin-top:0; }
+  .ver-anexo-block{ page-break-inside:auto; break-inside:auto; }
+  .ver-rc-action-detail{ page-break-inside:avoid; break-inside:avoid; }
+}
+
 
 /* ======= ETAPA 2: Registro estructurado de acciones RC ======= */
 .rc-actions-structured{ border:1px solid #d9e2f3; border-radius:10px; padding:10px; background:#f8fbff; }
@@ -1284,7 +1293,7 @@ body { background: #f5f5f5; }
       <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
         <div>
           <h4 class="text-primary mb-0">Intervenciones</h4>
-          <div class="text-muted small">Dashboard de acciones e intervenciones del Sector Desarrollo e Inclusión Social. Usa solo columnas livianas de /sync/list.</div>
+          <div class="text-muted small">Dashboard de acciones e intervenciones del Sector Desarrollo e Inclusión Social. </div>
         </div>
         <button class="btn btn-sm btn-outline-primary" id="btnIntervActualizar" type="button">Actualizar</button>
       </div>
@@ -1330,7 +1339,7 @@ body { background: #f5f5f5; }
       </div>
 
       <div class="alert alert-info small py-2">
-        <strong>Nota:</strong> “Intervenciones reales” usa la regla del Worker. “Monitoreo sin afectación”, “Solicitud de seguimiento”, “Cierre / sin nueva acción” y “Sin acción” se consideran seguimiento, no intervención real.
+        <strong>Nota:</strong> “Intervenciones reales”. “Monitoreo sin afectación”, “Solicitud de seguimiento”, “Cierre / sin nueva acción” y “Sin acción” se consideran seguimiento, no intervención real.
       </div>
 
       <div class="row g-3 mb-3">
@@ -5738,7 +5747,7 @@ async function __renderCoberturaAnexo(em, containerId){
     const row = await __getCoberturaRow(em);
     if(!row){
       el.innerHTML = '<div class="mt-2">'
-        + '<div class="ver-section-title" style="margin-top:8px">Anexo 1: Cobertura de los Programas Nacionales</div>'
+        + '<div class="ver-section-title" style="margin-top:8px">Anexo 02 : Cobertura de los Programas Nacionales</div>'
         + '<em>No se encontró coincidencia para ' + (em.departamento||'') + ' / ' + (em.provincia||'') + ' / ' + (em.distrito||'') + '.</em>'
         + (version ? ('<div class="text-muted" style="font-size:12px">Fuente: InfoMidis (v' + version + ')</div>') : '')
         + '</div>';
@@ -5754,7 +5763,7 @@ async function __renderCoberturaAnexo(em, containerId){
     const useKeys = labelKeys.length ? labelKeys : Object.keys((row.cobertura||{}));
 
     let html = '<div class="mt-2">'
-      + '<div class="ver-section-title" style="margin-top:8px">Anexo 1: Cobertura de los Programas Nacionales</div>'
+      + '<div class="ver-section-title" style="margin-top:8px">Anexo 02 : Cobertura de los Programas Nacionales</div>'
       + '<div class="text-muted" style="font-size:12px;margin-bottom:6px">'
       + dep + ' / ' + prov + ' / ' + dist + (ub ? (' (UBIGEO ' + ub + ')') : '')
       + (version ? (' — Fuente: InfoMidis (v' + version + ')') : '')
@@ -5778,7 +5787,7 @@ async function __renderCoberturaAnexo(em, containerId){
     console.error(err);
     try{
       const el = document.getElementById(containerId);
-      if(el) el.innerHTML = '<div class="text-danger"><strong>Anexo 1:</strong> ' + ((err && err.message) ? err.message : 'No se pudo cargar cobertura_programas.json.') + '</div>';
+      if(el) el.innerHTML = '<div class="text-danger"><strong>Anexo 02:</strong> ' + ((err && err.message) ? err.message : 'No se pudo cargar cobertura_programas.json.') + '</div>';
     }catch(_e){}
   }
 }
@@ -6029,8 +6038,19 @@ function __verAccionesCompHtml(rcList, accionesCompUnique){
       + `</tr>`;
   });
   html += `</tbody></table></div>`;
+  return html;
+}
 
-  html += `<div class="ver-section-title" style="margin-top:8px">Detalle cronológico de acciones complementarias</div>`;
+function __verAccionesCompAnexoHtml(rcList, accionesCompUnique){
+  const build = accionesCompUnique || __buildAccionesCompUnique(rcList);
+  const all = Array.isArray(build && build.all) ? build.all : [];
+  const byRc = Array.isArray(build && build.byRc) ? build.byRc : [];
+  let html = `<div class="ver-anexo-block">`
+    + `<div class="ver-anexo-title">Anexo 01 : Detalle cronológico de acciones complementarias</div>`;
+  if(!all.length){
+    html += `<p><em>Sin acciones complementarias registradas.</em></p></div>`;
+    return html;
+  }
   for(let idx = (Array.isArray(rcList) ? rcList.length : 0) - 1; idx >= 0; idx--){
     const rows = Array.isArray(byRc[idx]) ? byRc[idx] : [];
     if(!rows.length) continue;
@@ -6042,6 +6062,7 @@ function __verAccionesCompHtml(rcList, accionesCompUnique){
     });
     html += `</div>`;
   }
+  html += `</div>`;
   return html;
 }
 
@@ -6324,10 +6345,11 @@ function verEmergencia(e) {
   // Historial: Nros globales anteriores
   html += `<div class="ver-subline ver-rc-hist"><span class="ver-lbl">Nros globales anteriores:</span> ${__safe(__verNrosGlobalesHistorial(e, rcList))}</div>`;
 
-  // Anexo (Cobertura) debajo de Nros globales anteriores (abiertas y cerradas)
-  if(true){
-    html += `<div id="ver_anexo_cobertura"></div>`;
-  }
+  // Anexos: siempre comienzan en una nueva hoja al imprimir PDF.
+  html += `<div class="ver-anexos-wrap">`;
+  html += __verAccionesCompAnexoHtml(rcList, accionesCompUnique);
+  html += `<div id="ver_anexo_cobertura" class="ver-anexo-block"></div>`;
+  html += `</div>`;
 
   html += `</div>`;
 
@@ -6618,6 +6640,9 @@ async function __printRC_PDF(idxOpt){
         .ver-acciones-nota{ font-size:9pt; color:#555; margin:4px 0 6px 0; }
         .ver-rc-action-detail{ border-left:3px solid #d9e2f3; padding-left:8px; margin:8px 0 10px 0; }
         .ver-rc-action-detail h6{ color:#1F4E79; font-size:10pt; margin:0 0 4px 0; }
+        .ver-anexos-wrap{ page-break-before:always; break-before:page; margin-top:0; padding-top:0; border-top:0; }
+        .ver-anexo-title{ color:#1F4E79; font-size:12pt; font-weight:700; margin:0 0 8px 0; }
+        .ver-rc-action-detail{ page-break-inside:avoid; break-inside:avoid; }
         h5,h6 { color:#1F4E79; margin: 8px 0 6px; }
         p { margin: 4px 0; }
         ul { margin: 6px 0 10px 18px; }
@@ -6744,7 +6769,7 @@ if(!window.docx){
     const {
       Document, Packer, Paragraph, TextRun, AlignmentType,
       Table, TableRow, TableCell, WidthType,
-      Header, ImageRun
+      Header, ImageRun, PageBreak
     } = docx;
 
     const safe = (v)=> (v===null || v===undefined) ? '' : String(v);
@@ -6901,20 +6926,6 @@ if(!window.docx){
         actionRows.push(new TableRow({ children: vals.map(v=> new TableCell({ children:[new Paragraph({ children:[new TextRun({ text: safe(v), font:'Calibri', size:18 })] })] })) }));
       });
       children.push(new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, rows: actionRows }));
-
-      children.push(new Paragraph({ spacing:{ before: 120, after: 60 }, children:[new TextRun({ text:'Detalle cronológico de acciones complementarias', bold: true, font:'Calibri', size: 22 })] }));
-      for(let idx = (Array.isArray(rcList) ? rcList.length : 0) - 1; idx >= 0; idx--){
-        const rowsRc = Array.isArray(accionesCompByRc && accionesCompByRc[idx]) ? accionesCompByRc[idx] : [];
-        if(!rowsRc.length) continue;
-        children.push(new Paragraph({ spacing:{ before: 80, after: 40 }, children:[new TextRun({ text: __verRcHeaderText(rcList, idx), bold:true, color:'1F4E79', font:'Calibri', size:20 })] }));
-        rowsRc.forEach(({item})=>{
-          const a = __verAccionText(item);
-          const prefix = a.fecha ? `[${__verDateOnly(a.fecha)}] ` : '';
-          (prefix + a.detalle).replace(/\r\n/g,'\n').split('\n').forEach((ln)=>{
-            children.push(new Paragraph({ alignment: AlignmentType.JUSTIFIED, children:[new TextRun({ text: ln, font:'Calibri', size: 22 })] }));
-          });
-        });
-      }
     }else{
       children.push(new Paragraph({ children:[new TextRun({ text:'Sin acciones complementarias registradas.', font:'Calibri', size: 22, italics: true })] }));
     }
@@ -6952,10 +6963,36 @@ if(!window.docx){
     ] }));
 
 
-// Anexo: Cobertura de los Programas (abiertas y cerradas) — leído desde cobertura_programas.json (sin BD)
+// Anexos: iniciar en una nueva hoja.
+children.push(new Paragraph({ children:[new PageBreak()] }));
+children.push(new Paragraph({ spacing:{ after: 80 }, children:[
+  new TextRun({ text:'Anexo 01 : Detalle cronológico de acciones complementarias', bold:true, color:'1F4E79', font:'Calibri', size:24 })
+] }));
+if(Array.isArray(accionesCompAll) && accionesCompAll.length){
+  for(let idx = (Array.isArray(rcList) ? rcList.length : 0) - 1; idx >= 0; idx--){
+    const rowsRc = Array.isArray(accionesCompByRc && accionesCompByRc[idx]) ? accionesCompByRc[idx] : [];
+    if(!rowsRc.length) continue;
+    children.push(new Paragraph({ spacing:{ before: 80, after: 40 }, children:[
+      new TextRun({ text: __verRcHeaderText(rcList, idx), bold:true, color:'1F4E79', font:'Calibri', size:20 })
+    ] }));
+    rowsRc.forEach(({item})=>{
+      const a = __verAccionText(item);
+      const prefix = a.fecha ? `[${__verDateOnly(a.fecha)}] ` : '';
+      (prefix + a.detalle).replace(/\r\n/g,'\n').split('\n').forEach((ln)=>{
+        children.push(new Paragraph({ alignment: AlignmentType.JUSTIFIED, children:[
+          new TextRun({ text: ln, font:'Calibri', size:22 })
+        ] }));
+      });
+    });
+  }
+}else{
+  children.push(new Paragraph({ children:[new TextRun({ text:'Sin acciones complementarias registradas.', font:'Calibri', size:22, italics:true })] }));
+}
+
+// Anexo 02: Cobertura de los Programas Nacionales.
 if(true){
   children.push(new Paragraph({ spacing:{ before: 180, after: 60 }, children:[
-    new TextRun({ text:'Anexo 1: Cobertura de los Programas Nacionales', bold: true, font:'Calibri', size: 22 })
+    new TextRun({ text:'Anexo 02 : Cobertura de los Programas Nacionales', bold: true, font:'Calibri', size: 22 })
   ] }));
 
   if(__covRow && __covRow.cobertura){
