@@ -15,6 +15,7 @@
 <!-- build: MODAL_VER_BACKDROP_CLEANUP v258 2026-06-16 -->
 <!-- build: VER_PDF_WORD_ANEXOS_RC v260 2026-06-17 -->
 <!-- build: ADMIN_CORRECCION_RP_RC_APROBADOS v261 2026-06-17 -->
+<!-- build: RC_REGISTRADOR_SYNC_CONFIRMADO v262 2026-06-24 -->
 <meta charset="UTF-8" />
 <title>Sistema de Información para el Monitoreo de Emergencias y Respuesta - SIMER MIDIS</title>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -28,7 +29,7 @@ body { background: #f5f5f5; }
 .card { margin-top: 1rem; }
 .table td input { width: 100%; }
 .hidden { display: none; }
-/* ======= VERSION 261 17/06/2026 - fix RP approve fresh detail/sync ======= */
+/* ======= VERSION 262 24/06/2026 - RC registrador: sync específico confirmado + detalle fresco ======= */
 /* ======= VER (Listado de Emergencias): Formato de visualización/impresión ======= */
 .ver-report-wrap{ font-family: Calibri, Arial, sans-serif; font-size: 11pt; color:#111; }
 .ver-report-title{ font-family: Calibri, Arial, sans-serif; font-size:15pt; font-weight:700; color:#1F4E79; margin:0 0 6px 0; }
@@ -3380,7 +3381,7 @@ function __collectPendientes(){
               detail:`RC ${idx+1} N° Global ${rc.numeroGlobal || rc.numeroReporteRC || ""}`,
               enviadoPor: rc.enviadoPor || rc.elaboradoPor || rc.createdBy || em.elaboradoPor || "",
               enviadoEn: rc.enviadoEn || rc.updatedAt || rc.fechaRegistro || em.updatedAt || em.fechaHora || "",
-              ref:{kind:"rc", codigo: em.codigo, idx}
+              ref:{kind:"rc", codigo: em.codigo, idx, numeroGlobal: rc.numeroGlobal || rc.numeroReporteRC || ""}
             });
           }
         });
@@ -3400,6 +3401,48 @@ function __collectPendientes(){
     });
   }catch(e){}
   return out;
+}
+
+
+// v262: antes de aprobar u observar un RC, cargar el payload completo vigente de D1
+// y resolver el índice real del RC pendiente (la lista liviana solo contiene metadatos).
+async function __resolveFreshRCPendingRef(ref){
+  const code = String(ref && ref.codigo ? ref.codigo : '').trim();
+  if(!code) throw new Error('codigo_invalido');
+
+  const fresh = await __forceServerFullEmergencia(code, {required:true});
+  if(!fresh) throw new Error('detalle_rc_no_disponible');
+
+  const list = Array.isArray(fresh.rcReportes) ? fresh.rcReportes : [];
+  if(!list.length) throw new Error('rc_no_encontrado_en_servidor');
+
+  let idx = Number.isInteger(ref && ref.idx) ? ref.idx : Number(ref && ref.idx);
+  const globalRef = String(ref && ref.numeroGlobal ? ref.numeroGlobal : '').trim();
+
+  const isPendingAt = (i)=> i >= 0 && i < list.length && String(list[i] && list[i].aprobEstado || '') === 'Pendiente';
+
+  // 1) Índice original, siempre que siga apuntando a un RC pendiente.
+  if(!Number.isInteger(idx) || !isPendingAt(idx)){
+    idx = -1;
+  }
+
+  // 2) Resolver por N° Global cuando la lista resumida y el detalle tengan índices distintos.
+  if(idx < 0 && globalRef){
+    idx = list.findIndex(rc =>
+      String((rc && (rc.numeroGlobal || rc.numeroReporteRC)) || '').trim() === globalRef &&
+      String((rc && rc.aprobEstado) || '') === 'Pendiente'
+    );
+  }
+
+  // 3) Último RC pendiente como respaldo seguro.
+  if(idx < 0){
+    for(let i=list.length-1; i>=0; i--){
+      if(isPendingAt(i)){ idx = i; break; }
+    }
+  }
+
+  if(idx < 0) throw new Error('rc_ya_no_esta_pendiente');
+  return { em:fresh, ref:{kind:'rc', codigo:code, idx, numeroGlobal:globalRef} };
 }
 
 function __renderAprobaciones(){
@@ -3451,6 +3494,32 @@ function __renderAprobaciones(){
           return;
         }
 
+        // v262: RC siempre se aprueba sobre el detalle completo vigente de D1.
+        if(ref && ref.kind === "rc"){
+          const resolved = await __resolveFreshRCPendingRef(ref);
+          const snapshot = JSON.parse(JSON.stringify(resolved.em));
+          __aprobar(resolved.ref);
+          __saveEmergencias();
+          cargarTablaEmergencias?.();
+
+          const res = await __syncCommitCodigo(code, snapshot, {
+            successMessage: 'RC aprobado y confirmado en servidor.',
+            pendingMessage: 'RC aprobado en local. Pendiente de sincronizar.',
+            failurePrefix: 'No se pudo confirmar la aprobación del RC en servidor',
+            requireAck: true
+          });
+
+          if(res && res.ok && !res.pending){
+            try{ await __forceServerFullEmergencia(code, {required:false}); }catch(_e){}
+          }
+          try{ __renderAprobaciones(); }catch(_e){}
+          try{ cargarTablaEmergencias?.(); }catch(_e){}
+          try{ dashboardRefresh?.({force:true}); }catch(_e){}
+          if(res && res.message) alert(res.message);
+          return;
+        }
+
+        // Cierre: mantener el flujo existente.
         const target = (Array.isArray(emergencias)?emergencias:[]).find(x=>String(x && x.codigo ? x.codigo : '').trim()===code) || null;
         const snapshot = target ? JSON.parse(JSON.stringify(target)) : null;
         try{ if(__isApiConfigured && __isApiConfigured() && navigator.onLine){ await __syncPullAuto({force:true}); } }catch(_e){}
@@ -3466,12 +3535,15 @@ function __renderAprobaciones(){
         });
         __renderAprobaciones();
         if(res && res.message) alert(res.message);
+      }catch(e){
+        alert('No se pudo aprobar el registro: ' + ((e && e.message) ? e.message : e));
       }finally{
         b.disabled = false;
         b.textContent = oldTxt || "Aprobar";
       }
     });
   });
+
   tbody.querySelectorAll("[data-obs]").forEach(b=>{
     b.addEventListener("click", async ()=>{
       const ref = JSON.parse(b.getAttribute("data-obs"));
@@ -3479,21 +3551,57 @@ function __renderAprobaciones(){
       if(!obs) return;
       const code = String(ref && ref.codigo ? ref.codigo : '').trim();
       if(!code) return;
-      const target = (Array.isArray(emergencias)?emergencias:[]).find(x=>String(x && x.codigo ? x.codigo : '').trim()===code) || null;
-      const snapshot = target ? JSON.parse(JSON.stringify(target)) : null;
-      try{ if(__isApiConfigured && __isApiConfigured() && navigator.onLine){ await __syncPullAuto(); } }catch(_e){}
-      __observar(ref, obs);
-      __saveEmergencias();
-      __renderAprobaciones();
-      cargarTablaEmergencias?.();
-      dashboardRefresh?.();
-      const res = await __syncCommitCodigo(code, snapshot, {
-        successMessage: 'Observación confirmada en servidor.',
-        pendingMessage: 'Observación guardada en local. Pendiente de sincronizar.',
-        failurePrefix: 'No se pudo confirmar la observación en servidor'
-      });
-      __renderAprobaciones();
-      if(res && res.message) alert(res.message);
+      b.disabled = true;
+      const oldTxt = b.textContent;
+      try{
+        b.textContent = "Observando...";
+
+        // v262: RC siempre se observa sobre el detalle completo vigente de D1.
+        if(ref && ref.kind === "rc"){
+          const resolved = await __resolveFreshRCPendingRef(ref);
+          const snapshot = JSON.parse(JSON.stringify(resolved.em));
+          __observar(resolved.ref, obs);
+          __saveEmergencias();
+          cargarTablaEmergencias?.();
+
+          const res = await __syncCommitCodigo(code, snapshot, {
+            successMessage: 'Observación del RC confirmada en servidor.',
+            pendingMessage: 'Observación del RC guardada en local. Pendiente de sincronizar.',
+            failurePrefix: 'No se pudo confirmar la observación del RC en servidor',
+            requireAck: true
+          });
+
+          if(res && res.ok && !res.pending){
+            try{ await __forceServerFullEmergencia(code, {required:false}); }catch(_e){}
+          }
+          try{ __renderAprobaciones(); }catch(_e){}
+          try{ cargarTablaEmergencias?.(); }catch(_e){}
+          try{ dashboardRefresh?.({force:true}); }catch(_e){}
+          if(res && res.message) alert(res.message);
+          return;
+        }
+
+        const target = (Array.isArray(emergencias)?emergencias:[]).find(x=>String(x && x.codigo ? x.codigo : '').trim()===code) || null;
+        const snapshot = target ? JSON.parse(JSON.stringify(target)) : null;
+        try{ if(__isApiConfigured && __isApiConfigured() && navigator.onLine){ await __syncPullAuto({force:true}); } }catch(_e){}
+        __observar(ref, obs);
+        __saveEmergencias();
+        __renderAprobaciones();
+        cargarTablaEmergencias?.();
+        dashboardRefresh?.();
+        const res = await __syncCommitCodigo(code, snapshot, {
+          successMessage: 'Observación confirmada en servidor.',
+          pendingMessage: 'Observación guardada en local. Pendiente de sincronizar.',
+          failurePrefix: 'No se pudo confirmar la observación en servidor'
+        });
+        __renderAprobaciones();
+        if(res && res.message) alert(res.message);
+      }catch(e){
+        alert('No se pudo observar el registro: ' + ((e && e.message) ? e.message : e));
+      }finally{
+        b.disabled = false;
+        b.textContent = oldTxt || "Observar";
+      }
     });
   });
 }
@@ -3626,6 +3734,7 @@ function __enviarRP(){
 
 function __enviarRC(opts={}){
   const suppress = !!opts.suppressAlert;
+  const skipSync = !!opts.skipSync;
   if(!currentUser || currentUser.role === __ROLES.CONS) return false;
   if(!emergenciaSeleccionada){
     if(!suppress) alert("Seleccione una emergencia desde Lista (botón RC).");
@@ -3665,12 +3774,15 @@ function __enviarRC(opts={}){
   // Guardar estado en emergencia (para reportes/lista)
   __saveEmergencias();
   cargarTablaEmergencias();
-  // Sync inmediato (si hay servidor) para que el Admin lo vea al instante
-  try{
-    if(__isApiConfigured && __isApiConfigured() && navigator.onLine){
-      (async ()=>{ try{ await __syncPush(); await __syncPullAuto(); }catch(_e){} })();
-    }
-  }catch(_e){}
+  // Solo los flujos antiguos/autónomos sincronizan aquí. Los botones unificados v262
+  // usan __syncCommitCodigo para realizar un único Push y esperar confirmación de D1.
+  if(!skipSync){
+    try{
+      if(__isApiConfigured && __isApiConfigured() && navigator.onLine){
+        (async ()=>{ try{ await __syncPush(); await __syncPullAuto(); }catch(_e){} })();
+      }
+    }catch(_e){}
+  }
   if(!suppress) alert("RC enviado a aprobación.");
   return true;
 }
@@ -4411,27 +4523,27 @@ document.addEventListener("DOMContentLoaded", ()=>{
   document.getElementById("btnAprobarRCAdmin")?.addEventListener("click", async ()=>{
     if(!__isAdmin()) return;
     if(!emergenciaSeleccionada){ alert("Seleccione una emergencia para RC."); return; }
-    const em = emergenciaSeleccionada;
-    if(!Array.isArray(em.rcReportes) || em.rcReportes.length===0){
-      alert("No hay RC guardado.");
-      return;
+    try{
+      const code = String(emergenciaSeleccionada.codigo || '').trim();
+      const resolved = await __resolveFreshRCPendingRef({kind:'rc', codigo:code, idx:(Array.isArray(emergenciaSeleccionada.rcReportes) ? emergenciaSeleccionada.rcReportes.length-1 : -1)});
+      const em = resolved.em;
+      const snapshot = JSON.parse(JSON.stringify(em));
+      __aprobar(resolved.ref);
+      __saveEmergencias();
+      cargarTablaEmergencias();
+      const res = await __syncCommitCodigo(code, snapshot, {
+        successMessage: 'RC aprobado y confirmado en servidor.',
+        pendingMessage: 'RC aprobado en local. Pendiente de sincronizar.',
+        failurePrefix: 'No se pudo confirmar la aprobación del RC en servidor',
+        requireAck: true
+      });
+      if(res && res.ok && !res.pending){
+        try{ await __forceServerFullEmergencia(code, {required:false}); }catch(_e){}
+      }
+      alert(res.message || 'Operación finalizada.');
+    }catch(e){
+      alert("No se pudo aprobar el RC: " + ((e && e.message) ? e.message : e));
     }
-    const idx = em.rcReportes.length-1;
-    const rc = em.rcReportes[idx];
-    if(rc.aprobEstado !== "Pendiente"){
-      alert("El RC no está en estado 'Por aprobar'.");
-      return;
-    }
-    const snapshot = JSON.parse(JSON.stringify(em));
-    __aprobar({kind:"rc", codigo: em.codigo, idx});
-    __saveEmergencias();
-    cargarTablaEmergencias();
-    const res = await __syncCommitCodigo(em.codigo, snapshot, {
-      successMessage: 'RC aprobado en servidor.',
-      pendingMessage: 'RC aprobado en local. Pendiente de sincronizar.',
-      failurePrefix: 'No se pudo confirmar la aprobación del RC en servidor'
-    });
-    alert(res.message || 'Operación finalizada.');
   });
 
 });
@@ -7838,7 +7950,7 @@ function cargarTablaEmergencias() {
 
     const btnRC = tr.querySelector(".btnRC");
     if (btnRC && !btnRC.disabled && btnRC.style.display !== "none") {
-      btnRC.onclick = () => __withFullEmergencia(e, (full)=>abrirRC(full));
+      btnRC.onclick = () => __withFreshFullEmergencia(e, (full)=>abrirRC(full));
     }
 
     // Admin-only: Modificar / Eliminar
@@ -9045,7 +9157,7 @@ document.getElementById("btnGuardarAprobarRCAdmin")?.addEventListener("click", a
       const estado = rc ? rc.aprobEstado : null;
       const __isLast = (idx === (em && Array.isArray(em.rcReportes) ? (em.rcReportes.length - 1) : -1));
       if(__isLast && estado !== "Pendiente"){
-        __enviarRC({suppressAlert:true});
+        __enviarRC({suppressAlert:true, skipSync:true});
       }
     }catch(e){}
 
@@ -9056,7 +9168,8 @@ document.getElementById("btnGuardarAprobarRCAdmin")?.addEventListener("click", a
     const res = await __syncCommitCodigo(em.codigo, emPrev, {
       successMessage: 'RC guardado y aprobado en servidor.',
       pendingMessage: 'RC aprobado en local. Pendiente de sincronizar.',
-      failurePrefix: 'No se pudo confirmar la aprobación del RC en servidor'
+      failurePrefix: 'No se pudo confirmar la aprobación del RC en servidor',
+      requireAck: true
     });
 
     if(res.ok && !res.pending){
@@ -9071,32 +9184,95 @@ document.getElementById("btnGuardarAprobarRCAdmin")?.addEventListener("click", a
 });
 
 // ===================== GUARDAR + ENVIAR RC (REGISTRADOR) =====================
-document.getElementById("btnGuardarEnviarRC")?.addEventListener("click", ()=>{
+// v262: un solo Push por código, espera confirmación de D1 y restaura ante conflicto/rechazo.
+document.getElementById("btnGuardarEnviarRC")?.addEventListener("click", async ()=>{
   if(!(__isRegistrador && __isRegistrador())) return;
-  const ok = __guardarRCCore({suppressAlert:true});
-  if(!ok) return;
+  if(!emergenciaSeleccionada){
+    alert("Seleccione una emergencia desde Lista (botón RC).");
+    return;
+  }
 
-  // Enviar a aprobación (silencioso) y notificar una sola vez
-  const sent = __enviarRC({suppressAlert:true});
-  if(!sent) return;
+  const btn = document.getElementById("btnGuardarEnviarRC");
+  const oldTxt = btn ? btn.textContent : "";
+  const code = String(emergenciaSeleccionada.codigo || "").trim();
+  const snapshot = JSON.parse(JSON.stringify(emergenciaSeleccionada));
+  let keepLocked = false;
 
-  // Sync inmediato para que el Administrador vea el pendiente y para evitar rebotes
   try{
-    if(__isApiConfigured && __isApiConfigured() && navigator.onLine){
-      (async ()=>{ try{ await __syncPush(); await __syncPullAuto(); }catch(_e){} })();
+    if(btn){ btn.disabled = true; btn.textContent = "Guardando y enviando..."; }
+
+    const ok = __guardarRCCore({suppressAlert:true});
+    if(!ok){
+      alert("No se pudo guardar el RC.");
+      return;
     }
-  }catch(_e){}
 
-  alert("RC guardado y enviado a aprobación.");
-  // Bloquear edición hasta decisión
-  try{
-    setRCEnabled(false);
-    try{ __applyRCLockUI(); }catch(e){}
-    try{ cargarAccionesRC(); __applyRCLockUI(); }catch(e){}
-    document.getElementById("btnWordRC") && (document.getElementById("btnWordRC").disabled = false);
-    document.getElementById("btnRetornarRC") && (document.getElementById("btnRetornarRC").disabled = false);
-  }catch(e){}
-});;
+    // Marcar Pendiente sin iniciar un segundo Push en segundo plano.
+    const sent = __enviarRC({suppressAlert:true, skipSync:true});
+    if(!sent){
+      __restoreCodigoSnapshot(code, snapshot);
+      const restored = (Array.isArray(emergencias) ? emergencias : []).find(e=>String(e && e.codigo || '').trim() === code);
+      if(restored){ emergenciaSeleccionada = restored; abrirRC(restored); }
+      return;
+    }
+
+    const res = await __syncCommitCodigo(code, snapshot, {
+      successMessage: "RC enviado a aprobación y confirmado en el servidor. El Administrador ya puede visualizarlo.",
+      pendingMessage: "RC guardado localmente y pendiente de sincronización. El Administrador todavía no podrá visualizarlo.",
+      failurePrefix: "No se pudo confirmar el envío del RC en el servidor",
+      requireAck: true
+    });
+
+    if(res && res.ok){
+      keepLocked = true;
+      if(!res.pending){
+        try{
+          const fresh = await __forceServerFullEmergencia(code, {required:false});
+          if(fresh) emergenciaSeleccionada = fresh;
+        }catch(_e){}
+        try{ await __calcPending(); }catch(_e){}
+        try{ cargarTablaEmergencias(); }catch(_e){}
+      }
+
+      // Pendiente confirmado u offline: no permitir otro RC hasta resolver/sincronizar.
+      try{
+        setRCEnabled(false);
+        try{ __applyRCLockUI(); }catch(_e){}
+        try{ cargarAccionesRC(); __applyRCLockUI(); }catch(_e){}
+        const bWord = document.getElementById("btnWordRC");
+        const bRet = document.getElementById("btnRetornarRC");
+        if(bWord) bWord.disabled = false;
+        if(bRet) bRet.disabled = false;
+      }catch(_e){}
+
+      alert(res.message || "Operación finalizada.");
+      return;
+    }
+
+    // Conflicto/rechazo/error: __syncCommitCodigo restauró el snapshot.
+    const restored = (Array.isArray(emergencias) ? emergencias : []).find(e=>String(e && e.codigo || '').trim() === code) || null;
+    if(restored){
+      emergenciaSeleccionada = restored;
+      abrirRC(restored);
+      try{ setRCEnabled(true); setRCViewActive(true); }catch(_e){}
+    }
+    try{ cargarTablaEmergencias(); }catch(_e){}
+    alert((res && res.message ? res.message : "No se pudo enviar el RC.") + " Se restauró la versión anterior; revise Conflictos Sync.");
+  }catch(e){
+    __restoreCodigoSnapshot(code, snapshot);
+    const restored = (Array.isArray(emergencias) ? emergencias : []).find(x=>String(x && x.codigo || '').trim() === code) || null;
+    if(restored){
+      emergenciaSeleccionada = restored;
+      try{ abrirRC(restored); setRCEnabled(true); setRCViewActive(true); }catch(_e){}
+    }
+    alert("No se pudo confirmar el envío del RC: " + ((e && e.message) ? e.message : e) + ". Se restauró la versión anterior.");
+  }finally{
+    if(btn){
+      btn.textContent = oldTxt || "Guardar y enviar a aprobación";
+      if(!keepLocked) btn.disabled = false;
+    }
+  }
+});
 
 // ===================== CERRAR / SOLICITAR CIERRE EMERGENCIA =====================
 document.getElementById("btnCerrarEmergencia").onclick = () => {
@@ -11400,7 +11576,8 @@ async function __syncCommitCodigo(codigo, snapshot, opts){
   const cfg = Object.assign({
     successMessage: 'Cambio confirmado en servidor.',
     pendingMessage: 'Cambio guardado en local. Pendiente de sincronizar con el servidor.',
-    failurePrefix: 'No se pudo confirmar el cambio en el servidor'
+    failurePrefix: 'No se pudo confirmar el cambio en el servidor',
+    requireAck: false
   }, opts || {});
 
   if(!code) return { ok:false, error:'codigo_invalido' };
@@ -11425,8 +11602,16 @@ async function __syncCommitCodigo(codigo, snapshot, opts){
       return { ok:false, conflict:hasConflict, denied:hasDenied, message: cfg.failurePrefix + (hasConflict ? ' (conflicto).' : ' (rechazo).') };
     }
 
+    const acked = push && Array.isArray(push.acked) ? push.acked : [];
+    const confirmed = !!(push && push.ok && acked.includes(code));
+    if(cfg.requireAck && !confirmed){
+      __restoreCodigoSnapshot(code, snapshot);
+      try{ await __syncPull(__getLastPull()); }catch(_e){}
+      return { ok:false, error:'sin_confirmacion_ack', message: cfg.failurePrefix + ' (el servidor no confirmó el registro).' };
+    }
+
     try{ await __syncPullAuto({ force:true }); }catch(_e){}
-    return { ok:true, message: cfg.successMessage, acked: push && push.acked ? push.acked : [] };
+    return { ok:true, message: cfg.successMessage, acked: acked };
   }catch(e){
     __restoreCodigoSnapshot(code, snapshot);
     try{ await __syncPull(__getLastPull()); }catch(_e){}
