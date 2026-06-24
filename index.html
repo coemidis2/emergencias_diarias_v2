@@ -16,6 +16,7 @@
 <!-- build: VER_PDF_WORD_ANEXOS_RC v260 2026-06-17 -->
 <!-- build: ADMIN_CORRECCION_RP_RC_APROBADOS v261 2026-06-17 -->
 <!-- build: RC_REGISTRADOR_SYNC_CONFIRMADO v262 2026-06-24 -->
+<!-- build: RC_BORRADOR_RECUPERABLE_DIAGNOSTICO v263 2026-06-24 -->
 <meta charset="UTF-8" />
 <title>Sistema de Información para el Monitoreo de Emergencias y Respuesta - SIMER MIDIS</title>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -29,7 +30,7 @@ body { background: #f5f5f5; }
 .card { margin-top: 1rem; }
 .table td input { width: 100%; }
 .hidden { display: none; }
-/* ======= VERSION 262 24/06/2026 - RC registrador: sync específico confirmado + detalle fresco ======= */
+/* ======= VERSION 263 24/06/2026 - RC registrador: borrador recuperable + diagnóstico exacto de rechazo ======= */
 /* ======= VER (Listado de Emergencias): Formato de visualización/impresión ======= */
 .ver-report-wrap{ font-family: Calibri, Arial, sans-serif; font-size: 11pt; color:#111; }
 .ver-report-title{ font-family: Calibri, Arial, sans-serif; font-size:15pt; font-weight:700; color:#1F4E79; margin:0 0 6px 0; }
@@ -1835,7 +1836,7 @@ body { background: #f5f5f5; }
           <div class="tab-pane fade" id="admPaneSyncConf" role="tabpanel">
 
         <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
-          <div class="small text-muted" id="admSyncConfHint">Conflictos de sincronización guardados en este navegador.</div>
+          <div class="small text-muted" id="admSyncConfHint">Conflictos de sincronización guardados solo en este navegador/equipo; no se comparten entre PCs.</div>
           <div class="d-flex gap-2">
             <button id="btnAdmSyncConfRefresh" class="btn btn-outline-primary btn-sm" type="button">Actualizar</button>
             <button id="btnAdmSyncConfClearAll" class="btn btn-outline-danger btn-sm" type="button">Limpiar historial</button>
@@ -2413,6 +2414,105 @@ function __saveEmergencias(){
   }catch(e){
     console.warn("No se pudo guardar emergencias:", e);
   }
+}
+
+
+// ===================== v263: BORRADOR LOCAL RECUPERABLE DE RC =====================
+// Evita perder las acciones y daños digitados cuando D1 rechaza o entra en conflicto.
+const __RC_DRAFT_RECOVERY_KEY = "midis_rc_draft_recovery_v263";
+
+function __rcDraftRecoveryRead(){
+  try{
+    const obj = JSON.parse(__lsGet(__RC_DRAFT_RECOVERY_KEY) || "{}");
+    return (obj && typeof obj === "object" && !Array.isArray(obj)) ? obj : {};
+  }catch(e){ return {}; }
+}
+function __rcDraftRecoveryWrite(obj){
+  try{ __lsSet(__RC_DRAFT_RECOVERY_KEY, JSON.stringify(obj || {})); }catch(e){}
+}
+function __rcDraftRecoveryId(codigo){
+  const email = String((currentUser && currentUser.email) || "sin_usuario").trim().toLowerCase();
+  return email + "::" + String(codigo || "").trim();
+}
+function __rcDraftCaptureDaniosUI(){
+  const out = {};
+  try{
+    document.querySelectorAll(".danio-rc").forEach(inp=>{
+      const prog = String(inp.dataset.programa || "").trim();
+      const field = String(inp.dataset.field || "").trim();
+      if(!prog || !field) return;
+      let val = Number(inp.value);
+      if(!Number.isFinite(val) || val < 0) val = 0;
+      if(!out[prog]) out[prog] = {
+        usuariosAfectados:0, serviciosAfectados:0, usuariosPorServicios:0,
+        usuariosFallecidos:0, moduloAfectado:0
+      };
+      out[prog][field] = val;
+    });
+  }catch(e){}
+  return out;
+}
+function __rcDraftSave(codigo, extra){
+  try{
+    const code = String(codigo || "").trim();
+    if(!code) return null;
+    const all = __rcDraftRecoveryRead();
+    const draft = Object.assign({
+      codigo: code,
+      userEmail: String((currentUser && currentUser.email) || "").trim(),
+      savedAt: __nowIso(),
+      acciones: JSON.parse(JSON.stringify(Array.isArray(accionesRCTemp) ? accionesRCTemp : [])),
+      daniosMIDIS: JSON.parse(JSON.stringify(__rcDraftCaptureDaniosUI()))
+    }, extra || {});
+    all[__rcDraftRecoveryId(code)] = draft;
+    __rcDraftRecoveryWrite(all);
+    return draft;
+  }catch(e){ return null; }
+}
+function __rcDraftGet(codigo){
+  try{ return __rcDraftRecoveryRead()[__rcDraftRecoveryId(codigo)] || null; }
+  catch(e){ return null; }
+}
+function __rcDraftClear(codigo){
+  try{
+    const all = __rcDraftRecoveryRead();
+    delete all[__rcDraftRecoveryId(codigo)];
+    __rcDraftRecoveryWrite(all);
+    const notice = document.getElementById("rcEditNotice");
+    if(notice && (__isRegistrador && __isRegistrador())){
+      notice.classList.add("d-none");
+      notice.textContent = "";
+    }
+  }catch(e){}
+}
+function __rcDraftApplyToForm(codigo, opts){
+  const cfg = Object.assign({ showNotice:true }, opts || {});
+  try{
+    if(!(__isRegistrador && __isRegistrador())) return false;
+    const draft = __rcDraftGet(codigo);
+    if(!draft) return false;
+
+    // Si D1 ya tiene un RC pendiente, prevalece el servidor y no se reinyecta el borrador.
+    const em = emergenciaSeleccionada;
+    const list = em && Array.isArray(em.rcReportes) ? em.rcReportes : [];
+    const last = list.length ? list[list.length - 1] : null;
+    if(last && String(last.aprobEstado || "") === "Pendiente") return false;
+
+    accionesRCTemp = JSON.parse(JSON.stringify(Array.isArray(draft.acciones) ? draft.acciones : []));
+    try{ cargarAccionesRC(); }catch(e){}
+    try{ cargarTablaDaniosRC({ daniosMIDIS: JSON.parse(JSON.stringify(draft.daniosMIDIS || {})) }); }catch(e){}
+
+    if(cfg.showNotice){
+      const notice = document.getElementById("rcEditNotice");
+      if(notice){
+        const when = draft.savedAt ? __formatLocalIso(draft.savedAt) : "";
+        const reason = draft.reasonText ? " Motivo: " + draft.reasonText : "";
+        notice.classList.remove("d-none");
+        notice.innerHTML = "<strong>Borrador local recuperado.</strong> Las acciones y daños no confirmados por D1 se conservaron en este equipo" + (when ? " desde " + when : "") + "." + reason;
+      }
+    }
+    return true;
+  }catch(e){ return false; }
 }
 function __recalcularCorrelativos(){
   try{
@@ -4332,7 +4432,7 @@ function __renderSyncConflictsTable(){
   if(hint){
     hint.textContent = (rows.length || totalResolved)
       ? `Pendientes: ${pendingCount} | Resueltos guardados: ${totalResolved} | Bloques históricos: ${totalLog}`
-      : "No hay conflictos de sincronización registrados en este navegador.";
+      : "No hay conflictos registrados en este navegador/equipo. Este historial no se comparte automáticamente con otras PCs.";
   }
 
   tbody.innerHTML = "";
@@ -8804,6 +8904,9 @@ ${rcLecturaHtml ? `
 
   // Limpiar campos de nueva acción RC
   __resetRCActionForm();
+
+  // v263: si este equipo conserva un RC no confirmado por D1, reponerlo en el formulario.
+  try{ __rcDraftApplyToForm(obj.codigo, {showNotice:true}); }catch(_e){}
 }
 
 // ===================== GUARDAR RC (solo una vez) =====================
@@ -9184,7 +9287,7 @@ document.getElementById("btnGuardarAprobarRCAdmin")?.addEventListener("click", a
 });
 
 // ===================== GUARDAR + ENVIAR RC (REGISTRADOR) =====================
-// v262: un solo Push por código, espera confirmación de D1 y restaura ante conflicto/rechazo.
+// v263: toma detalle/hash fresco, conserva borrador local y muestra la causa exacta del rechazo.
 document.getElementById("btnGuardarEnviarRC")?.addEventListener("click", async ()=>{
   if(!(__isRegistrador && __isRegistrador())) return;
   if(!emergenciaSeleccionada){
@@ -9195,17 +9298,33 @@ document.getElementById("btnGuardarEnviarRC")?.addEventListener("click", async (
   const btn = document.getElementById("btnGuardarEnviarRC");
   const oldTxt = btn ? btn.textContent : "";
   const code = String(emergenciaSeleccionada.codigo || "").trim();
-  const snapshot = JSON.parse(JSON.stringify(emergenciaSeleccionada));
+  let snapshot = null;
   let keepLocked = false;
 
-  try{
-    if(btn){ btn.disabled = true; btn.textContent = "Guardando y enviando..."; }
+  // Respaldo inmediato de lo digitado, antes de tocar la copia oficial de la emergencia.
+  __rcDraftSave(code, { reason:"pre_envio", reasonText:"borrador previo al envío" });
 
+  try{
+    if(btn){ btn.disabled = true; btn.textContent = "Validando versión..."; }
+
+    // Trabajar siempre sobre el payload completo y el hash vigente de D1.
+    // Las accionesRCTemp y los inputs permanecen en pantalla y luego se aplican a esta base fresca.
+    if(__isApiConfigured && __isApiConfigured() && navigator.onLine){
+      const fresh = await __forceServerFullEmergencia(code, {required:true});
+      if(fresh) emergenciaSeleccionada = fresh;
+    }
+    snapshot = JSON.parse(JSON.stringify(emergenciaSeleccionada));
+
+    if(btn) btn.textContent = "Guardando...";
     const ok = __guardarRCCore({suppressAlert:true});
     if(!ok){
-      alert("No se pudo guardar el RC.");
+      alert("No se pudo guardar el RC. El borrador digitado permanece guardado en este equipo.");
+      try{ __rcDraftApplyToForm(code, {showNotice:true}); }catch(_e){}
       return;
     }
+
+    // Actualizar el respaldo con la versión exacta que se intentará enviar.
+    __rcDraftSave(code, { reason:"pendiente_confirmacion", reasonText:"pendiente de confirmación del servidor" });
 
     // Marcar Pendiente sin iniciar un segundo Push en segundo plano.
     const sent = __enviarRC({suppressAlert:true, skipSync:true});
@@ -9213,9 +9332,11 @@ document.getElementById("btnGuardarEnviarRC")?.addEventListener("click", async (
       __restoreCodigoSnapshot(code, snapshot);
       const restored = (Array.isArray(emergencias) ? emergencias : []).find(e=>String(e && e.codigo || '').trim() === code);
       if(restored){ emergenciaSeleccionada = restored; abrirRC(restored); }
+      try{ __rcDraftApplyToForm(code, {showNotice:true}); }catch(_e){}
       return;
     }
 
+    if(btn) btn.textContent = "Sincronizando...";
     const res = await __syncCommitCodigo(code, snapshot, {
       successMessage: "RC enviado a aprobación y confirmado en el servidor. El Administrador ya puede visualizarlo.",
       pendingMessage: "RC guardado localmente y pendiente de sincronización. El Administrador todavía no podrá visualizarlo.",
@@ -9226,12 +9347,15 @@ document.getElementById("btnGuardarEnviarRC")?.addEventListener("click", async (
     if(res && res.ok){
       keepLocked = true;
       if(!res.pending){
+        __rcDraftClear(code);
         try{
           const fresh = await __forceServerFullEmergencia(code, {required:false});
           if(fresh) emergenciaSeleccionada = fresh;
         }catch(_e){}
         try{ await __calcPending(); }catch(_e){}
         try{ cargarTablaEmergencias(); }catch(_e){}
+      }else{
+        __rcDraftSave(code, { reason:"offline", reasonText:"sin conexión; pendiente de sincronización" });
       }
 
       // Pendiente confirmado u offline: no permitir otro RC hasta resolver/sincronizar.
@@ -9249,23 +9373,35 @@ document.getElementById("btnGuardarEnviarRC")?.addEventListener("click", async (
       return;
     }
 
-    // Conflicto/rechazo/error: __syncCommitCodigo restauró el snapshot.
+    // Rechazo/conflicto: la base oficial se restaura, pero las acciones y daños vuelven al formulario.
+    const reasonText = String((res && res.reasonText) || "rechazo no especificado por el servidor");
+    __rcDraftSave(code, { reason:String((res && res.reason) || "denied"), reasonText });
     const restored = (Array.isArray(emergencias) ? emergencias : []).find(e=>String(e && e.codigo || '').trim() === code) || null;
     if(restored){
       emergenciaSeleccionada = restored;
       abrirRC(restored);
       try{ setRCEnabled(true); setRCViewActive(true); }catch(_e){}
+      try{ __rcDraftApplyToForm(code, {showNotice:true}); }catch(_e){}
     }
     try{ cargarTablaEmergencias(); }catch(_e){}
-    alert((res && res.message ? res.message : "No se pudo enviar el RC.") + " Se restauró la versión anterior; revise Conflictos Sync.");
+
+    let guidance = " La información no se perdió: quedó como borrador local recuperable en esta PC.";
+    if(String((res && res.reason) || '').toLowerCase() === 'not_owner'){
+      guidance += " Para que este Registrador pueda enviar el RC de una emergencia creada por otro usuario, también debe actualizarse la regla de permisos del Worker; el index no puede anular un rechazo del servidor.";
+    }
+    guidance += " Conflictos Sync es un historial local de cada navegador, por eso no aparece automáticamente en la PC del Administrador.";
+    alert((res && res.message ? res.message : "No se pudo enviar el RC.") + guidance);
   }catch(e){
-    __restoreCodigoSnapshot(code, snapshot);
+    if(snapshot) __restoreCodigoSnapshot(code, snapshot);
+    const msg = (e && e.message) ? e.message : String(e);
+    __rcDraftSave(code, { reason:msg, reasonText:__syncReasonText(msg, null) });
     const restored = (Array.isArray(emergencias) ? emergencias : []).find(x=>String(x && x.codigo || '').trim() === code) || null;
     if(restored){
       emergenciaSeleccionada = restored;
       try{ abrirRC(restored); setRCEnabled(true); setRCViewActive(true); }catch(_e){}
+      try{ __rcDraftApplyToForm(code, {showNotice:true}); }catch(_e){}
     }
-    alert("No se pudo confirmar el envío del RC: " + ((e && e.message) ? e.message : e) + ". Se restauró la versión anterior.");
+    alert("No se pudo confirmar el envío del RC (" + __syncReasonText(msg, null) + "). La información quedó guardada como borrador local recuperable en esta PC.");
   }finally{
     if(btn){
       btn.textContent = oldTxt || "Guardar y enviar a aprobación";
@@ -11512,6 +11648,8 @@ function __syncCleanPayload(obj){
   delete x.__serverUpdatedAt;
   delete x.__serverHash;
   delete x.__serverCreatedAt;
+  delete x.__serverCreatedBy;
+  delete x.__serverUpdatedBy;
   delete x.__summaryOnly;
   delete x.__needsDetail;
   delete x.__needsExcelDetail;
@@ -11532,12 +11670,44 @@ function __syncListHasCodigo(list, codigo){
     });
   }catch(e){ return false; }
 }
+
+function __syncIssueForCode(items, codigo){
+  try{
+    const code = String(codigo || "").trim();
+    return (Array.isArray(items) ? items : []).find(it=>{
+      const c = String((typeof it === "string") ? it : (it && (it.codigo || it.code || it.id) || "")).trim();
+      return c === code;
+    }) || null;
+  }catch(e){ return null; }
+}
+function __syncIssueReason(issue, fallback){
+  if(typeof issue === "string") return String(fallback || issue || "").trim();
+  return String((issue && (issue.reason || issue.error || issue.msg || issue.message)) || fallback || "").trim();
+}
+function __syncReasonText(reason, issue){
+  const r = String(reason || "").trim().toLowerCase();
+  const detail = String((issue && issue.message) || "").trim();
+  if(r === "not_owner" || r === "no_owner") return "el registro pertenece a otro usuario Registrador y el Worker actual no permite que un Registrador distinto lo actualice";
+  if(r === "rp_state_locked") return "el estado aprobado o pendiente del RP está protegido en el servidor";
+  if(r === "cierre_state_locked") return "el estado de cierre está protegido en el servidor";
+  if(r === "rc_locked_missing") return "el envío no contenía un RC anterior que el servidor mantiene protegido";
+  if(r === "rc_state_locked") return "se intentó alterar el estado de un RC anterior protegido";
+  if(r === "invalid_record") return "el servidor consideró incompleto o inválido el registro enviado";
+  if(r === "server_exception") return "el servidor produjo una excepción" + (detail ? ": " + detail : "");
+  if(r === "missing_if_match") return "faltó el hash de la versión vigente del servidor";
+  if(r === "if_match_failed" || r === "conflict" || r === "both_modified") return "la emergencia cambió en el servidor después de ser cargada";
+  if(r === "forbidden" || r === "invalid_role") return "el rol actual no tiene permiso para realizar esta actualización";
+  if(r === "closed") return "la emergencia está cerrada en el servidor";
+  if(r === "unauthorized") return "la sesión venció o el token no es válido";
+  return r ? r : "rechazo no especificado por el servidor";
+}
+
 function __syncShouldHardRejectDenied(reason){
   try{
     const r = String(reason || '').toLowerCase();
     if(!r) return true;
-    if(r.includes('not_owner') || r.includes('no_owner') || r.includes('not_edit') || r.includes('closed') || r.includes('forbidden') || r.includes('invalid_role')) return false;
-    if(r.includes('deleted') || r.includes('not_found') || r.includes('gone') || r.includes('tombstone')) return false;
+    // v263: todo rechazo expreso del servidor debe conservarse como Rechazado.
+    // Nunca se marca como Sincronizado un not_owner/forbidden/locked.
     return true;
   }catch(e){ return true; }
 }
@@ -11595,11 +11765,24 @@ async function __syncCommitCodigo(codigo, snapshot, opts){
     const push = await __syncPushCodigo(code);
     const hasConflict = __syncListHasCodigo(push && push.conflicts, code);
     const hasDenied = __syncListHasCodigo(push && push.denied, code);
+    const conflictIssue = __syncIssueForCode(push && push.conflicts, code);
+    const deniedIssue = __syncIssueForCode(push && push.denied, code);
 
     if(hasConflict || hasDenied){
+      const issue = hasDenied ? deniedIssue : conflictIssue;
+      const reason = __syncIssueReason(issue, hasDenied ? 'denied' : 'conflict');
+      const reasonText = __syncReasonText(reason, issue);
       __restoreCodigoSnapshot(code, snapshot);
       try{ await __syncPull(__getLastPull()); }catch(_e){}
-      return { ok:false, conflict:hasConflict, denied:hasDenied, message: cfg.failurePrefix + (hasConflict ? ' (conflicto).' : ' (rechazo).') };
+      return {
+        ok:false,
+        conflict:hasConflict,
+        denied:hasDenied,
+        reason,
+        reasonText,
+        issue,
+        message: cfg.failurePrefix + ' (' + reasonText + ').'
+      };
     }
 
     const acked = push && Array.isArray(push.acked) ? push.acked : [];
@@ -11616,7 +11799,7 @@ async function __syncCommitCodigo(codigo, snapshot, opts){
     __restoreCodigoSnapshot(code, snapshot);
     try{ await __syncPull(__getLastPull()); }catch(_e){}
     const msg = (e && e.message) ? e.message : String(e);
-    return { ok:false, error:msg, message: cfg.failurePrefix + ' (' + msg + ').' };
+    return { ok:false, error:msg, reason:msg, reasonText:__syncReasonText(msg, null), message: cfg.failurePrefix + ' (' + __syncReasonText(msg, null) + ').' };
   }
 }
 
@@ -13097,6 +13280,8 @@ async function __ensureFullEmergencia(objOrCodigo){
   try{ payload.estado_sync = 'Sincronizado'; }catch(_e){}
   try{ payload.__serverHash = String(rec.hash || ''); }catch(_e){}
   try{ payload.__serverUpdatedAt = String(rec.updated_at || ''); }catch(_e){}
+  try{ payload.__serverCreatedBy = String(rec.created_by || rec.owner_email || payload.ownerEmail || payload.createdByEmail || ''); }catch(_e){}
+  try{ payload.__serverUpdatedBy = String(rec.updated_by || ''); }catch(_e){}
   try{ payload.__summaryOnly = false; delete payload.__needsDetail; }catch(_e){}
   if(idx >= 0) arr[idx] = payload;
   else { arr.push(payload); idx = arr.length - 1; }
@@ -13125,6 +13310,8 @@ async function __forceServerFullEmergencia(objOrCodigo, opts){
         try{ payload.estado_sync = 'Sincronizado'; }catch(_e){}
         try{ payload.__serverHash = String(rec.hash || ''); }catch(_e){}
         try{ payload.__serverUpdatedAt = String(rec.updated_at || ''); }catch(_e){}
+        try{ payload.__serverCreatedBy = String(rec.created_by || rec.owner_email || payload.ownerEmail || payload.createdByEmail || ''); }catch(_e){}
+        try{ payload.__serverUpdatedBy = String(rec.updated_by || ''); }catch(_e){}
         try{ payload.__summaryOnly = false; delete payload.__needsDetail; }catch(_e){}
 
         const idx = arr.findIndex(e => String(e && e.codigo ? e.codigo : '').trim() === code);
