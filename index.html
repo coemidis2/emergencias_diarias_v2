@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <!-- BUILD: 2026-02-20 autopull-cooldown-v206-fix-sync-v3-stage7-light-list-detail-demand -->
-<script>window.__BUILD_ID='2026-02-20 autopull-cooldown-v206-fix-sync-v3-sync-lock-v248-stage7-light-list-detail-demand';console.log('BUILD',window.__BUILD_ID);</script>
+<script>window.__BUILD_ID='2026-06-24 v264-rc-multiregistrador-seguro-conflictos-d1';console.log('BUILD',window.__BUILD_ID);</script>
 
 <!-- build: VER_PRINT_RC_ALWAYS_VISIBLE v4 2026-01-11 -->
 <!-- build: ETAPA1_ACCIONES_RC_RESUMEN_DETALLE v251 2026-06-15 -->
@@ -16,7 +16,7 @@
 <!-- build: VER_PDF_WORD_ANEXOS_RC v260 2026-06-17 -->
 <!-- build: ADMIN_CORRECCION_RP_RC_APROBADOS v261 2026-06-17 -->
 <!-- build: RC_REGISTRADOR_SYNC_CONFIRMADO v262 2026-06-24 -->
-<!-- build: RC_BORRADOR_RECUPERABLE_DIAGNOSTICO v263 2026-06-24 -->
+<!-- build: RC_MULTIREGISTRADOR_SEGURO_CONFLICTOS_D1 v264 2026-06-24 -->
 <meta charset="UTF-8" />
 <title>Sistema de Información para el Monitoreo de Emergencias y Respuesta - SIMER MIDIS</title>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -30,7 +30,7 @@ body { background: #f5f5f5; }
 .card { margin-top: 1rem; }
 .table td input { width: 100%; }
 .hidden { display: none; }
-/* ======= VERSION 263 24/06/2026 - RC registrador: borrador recuperable + diagnóstico exacto de rechazo ======= */
+/* ======= VERSION 264 24/06/2026 - RC multi-registrador seguro + conflictos compartidos en D1 ======= */
 /* ======= VER (Listado de Emergencias): Formato de visualización/impresión ======= */
 .ver-report-wrap{ font-family: Calibri, Arial, sans-serif; font-size: 11pt; color:#111; }
 .ver-report-title{ font-family: Calibri, Arial, sans-serif; font-size:15pt; font-weight:700; color:#1F4E79; margin:0 0 6px 0; }
@@ -1795,6 +1795,10 @@ body { background: #f5f5f5; }
               <option value="SYNC_PUSH">SYNC_PUSH</option>
               <option value="SYNC_PULL">SYNC_PULL</option>
               <option value="SYNC_UPSERT">SYNC_UPSERT</option>
+              <option value="SYNC_DENIED">SYNC_DENIED</option>
+              <option value="SYNC_CONFLICT">SYNC_CONFLICT</option>
+              <option value="SYNC_ERROR">SYNC_ERROR</option>
+              <option value="RC_CROSS_OWNER_ACCEPTED">RC_CROSS_OWNER_ACCEPTED</option>
             </select>
           </div>
           <div class="col-md-1 d-grid">
@@ -1836,10 +1840,10 @@ body { background: #f5f5f5; }
           <div class="tab-pane fade" id="admPaneSyncConf" role="tabpanel">
 
         <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
-          <div class="small text-muted" id="admSyncConfHint">Conflictos de sincronización guardados solo en este navegador/equipo; no se comparten entre PCs.</div>
+          <div class="small text-muted" id="admSyncConfHint">Conflictos del servidor compartidos entre PCs y respaldo local de este navegador/equipo.</div>
           <div class="d-flex gap-2">
             <button id="btnAdmSyncConfRefresh" class="btn btn-outline-primary btn-sm" type="button">Actualizar</button>
-            <button id="btnAdmSyncConfClearAll" class="btn btn-outline-danger btn-sm" type="button">Limpiar historial</button>
+            <button id="btnAdmSyncConfClearAll" class="btn btn-outline-danger btn-sm" type="button">Limpiar historial local</button>
           </div>
         </div>
 
@@ -1855,6 +1859,7 @@ body { background: #f5f5f5; }
               <tr>
                 <th>Fecha/hora del conflicto</th>
                 <th>Código</th>
+                <th>Registrador</th>
                 <th>Motivo</th>
                 <th>Fecha del servidor</th>
                 <th>Estado local / servidor</th>
@@ -4032,7 +4037,11 @@ function __syncConfWriteLog(arr){
 function __syncConfAppend(entry){
   try{
     const arr = __syncConfReadLog();
-    arr.push(Object.assign({ at: __nowIso(), conflicts: [], denied: [], errors: [] }, entry || {}));
+    arr.push(Object.assign({
+      at: __nowIso(), conflicts: [], denied: [], errors: [],
+      actorEmail: String((currentUser && currentUser.email) || "").trim(),
+      source: "local"
+    }, entry || {}));
     __syncConfWriteLog(arr);
   }catch(e){}
 }
@@ -4085,12 +4094,70 @@ function __syncConfGetServerStage(item){
   return "";
 }
 
+
+let __serverSyncIssuesCache = [];
+let __serverSyncIssuesError = "";
+
+async function __loadServerSyncIssues(){
+  __serverSyncIssuesError = "";
+  if(!(__isAdmin && __isAdmin())){
+    __serverSyncIssuesCache = [];
+    return [];
+  }
+  if(!(__isApiConfigured && __isApiConfigured()) || !navigator.onLine){
+    __serverSyncIssuesError = "offline";
+    return __serverSyncIssuesCache;
+  }
+  try{
+    const out = await __api('/admin/sync-issues?limit=500', { method:'GET', token:__tokenGet() });
+    if(out.res && out.res.status === 401) throw new Error('unauthorized');
+    if(!out.res || !out.res.ok) throw new Error((out.data && out.data.error) ? out.data.error : 'sync_issues_failed');
+    __serverSyncIssuesCache = (out.data && Array.isArray(out.data.issues)) ? out.data.issues : [];
+    return __serverSyncIssuesCache;
+  }catch(e){
+    __serverSyncIssuesError = (e && e.message) ? e.message : String(e);
+    return __serverSyncIssuesCache;
+  }
+}
+
+function __serverSyncIssueRows(){
+  const rows = [];
+  (Array.isArray(__serverSyncIssuesCache) ? __serverSyncIssuesCache : []).forEach((it, idx)=>{
+    const d = (it && it.detail && typeof it.detail === 'object') ? it.detail : {};
+    rows.push({
+      entryIdx:-1,
+      itemIdx:idx,
+      kind:'server',
+      source:'server',
+      at:String((it && it.at) || ''),
+      codigo:String((it && it.codigo) || d.codigo || ''),
+      actorEmail:String((it && it.actor_email) || d.actor_email || ''),
+      motivo:String(d.reason || d.error || d.message || (it && it.action) || 'conflict'),
+      serverAt:String(d.server_updated_at || d.serverUpdatedAt || ''),
+      localStage:String(d.local_stage || d.localStage || '—'),
+      serverStage:String(d.server_stage || d.serverStage || '—'),
+      resolution:'Registrado en D1',
+      resolutionAt:'',
+      status:'server'
+    });
+  });
+  return rows;
+}
+
+async function __loadSyncConflictsView(){
+  const hint = document.getElementById('admSyncConfHint');
+  if(hint) hint.textContent = 'Actualizando conflictos compartidos desde D1...';
+  await __loadServerSyncIssues();
+  __renderSyncConflictsTable();
+}
+
 function __syncConfFlattenRows(){
   const log = __syncConfReadLog();
   const rows = [];
 
   (Array.isArray(log) ? log : []).forEach((entry, entryIdx)=>{
     const at = String(entry && entry.at ? entry.at : "");
+    const actorEmail = String((entry && entry.actorEmail) || "");
 
     const pushRows = (items, kind)=>{
       (Array.isArray(items) ? items : []).forEach((item, itemIdx)=>{
@@ -4113,18 +4180,9 @@ function __syncConfFlattenRows(){
         const serverStage = __syncConfGetServerStage(item);
 
         rows.push({
-          entryIdx,
-          itemIdx,
-          kind,
-          at,
-          codigo,
-          motivo,
-          serverAt,
-          localStage: localStage || "—",
-          serverStage: serverStage || "—",
-          resolution: "Pendiente",
-          resolutionAt: "",
-          status: "pending"
+          entryIdx,itemIdx,kind,source:'local',at,codigo,actorEmail,motivo,serverAt,
+          localStage:localStage || "—", serverStage:serverStage || "—",
+          resolution:"Pendiente", resolutionAt:"", status:"pending"
         });
       });
     };
@@ -4137,28 +4195,33 @@ function __syncConfFlattenRows(){
   const resolved = __syncConfReadResolved();
   (Array.isArray(resolved) ? resolved : []).forEach((item, idx)=>{
     rows.push({
-      entryIdx: -1,
-      itemIdx: idx,
-      kind: 'resolved',
-      at: String(item && item.at ? item.at : ''),
-      codigo: String(item && item.codigo ? item.codigo : ''),
-      motivo: String(item && item.motivo ? item.motivo : ''),
-      serverAt: String(item && item.serverAt ? item.serverAt : ''),
-      localStage: String(item && item.localStage ? item.localStage : '—'),
-      serverStage: String(item && item.serverStage ? item.serverStage : '—'),
-      resolution: String(item && item.resolution ? item.resolution : '—'),
-      resolutionAt: String(item && item.resolvedAt ? item.resolvedAt : ''),
-      status: 'resolved'
+      entryIdx:-1,itemIdx:idx,kind:'resolved',source:'local',
+      at:String(item && item.at ? item.at : ''),codigo:String(item && item.codigo ? item.codigo : ''),
+      actorEmail:String(item && item.actorEmail ? item.actorEmail : ''),
+      motivo:String(item && item.motivo ? item.motivo : ''),serverAt:String(item && item.serverAt ? item.serverAt : ''),
+      localStage:String(item && item.localStage ? item.localStage : '—'),serverStage:String(item && item.serverStage ? item.serverStage : '—'),
+      resolution:String(item && item.resolution ? item.resolution : '—'),resolutionAt:String(item && item.resolvedAt ? item.resolvedAt : ''),status:'resolved'
     });
   });
 
-  rows.sort((a,b)=>{
+  // Conflictos/rechazos registrados por el Worker en D1: visibles desde cualquier PC del Administrador.
+  for(const r of __serverSyncIssueRows()) rows.push(r);
+
+  // Dedupe de eventos idénticos provenientes del mismo origen.
+  const seen = new Set();
+  const dedup = [];
+  for(const r of rows){
+    const key = [r.source,r.at,r.codigo,r.actorEmail,r.motivo].join('|');
+    if(seen.has(key)) continue;
+    seen.add(key);
+    dedup.push(r);
+  }
+  dedup.sort((a,b)=>{
     const av = String((a && (a.resolutionAt || a.at)) ? (a.resolutionAt || a.at) : "");
     const bv = String((b && (b.resolutionAt || b.at)) ? (b.resolutionAt || b.at) : "");
     return av < bv ? 1 : (av > bv ? -1 : 0);
   });
-
-  return rows;
+  return dedup;
 }
 
 function __syncConfDeleteRow(entryIdx, kind, itemIdx){
@@ -4298,14 +4361,16 @@ async function __syncPushCodigo(codigo){
   const acked = out.data && Array.isArray(out.data.acked) ? out.data.acked : [];
   const conf  = out.data && Array.isArray(out.data.conflicts) ? out.data.conflicts : [];
   const den   = out.data && Array.isArray(out.data.denied) ? out.data.denied : [];
+  const hashes = out.data && out.data.hashes && typeof out.data.hashes === 'object' ? out.data.hashes : {};
+  const accepted = out.data && Array.isArray(out.data.accepted) ? out.data.accepted : [];
 
   if(acked.includes(code)){
-    map[code] = h;
+    map[code] = String(hashes[code] || h);
     try{ e.estado_sync = 'Sincronizado'; }catch(_e){}
     try{ delete e.sync_denied_at; delete e.sync_denied_reason; }catch(_e){}
     __setHashMap(map);
     try{ __saveEmergencias(); }catch(e){}
-    return { ok:true, acked, conflicts: conf, denied: den };
+    return { ok:true, acked, conflicts: conf, denied: den, hashes, accepted };
   }
 
   try{
@@ -4342,7 +4407,7 @@ async function __syncPushCodigo(codigo){
       });
     }
   }catch(e){}
-  return { ok:false, acked, conflicts: conf, denied: den };
+  return { ok:false, acked, conflicts: conf, denied: den, hashes, accepted };
 }
 
 async function __syncResolveWithServer(codigo){
@@ -4427,41 +4492,52 @@ function __renderSyncConflictsTable(){
   const rows = __syncConfFlattenRows();
   const totalLog = __syncConfReadLog().length;
   const totalResolved = __syncConfReadResolved().length;
-  const pendingCount = rows.filter(r => String(r.status || '') !== 'resolved').length;
+  const localPending = rows.filter(r => r.source === 'local' && String(r.status || '') === 'pending').length;
+  const serverCount = rows.filter(r => r.source === 'server').length;
 
   if(hint){
-    hint.textContent = (rows.length || totalResolved)
-      ? `Pendientes: ${pendingCount} | Resueltos guardados: ${totalResolved} | Bloques históricos: ${totalLog}`
-      : "No hay conflictos registrados en este navegador/equipo. Este historial no se comparte automáticamente con otras PCs.";
+    if(rows.length || totalResolved){
+      hint.textContent = `D1 compartido: ${serverCount} | Pendientes locales: ${localPending} | Resueltos locales: ${totalResolved}` + (__serverSyncIssuesError ? ` | Aviso: ${__serverSyncIssuesError}` : '');
+    }else{
+      hint.textContent = __serverSyncIssuesError
+        ? `No se pudieron consultar conflictos de D1 (${__serverSyncIssuesError}). No hay conflictos locales en este equipo.`
+        : "No hay conflictos/rechazos registrados en D1 ni en este navegador/equipo.";
+    }
   }
 
   tbody.innerHTML = "";
   if(rows.length === 0){
-    tbody.innerHTML = '<tr><td colspan="7" class="text-muted">No hay conflictos registrados.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="8" class="text-muted">No hay conflictos registrados.</td></tr>';
     return;
   }
 
   rows.forEach((r)=>{
     const motivo = String(r.motivo || "");
-    const motivoCls = /both_modified/i.test(motivo) ? "text-bg-warning" : (/denied|not_owner|forbidden|closed|invalid/i.test(motivo) ? "text-bg-danger" : "text-bg-secondary");
+    const motivoCls = /both_modified|if_match|conflict/i.test(motivo) ? "text-bg-warning" : (/denied|not_owner|forbidden|closed|invalid|locked|owner/i.test(motivo) ? "text-bg-danger" : "text-bg-secondary");
     const estadoCombo = `Local: ${__escapeHtml(r.localStage)} / Servidor: ${__escapeHtml(r.serverStage)}`;
-    const canUseLocal = /both_modified|missing_if_match|conflict/i.test(motivo) && !/denied|not_owner|forbidden|closed|invalid/i.test(motivo);
+    const canUseLocal = r.source === 'local' && /both_modified|missing_if_match|if_match_failed|conflict/i.test(motivo) && !/denied|not_owner|forbidden|closed|invalid|locked/i.test(motivo);
     const isResolved = String(r.status || '') === 'resolved';
-    const resolutionLabel = isResolved
-      ? `<span class="badge text-bg-success">${__escapeHtml(r.resolution || 'Resuelto')}</span>${r.resolutionAt ? `<div class="small text-muted mt-1">${__escapeHtml(__formatLocalIso(r.resolutionAt))}</div>` : ''}`
-      : '<span class="badge text-bg-secondary">Pendiente</span>';
-    const actions = isResolved
-      ? [`<button class="btn btn-sm btn-outline-secondary" data-sync-clear-row="${r.entryIdx}|${r.kind}|${r.itemIdx}">Limpiar</button>`].join(' ')
-      : [
-          `<button class="btn btn-sm btn-outline-primary" data-sync-resolve-server="${__escapeHtml(r.codigo || "")}">Servidor</button>`,
-          canUseLocal ? `<button class="btn btn-sm btn-outline-success" data-sync-resolve-local="${__escapeHtml(r.codigo || "")}">Local</button>` : '',
-          `<button class="btn btn-sm btn-outline-secondary" data-sync-clear-row="${r.entryIdx}|${r.kind}|${r.itemIdx}">Limpiar</button>`
-        ].filter(Boolean).join(' ');
+    const isServer = r.source === 'server';
+    const resolutionLabel = isServer
+      ? '<span class="badge text-bg-info">Registrado en D1</span>'
+      : (isResolved
+        ? `<span class="badge text-bg-success">${__escapeHtml(r.resolution || 'Resuelto')}</span>${r.resolutionAt ? `<div class="small text-muted mt-1">${__escapeHtml(__formatLocalIso(r.resolutionAt))}</div>` : ''}`
+        : '<span class="badge text-bg-secondary">Pendiente local</span>');
+    const actions = isServer
+      ? `<button class="btn btn-sm btn-outline-primary" data-sync-view-server="${__escapeHtml(r.codigo || '')}">Ver servidor</button>`
+      : (isResolved
+        ? `<button class="btn btn-sm btn-outline-secondary" data-sync-clear-row="${r.entryIdx}|${r.kind}|${r.itemIdx}">Limpiar</button>`
+        : [
+            `<button class="btn btn-sm btn-outline-primary" data-sync-resolve-server="${__escapeHtml(r.codigo || '')}">Servidor</button>`,
+            canUseLocal ? `<button class="btn btn-sm btn-outline-success" data-sync-resolve-local="${__escapeHtml(r.codigo || '')}">Local</button>` : '',
+            `<button class="btn btn-sm btn-outline-secondary" data-sync-clear-row="${r.entryIdx}|${r.kind}|${r.itemIdx}">Limpiar</button>`
+          ].filter(Boolean).join(' '));
 
     tbody.innerHTML += `
       <tr>
         <td class="small">${__escapeHtml(__formatLocalIso(r.at || ""))}</td>
         <td class="small fw-semibold">${__escapeHtml(r.codigo || "—")}</td>
+        <td class="small">${__escapeHtml(r.actorEmail || (isServer ? "—" : "Este equipo"))}</td>
         <td class="small"><span class="badge ${motivoCls}">${__escapeHtml(r.motivo || "—")}</span></td>
         <td class="small">${__escapeHtml(r.serverAt ? __formatLocalIso(r.serverAt) : "—")}</td>
         <td class="small">${estadoCombo}</td>
@@ -4475,14 +4551,10 @@ function __renderSyncConflictsTable(){
       const raw = String(btn.getAttribute("data-sync-clear-row") || "");
       const parts = raw.split("|");
       if(parts.length !== 3) return;
-      const entryIdx = Number(parts[0]);
-      const kind = parts[1];
-      const itemIdx = Number(parts[2]);
-      __syncConfDeleteRow(entryIdx, kind, itemIdx);
+      __syncConfDeleteRow(Number(parts[0]), parts[1], Number(parts[2]));
       __renderSyncConflictsTable();
     });
   });
-
   tbody.querySelectorAll("[data-sync-resolve-server]").forEach(btn=>{
     btn.addEventListener("click", async ()=>{
       const code = String(btn.getAttribute("data-sync-resolve-server") || "").trim();
@@ -4491,13 +4563,27 @@ function __renderSyncConflictsTable(){
       try{ await __syncResolveWithServer(code); }finally{ btn.disabled = false; }
     });
   });
-
   tbody.querySelectorAll("[data-sync-resolve-local]").forEach(btn=>{
     btn.addEventListener("click", async ()=>{
       const code = String(btn.getAttribute("data-sync-resolve-local") || "").trim();
       if(!code) return;
       btn.disabled = true;
       try{ await __syncResolveWithLocal(code); }finally{ btn.disabled = false; }
+    });
+  });
+  tbody.querySelectorAll("[data-sync-view-server]").forEach(btn=>{
+    btn.addEventListener("click", async ()=>{
+      const code = String(btn.getAttribute("data-sync-view-server") || "").trim();
+      if(!code) return;
+      btn.disabled = true;
+      try{
+        const full = await __forceServerFullEmergencia(code, {required:true});
+        if(full){
+          try{ cargarTablaEmergencias(); }catch(_e){}
+          alert('Se cargó la versión vigente de ' + code + ' desde D1. Puedes revisarla en el Listado de Emergencias.');
+        }
+      }catch(e){ alert('No se pudo cargar el registro desde D1: ' + ((e && e.message) ? e.message : e)); }
+      finally{ btn.disabled = false; }
     });
   });
 }
@@ -4554,11 +4640,11 @@ document.addEventListener("DOMContentLoaded", ()=>{
   // Cargar auditoría al abrir la pestaña
   document.getElementById("admTabAudit")?.addEventListener("shown.bs.tab", __admLoadAudit);
 
-  // Conflictos Sync (solo historial local en este navegador)
-  document.getElementById("admTabSyncConf")?.addEventListener("shown.bs.tab", __renderSyncConflictsTable);
-  document.getElementById("btnAdmSyncConfRefresh")?.addEventListener("click", __renderSyncConflictsTable);
+  // Conflictos Sync: eventos compartidos en D1 + respaldo local del navegador
+  document.getElementById("admTabSyncConf")?.addEventListener("shown.bs.tab", __loadSyncConflictsView);
+  document.getElementById("btnAdmSyncConfRefresh")?.addEventListener("click", __loadSyncConflictsView);
   document.getElementById("btnAdmSyncConfClearAll")?.addEventListener("click", ()=>{
-    if(!confirm("¿Limpiar todo el historial visual de conflictos de sincronización de este navegador?")) return;
+    if(!confirm("¿Limpiar el historial local de conflictos de este navegador? Los registros compartidos de D1 no se eliminarán.")) return;
     __syncConfClearAll();
     __renderSyncConflictsTable();
   });
@@ -9386,10 +9472,11 @@ document.getElementById("btnGuardarEnviarRC")?.addEventListener("click", async (
     try{ cargarTablaEmergencias(); }catch(_e){}
 
     let guidance = " La información no se perdió: quedó como borrador local recuperable en esta PC.";
-    if(String((res && res.reason) || '').toLowerCase() === 'not_owner'){
-      guidance += " Para que este Registrador pueda enviar el RC de una emergencia creada por otro usuario, también debe actualizarse la regla de permisos del Worker; el index no puede anular un rechazo del servidor.";
+    const rejectionReason = String((res && res.reason) || '').toLowerCase();
+    if(rejectionReason === 'not_owner' || rejectionReason === 'rc_not_owner'){
+      guidance += " El servidor determinó que el cambio no corresponde a un RC nuevo permitido o que se intentó modificar un RC de otro usuario.";
     }
-    guidance += " Conflictos Sync es un historial local de cada navegador, por eso no aparece automáticamente en la PC del Administrador.";
+    guidance += " El rechazo/conflicto también queda registrado en D1 para que el Administrador lo vea desde cualquier PC en Conflictos Sync.";
     alert((res && res.message ? res.message : "No se pudo enviar el RC.") + guidance);
   }catch(e){
     if(snapshot) __restoreCodigoSnapshot(code, snapshot);
@@ -11687,7 +11774,16 @@ function __syncIssueReason(issue, fallback){
 function __syncReasonText(reason, issue){
   const r = String(reason || "").trim().toLowerCase();
   const detail = String((issue && issue.message) || "").trim();
-  if(r === "not_owner" || r === "no_owner") return "el registro pertenece a otro usuario Registrador y el Worker actual no permite que un Registrador distinto lo actualice";
+  if(r === "not_owner" || r === "no_owner") return "el cambio no corresponde a una actualización permitida para un registro creado por otro Registrador";
+  if(r === "rp_not_approved") return "el RP todavía no está aprobado; no se puede agregar un RC";
+  if(r === "rc_previous_changed") return "se intentó modificar un RC anterior protegido";
+  if(r === "rc_pending_exists") return "ya existe un RC pendiente de aprobación en el servidor";
+  if(r === "rc_update_not_allowed") return "el último RC no está en estado Borrador u Observado para ser corregido";
+  if(r === "rc_not_owner") return "el RC observado o en borrador pertenece a otro Registrador";
+  if(r === "rc_count_invalid") return "la cantidad de RC enviada no corresponde a una adición o corrección válida";
+  if(r === "rc_state_invalid") return "el nuevo RC tiene un estado no permitido";
+  if(r === "rc_actor_mismatch") return "el usuario declarado en el RC no coincide con la sesión actual";
+  if(r === "cross_owner_validation_error") return "no se pudo validar de forma segura el RC de otro Registrador";
   if(r === "rp_state_locked") return "el estado aprobado o pendiente del RP está protegido en el servidor";
   if(r === "cierre_state_locked") return "el estado de cierre está protegido en el servidor";
   if(r === "rc_locked_missing") return "el envío no contenía un RC anterior que el servidor mantiene protegido";
@@ -11899,7 +11995,8 @@ async function __syncPushCodigoAtomic(code, payload, baseHash, createdAt){
   const acked = out.data && Array.isArray(out.data.acked) ? out.data.acked : [];
   const conflicts = out.data && Array.isArray(out.data.conflicts) ? out.data.conflicts : [];
   const denied = out.data && Array.isArray(out.data.denied) ? out.data.denied : [];
-  return { ok: acked.includes(codigo), acked, conflicts, denied, hash:h, updated_at: now, payload: clean };
+  const hashes = out.data && out.data.hashes && typeof out.data.hashes === 'object' ? out.data.hashes : {};
+  return { ok: acked.includes(codigo), acked, conflicts, denied, hash:String(hashes[codigo] || h), updated_at: now, payload: clean };
 }
 
 async function __aprobarRPServidorAtomico(codigo, opts){
@@ -12975,6 +13072,7 @@ async function __syncPush(){
     const acked = out.data && Array.isArray(out.data.acked) ? out.data.acked : [];
     const conf  = out.data && Array.isArray(out.data.conflicts) ? out.data.conflicts : [];
     const den   = out.data && Array.isArray(out.data.denied) ? out.data.denied : [];
+    const serverHashes = out.data && out.data.hashes && typeof out.data.hashes === 'object' ? out.data.hashes : {};
 
     for(const x of conf) allConf.push(x);
     for(const x of den) allDen.push(x);
@@ -12984,7 +13082,7 @@ async function __syncPush(){
       allAcked.push(c);
       for(const r of batch){
         if(r.codigo === c){
-          map[c] = r.hash;
+          map[c] = String(serverHashes[c] || r.hash);
           break;
         }
       }
