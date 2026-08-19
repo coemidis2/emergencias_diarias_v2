@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <!-- BUILD: 2026-02-20 autopull-cooldown-v206-fix-sync-v3-stage7-light-list-detail-demand -->
-<script>window.__BUILD_ID='2026-08-19 v265-exportacion-lista-filtro-departamentos';console.log('BUILD',window.__BUILD_ID);</script>
+<script>window.__BUILD_ID='2026-08-19 v266-rc-registrador-danios-otros-editable';console.log('BUILD',window.__BUILD_ID);</script>
 
 <!-- build: VER_PRINT_RC_ALWAYS_VISIBLE v4 2026-01-11 -->
 <!-- build: ETAPA1_ACCIONES_RC_RESUMEN_DETALLE v251 2026-06-15 -->
@@ -17,6 +17,7 @@
 <!-- build: ADMIN_CORRECCION_RP_RC_APROBADOS v261 2026-06-17 -->
 <!-- build: RC_REGISTRADOR_SYNC_CONFIRMADO v262 2026-06-24 -->
 <!-- build: EXPORTACION_LISTA_FILTRO_DEPARTAMENTOS v265 2026-08-19 -->
+<!-- build: RC_REGISTRADOR_DANIOS_OTROS_EDITABLE v266 2026-08-19 -->
 <meta charset="UTF-8" />
 <title>Sistema de Información para el Monitoreo de Emergencias y Respuesta - SIMER MIDIS</title>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -30,7 +31,7 @@ body { background: #f5f5f5; }
 .card { margin-top: 1rem; }
 .table td input { width: 100%; }
 .hidden { display: none; }
-/* ======= VERSION 265 19/08/2026 - Exportación de Lista con filtro multidepartamento ======= */
+/* ======= VERSION 266 19/08/2026 - Registrador actualiza Daños de otros sectores en cada RC ======= */
 /* ======= VER (Listado de Emergencias): Formato de visualización/impresión ======= */
 .ver-report-wrap{ font-family: Calibri, Arial, sans-serif; font-size: 11pt; color:#111; }
 .ver-report-title{ font-family: Calibri, Arial, sans-serif; font-size:15pt; font-weight:700; color:#1F4E79; margin:0 0 6px 0; }
@@ -2478,7 +2479,10 @@ function __rcDraftSave(codigo, extra){
       userEmail: String((currentUser && currentUser.email) || "").trim(),
       savedAt: __nowIso(),
       acciones: JSON.parse(JSON.stringify(Array.isArray(accionesRCTemp) ? accionesRCTemp : [])),
-      daniosMIDIS: JSON.parse(JSON.stringify(__rcDraftCaptureDaniosUI()))
+      daniosMIDIS: JSON.parse(JSON.stringify(__rcDraftCaptureDaniosUI())),
+      daniosOtros: document.getElementById("daniosOtrosRC")
+        ? String(document.getElementById("daniosOtrosRC").value || "")
+        : String((emergenciaSeleccionada && emergenciaSeleccionada.daniosOtros) || "")
     }, extra || {});
     all[__rcDraftRecoveryId(code)] = draft;
     __rcDraftRecoveryWrite(all);
@@ -2517,6 +2521,12 @@ function __rcDraftApplyToForm(codigo, opts){
     accionesRCTemp = JSON.parse(JSON.stringify(Array.isArray(draft.acciones) ? draft.acciones : []));
     try{ cargarAccionesRC(); }catch(e){}
     try{ cargarTablaDaniosRC({ daniosMIDIS: JSON.parse(JSON.stringify(draft.daniosMIDIS || {})) }); }catch(e){}
+    try{
+      const daniosOtrosRC = document.getElementById("daniosOtrosRC");
+      if(daniosOtrosRC && Object.prototype.hasOwnProperty.call(draft, "daniosOtros")){
+        daniosOtrosRC.value = String(draft.daniosOtros || "");
+      }
+    }catch(e){}
 
     if(cfg.showNotice){
       const notice = document.getElementById("rcEditNotice");
@@ -3374,6 +3384,13 @@ function __isRCLockedForRegistrador(){
 
 function __applyRCLockUI(){
   const locked = __isRCLockedForRegistrador();
+
+  // El Registrador puede actualizar este campo en cada RC editable.
+  // Se mantiene bloqueado cuando el RC está Por aprobar o el cierre está pendiente.
+  const daniosOtrosRC = document.getElementById("daniosOtrosRC");
+  if(daniosOtrosRC){
+    daniosOtrosRC.disabled = !(__isRegistrador && __isRegistrador()) || locked;
+  }
 
   // Bloquear cantidades de daños (RC)
   document.querySelectorAll('#rcTab input.danio-rc').forEach(el=>{
@@ -6589,6 +6606,9 @@ function verEmergencia(e) {
   const __txt = (v)=> __safe(v).replace(/\r\n/g,"\n");
 
   const lastRC = (Array.isArray(rcList) && rcList.length) ? rcList[rcList.length - 1] : null;
+  const daniosOtrosSrc = (lastRC && Object.prototype.hasOwnProperty.call(lastRC, "daniosOtros"))
+    ? String(lastRC.daniosOtros || "")
+    : String(e.daniosOtros || "");
   const estadoTxt = isCerrada ? "Cerrada" : "Abierta";
 
   const peligroTxt = __safe(e.peligro).trim();
@@ -6631,6 +6651,7 @@ function verEmergencia(e) {
     tituloRep,
     coords,
     daniosSrc,
+    daniosOtrosSrc,
     accionesCompAll,
     accionesCompByRc: accionesCompUnique.byRc,
     elaboradoPorTxt,
@@ -6667,7 +6688,7 @@ function verEmergencia(e) {
 
   // Daños en otros sectores (justificado)
   html += `<div class="ver-subline" style="margin-top:6px"><span class="ver-lbl">Daños en otros sectores</span></div>`;
-  html += `<div class="ver-just ver-prewrap">${__txt(e.daniosOtros)}</div>`;
+  html += `<div class="ver-just ver-prewrap">${__txt(daniosOtrosSrc)}</div>`;
 
   // Matriz (última)
   html += `<div class="ver-section-title">Daños en el Sector Desarrollo e Inclusión Social</div>`;
@@ -7171,6 +7192,11 @@ if(!window.docx){
       }catch(_e){ return null; }
     };
     const daniosSrc = (ctx && ctx.daniosSrc) ? ctx.daniosSrc : (getDaniosMIDIS(lastRC) || getDaniosMIDIS(e) || {});
+    const daniosOtrosSrc = (ctx && Object.prototype.hasOwnProperty.call(ctx, "daniosOtrosSrc"))
+      ? String(ctx.daniosOtrosSrc || "")
+      : ((lastRC && Object.prototype.hasOwnProperty.call(lastRC, "daniosOtros"))
+        ? String(lastRC.daniosOtros || "")
+        : String(e.daniosOtros || ""));
 
     // Acciones Complementario: solo acciones únicas para no repetir contenido entre RC
     let accionesCompAll = (ctx && Array.isArray(ctx.accionesCompAll)) ? ctx.accionesCompAll : null;
@@ -7245,7 +7271,7 @@ if(!window.docx){
 
     // Daños en otros sectores
     children.push(new Paragraph({ spacing:{ before: 120 }, children:[new TextRun({ text:'Daños en otros sectores', bold: true, font:'Calibri', size: 22 })] }));
-    txt(e.daniosOtros).replace(/\r\n/g,'\n').split('\n').forEach((ln)=>{
+    txt(daniosOtrosSrc).replace(/\r\n/g,'\n').split('\n').forEach((ln)=>{
       children.push(new Paragraph({ alignment: AlignmentType.JUSTIFIED, children:[new TextRun({ text: ln, font:'Calibri', size: 22 })] }));
     });
 
@@ -8958,9 +8984,20 @@ try{
   const hechosHtml = (String(obj.hechos||"").trim())
     ? `<div class="p-2 bg-light border rounded small">${obj.hechos}</div>`
     : "<span class=\"text-muted\">—</span>";
-  const daniosHtml = (String(obj.daniosOtros||"").trim())
-    ? `<div class="p-2 bg-light border rounded small">${obj.daniosOtros}</div>`
-    : "<span class=\"text-muted\">—</span>";
+  let daniosOtrosValorRC = String(obj.daniosOtros || "");
+  try{
+    const rcListDanios = (typeof __getRCList === "function") ? __getRCList(obj) : (Array.isArray(obj.rcReportes) ? obj.rcReportes : []);
+    const ultimoRCDanios = Array.isArray(rcListDanios) && rcListDanios.length ? rcListDanios[rcListDanios.length - 1] : null;
+    if(ultimoRCDanios && Object.prototype.hasOwnProperty.call(ultimoRCDanios, "daniosOtros")){
+      daniosOtrosValorRC = String(ultimoRCDanios.daniosOtros || "");
+    }
+  }catch(e){}
+  const daniosHtml = (__isRegistrador && __isRegistrador())
+    ? `<textarea id="daniosOtrosRC" class="form-control mt-1" rows="4" aria-label="Daños de otros sectores del Reporte Complementario">${__escapeHtml(daniosOtrosValorRC)}</textarea>
+       <div class="small text-muted mt-1">Actualice aquí la información vigente de otros sectores para este Reporte Complementario.</div>`
+    : ((String(obj.daniosOtros||"").trim())
+      ? `<div class="p-2 bg-light border rounded small">${obj.daniosOtros}</div>`
+      : "<span class=\"text-muted\">—</span>");
 
   const rcLecturaHtml = __buildRCLecturaHtml(obj, {excludeLast:true});
 
@@ -9050,6 +9087,12 @@ function __guardarRCCore(opts={}){
   }
 
   let em = emergenciaSeleccionada;
+
+  // Capturar el valor específico del RC sin modificar el dato original del RP.
+  const __daniosOtrosControl = document.getElementById("daniosOtrosRC");
+  const __daniosOtrosFromUI = __daniosOtrosControl
+    ? String(__daniosOtrosControl.value || "")
+    : String(em.daniosOtros || "");
 
   // Capturar daños MIDIS desde la UI
   const __daniosFromUI = {};
@@ -9164,6 +9207,7 @@ ${rcLecturaHtml ? `
     fechaRegistro: __listDateOnly(__listNowLocalDT()) || new Date().toISOString().slice(0, 10),
     acciones: [...accionesRCTemp],
     daniosMIDIS: JSON.parse(JSON.stringify(em.daniosMIDIS)),
+    daniosOtros: __daniosOtrosFromUI,
     // Aprobación RC
     aprobEstado: "Borrador",
     elaboradoPor: (__getCurrentUserName ? __getCurrentUserName() : "") || "",
@@ -9206,8 +9250,12 @@ ${rcLecturaHtml ? `
   const hechosHtml = (String(em.hechos||"").trim())
     ? `<div class="p-2 bg-light border rounded small">${em.hechos}</div>`
     : "<span class=\"text-muted\">—</span>";
-  const daniosHtml = (String(em.daniosOtros||"").trim())
-    ? `<div class="p-2 bg-light border rounded small">${em.daniosOtros}</div>`
+  const __ultimoRCGuardado = Array.isArray(em.rcReportes) && em.rcReportes.length ? em.rcReportes[em.rcReportes.length - 1] : null;
+  const __daniosOtrosGuardado = (__ultimoRCGuardado && Object.prototype.hasOwnProperty.call(__ultimoRCGuardado, "daniosOtros"))
+    ? String(__ultimoRCGuardado.daniosOtros || "")
+    : String(em.daniosOtros || "");
+  const daniosHtml = (__daniosOtrosGuardado.trim())
+    ? `<div class="p-2 bg-light border rounded small">${__escapeHtml(__daniosOtrosGuardado)}</div>`
     : "<span class=\"text-muted\">—</span>";
 
   const rcLecturaHtml = __buildRCLecturaHtml(em, {excludeLast:true});
@@ -9731,6 +9779,9 @@ document.getElementById("btnWordRC").onclick = async () => {
   em.numeroGlobal = rc.numeroGlobal || rc.numeroReporteRC;
   em.accionesRC = rc.acciones;
   em.daniosMIDIS = rc.daniosMIDIS;
+  if(Object.prototype.hasOwnProperty.call(rc, "daniosOtros")){
+    em.daniosOtros = String(rc.daniosOtros || "");
+  }
 
   // Fecha de elaboración del Word RC = momento actual (hora local del equipo)
   try{
