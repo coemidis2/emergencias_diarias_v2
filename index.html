@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <!-- BUILD: 2026-02-20 autopull-cooldown-v206-fix-sync-v3-stage7-light-list-detail-demand -->
-<script>window.__BUILD_ID='2026-06-24 v264-rc-multiregistrador-seguro-conflictos-d1';console.log('BUILD',window.__BUILD_ID);</script>
+<script>window.__BUILD_ID='2026-08-19 v265-exportacion-lista-filtro-departamentos';console.log('BUILD',window.__BUILD_ID);</script>
 
 <!-- build: VER_PRINT_RC_ALWAYS_VISIBLE v4 2026-01-11 -->
 <!-- build: ETAPA1_ACCIONES_RC_RESUMEN_DETALLE v251 2026-06-15 -->
@@ -16,7 +16,7 @@
 <!-- build: VER_PDF_WORD_ANEXOS_RC v260 2026-06-17 -->
 <!-- build: ADMIN_CORRECCION_RP_RC_APROBADOS v261 2026-06-17 -->
 <!-- build: RC_REGISTRADOR_SYNC_CONFIRMADO v262 2026-06-24 -->
-<!-- build: RC_MULTIREGISTRADOR_SEGURO_CONFLICTOS_D1 v264 2026-06-24 -->
+<!-- build: EXPORTACION_LISTA_FILTRO_DEPARTAMENTOS v265 2026-08-19 -->
 <meta charset="UTF-8" />
 <title>Sistema de Información para el Monitoreo de Emergencias y Respuesta - SIMER MIDIS</title>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -30,7 +30,7 @@ body { background: #f5f5f5; }
 .card { margin-top: 1rem; }
 .table td input { width: 100%; }
 .hidden { display: none; }
-/* ======= VERSION 264 24/06/2026 - RC multi-registrador seguro + conflictos compartidos en D1 ======= */
+/* ======= VERSION 265 19/08/2026 - Exportación de Lista con filtro multidepartamento ======= */
 /* ======= VER (Listado de Emergencias): Formato de visualización/impresión ======= */
 .ver-report-wrap{ font-family: Calibri, Arial, sans-serif; font-size: 11pt; color:#111; }
 .ver-report-title{ font-family: Calibri, Arial, sans-serif; font-size:15pt; font-weight:700; color:#1F4E79; margin:0 0 6px 0; }
@@ -1924,7 +1924,7 @@ body { background: #f5f5f5; }
 
 <!-- Modal: Exportar Excel (Lista de Emergencias) -->
 <div class="modal fade" id="modalExportExcelLista" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-sm modal-dialog-centered">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
     <div class="modal-content">
       <div class="modal-header">
         <h5 class="modal-title">Exportar a Excel</h5>
@@ -1939,41 +1939,52 @@ body { background: #f5f5f5; }
           <label class="form-label small">Fecha final (elaboración)</label>
           <input type="date" class="form-control form-control-sm" id="excelHastaElab">
         </div>
-        <div class="mb-2">
-          <label class="form-label small">Peligros</label>
-          <div class="form-check mb-1">
-            <input class="form-check-input" type="checkbox" id="excelTodosPeligros" checked>
-            <label class="form-check-label small" for="excelTodosPeligros">Todos los peligros</label>
+        <div class="row g-3 mb-2">
+          <div class="col-md-6">
+            <label class="form-label small">Departamentos</label>
+            <div class="form-check mb-1">
+              <input class="form-check-input" type="checkbox" id="excelTodosDepartamentos" checked>
+              <label class="form-check-label small" for="excelTodosDepartamentos">Todos los departamentos</label>
+            </div>
+            <select class="form-select form-select-sm" id="excelDepartamentos" multiple size="8" disabled aria-label="Departamentos para exportar"></select>
+            <div class="small text-muted mt-1">Desmarca “Todos los departamentos” para seleccionar uno o varios. En computadora, usa Ctrl para elegir varios.</div>
           </div>
-          <select class="form-select form-select-sm" id="excelPeligros" multiple size="8" disabled>
-            <option value="Accidentes de tránsito">Accidentes de tránsito</option>
-            <option value="Biológicos">Biológicos</option>
-            <option value="Colapso de estructura">Colapso de estructura</option>
-            <option value="Conflictos sociales">Conflictos sociales</option>
-            <option value="Deflagración">Deflagración</option>
-            <option value="Derrumbe">Derrumbe</option>
-            <option value="Deslizamiento">Deslizamiento</option>
-            <option value="Erosión">Erosión</option>
-            <option value="Friaje">Friaje</option>
-            <option value="Granizada">Granizada</option>
-            <option value="Heladas">Heladas</option>
-            <option value="Huaicos">Huaicos</option>
-            <option value="Incendios Forestales">Incendios Forestales</option>
-            <option value="Incendios Urbanos">Incendios Urbanos</option>
-            <option value="Inundaciones">Inundaciones</option>
-            <option value="Lluvias">Lluvias</option>
-            <option value="Nevada">Nevada</option>
-            <option value="Oleajes">Oleajes</option>
-            <option value="Reptación">Reptación</option>
-            <option value="Sequía">Sequía</option>
-            <option value="Sismos">Sismos</option>
-            <option value="Tormenta eléctrica">Tormenta eléctrica</option>
-            <option value="Tsunamis">Tsunamis</option>
-            <option value="Vientos fuertes">Vientos fuertes</option>
-            <option value="Vulcanismo">Vulcanismo</option>
-            <option value="Otros">Otros</option>
-          </select>
-          <div class="small text-muted mt-1">Desmarca “Todos los peligros” para seleccionar uno o varios peligros.</div>
+          <div class="col-md-6">
+            <label class="form-label small">Peligros</label>
+            <div class="form-check mb-1">
+              <input class="form-check-input" type="checkbox" id="excelTodosPeligros" checked>
+              <label class="form-check-label small" for="excelTodosPeligros">Todos los peligros</label>
+            </div>
+            <select class="form-select form-select-sm" id="excelPeligros" multiple size="8" disabled>
+              <option value="Accidentes de tránsito">Accidentes de tránsito</option>
+              <option value="Biológicos">Biológicos</option>
+              <option value="Colapso de estructura">Colapso de estructura</option>
+              <option value="Conflictos sociales">Conflictos sociales</option>
+              <option value="Deflagración">Deflagración</option>
+              <option value="Derrumbe">Derrumbe</option>
+              <option value="Deslizamiento">Deslizamiento</option>
+              <option value="Erosión">Erosión</option>
+              <option value="Friaje">Friaje</option>
+              <option value="Granizada">Granizada</option>
+              <option value="Heladas">Heladas</option>
+              <option value="Huaicos">Huaicos</option>
+              <option value="Incendios Forestales">Incendios Forestales</option>
+              <option value="Incendios Urbanos">Incendios Urbanos</option>
+              <option value="Inundaciones">Inundaciones</option>
+              <option value="Lluvias">Lluvias</option>
+              <option value="Nevada">Nevada</option>
+              <option value="Oleajes">Oleajes</option>
+              <option value="Reptación">Reptación</option>
+              <option value="Sequía">Sequía</option>
+              <option value="Sismos">Sismos</option>
+              <option value="Tormenta eléctrica">Tormenta eléctrica</option>
+              <option value="Tsunamis">Tsunamis</option>
+              <option value="Vientos fuertes">Vientos fuertes</option>
+              <option value="Vulcanismo">Vulcanismo</option>
+              <option value="Otros">Otros</option>
+            </select>
+            <div class="small text-muted mt-1">Desmarca “Todos los peligros” para seleccionar uno o varios peligros.</div>
+          </div>
         </div>
         <div class="small text-muted">Se filtra por la fecha y hora de elaboración del RP.</div>
       </div>
@@ -14743,6 +14754,19 @@ function __excelLocalISODate(d){
   }catch(e){ return ""; }
 }
 
+function __excelNormFilterValue(value){
+  try{
+    return String(value || "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/\s+/g, " ")
+      .trim()
+      .toUpperCase();
+  }catch(e){
+    return String(value || "").replace(/\s+/g, " ").trim().toUpperCase();
+  }
+}
+
 function __excelParseElab(em){
   try{
     const raw = String((em && (em.fechaHora || em.fechaElaboracion || em.fechaRegistro || em.createdAt || em.__serverCreatedAt)) || "").trim();
@@ -14756,7 +14780,7 @@ function __excelParseElab(em){
   }catch(e){ return null; }
 }
 
-async function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO, peligrosSeleccionados){
+async function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO, peligrosSeleccionados, departamentosSeleccionados){
   try{
     if(!window.XLSX){
       alert("No se pudo cargar la librería de Excel (XLSX). Verifique su conexión a internet.");
@@ -14780,6 +14804,13 @@ async function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO, peligrosS
     const filtrarPorPeligro = peligrosFiltro.length > 0;
     const peligrosSet = new Set(peligrosFiltro.map(x=>x.toLowerCase()));
     const etiquetaPeligros = filtrarPorPeligro ? peligrosFiltro.join(", ") : "Todos los peligros";
+
+    const departamentosFiltro = (Array.isArray(departamentosSeleccionados) ? departamentosSeleccionados : [])
+      .map(x=>String(x||"").trim())
+      .filter(Boolean);
+    const filtrarPorDepartamento = departamentosFiltro.length > 0;
+    const departamentosSet = new Set(departamentosFiltro.map(__excelNormFilterValue));
+    const etiquetaDepartamentos = filtrarPorDepartamento ? departamentosFiltro.join(", ") : "Todos los departamentos";
 
     const __ACCION_PRELIMINAR_BASE = "El COE MIDIS solicita al equipo territorial realizar el monitoreo de la emergencia a fin de determinar si existe afectación a usuarios o servicios de los programas nacionales. El COE MIDIS mantiene el seguimiento continuo del evento a través de los Espacios de Monitoreo y Seguimiento Sectorial (EMSS), a fin de consolidar información estratégica para la toma de decisiones y acciones sectoriales de respuesta.";
 
@@ -15106,13 +15137,14 @@ async function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO, peligrosS
         const elabDate = __getElabDateOnly(em);
         if(!elabDate) return;
         if(elabDate < desde || elabDate > hasta) return;
+        if(filtrarPorDepartamento && !departamentosSet.has(__excelNormFilterValue(em.departamento))) return;
         if(filtrarPorPeligro && !peligrosSet.has(String(em.peligro||"").trim().toLowerCase())) return;
         selectedEmergencias.push(em);
       }catch(_e){}
     });
 
     if(selectedEmergencias.length === 0){
-      alert("No se encontraron emergencias para exportar con el rango de fechas y peligro seleccionado.\n\nVerifique la fecha inicial, fecha final y el filtro de peligros.");
+      alert("No se encontraron emergencias para exportar con los filtros seleccionados.\n\nVerifique las fechas, los departamentos y los peligros.");
       return false;
     }
 
@@ -15126,6 +15158,7 @@ async function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO, peligrosS
         const elabDate = __getElabDateOnly(em);
         if(!elabDate) return;
         if(elabDate < desde || elabDate > hasta) return;
+        if(filtrarPorDepartamento && !departamentosSet.has(__excelNormFilterValue(em.departamento))) return;
         if(filtrarPorPeligro && !peligrosSet.has(String(em.peligro||"").trim().toLowerCase())) return;
 
         const danosOtros = __getExcelDaniosOtros(em);
@@ -15181,7 +15214,7 @@ async function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO, peligrosS
     });
 
     if(items.length === 0){
-      alert("No se encontraron emergencias para exportar con el rango de fechas y peligro seleccionado.\n\nVerifique la fecha inicial, fecha final y el filtro de peligros.");
+      alert("No se encontraron emergencias para exportar con los filtros seleccionados.\n\nVerifique las fechas, los departamentos y los peligros.");
       return false;
     }
 
@@ -15218,6 +15251,7 @@ async function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO, peligrosS
     const aoa = [];
     aoa.push([{v:"COE MIDIS – Lista de Emergencias", t:"s", s:titleStyle}]);
     aoa.push([{v:`Rango (Fecha de elaboración): ${desde} a ${hasta}`, t:"s", s:subStyle}]);
+    aoa.push([{v:`Departamentos: ${etiquetaDepartamentos}`, t:"s", s:subStyle}]);
     aoa.push([{v:`Peligros: ${etiquetaPeligros}`, t:"s", s:subStyle}]);
     aoa.push([{v:`Total registros: ${items.length}`, t:"s", s:subStyle}]);
     aoa.push([]);
@@ -15234,7 +15268,8 @@ async function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO, peligrosS
       {s:{r:0,c:0}, e:{r:0,c:10}},
       {s:{r:1,c:0}, e:{r:1,c:10}},
       {s:{r:2,c:0}, e:{r:2,c:10}},
-      {s:{r:3,c:0}, e:{r:3,c:10}}
+      {s:{r:3,c:0}, e:{r:3,c:10}},
+      {s:{r:4,c:0}, e:{r:4,c:10}}
     ];
     ws["!cols"] = [
       {wch:16},{wch:18},{wch:14},{wch:18},{wch:18},{wch:18},{wch:70},{wch:55},{wch:70},{wch:70},{wch:70}
@@ -15267,6 +15302,7 @@ async function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO, peligrosS
     const dashRows = [
       ["COE MIDIS – Dashboard Ejecutivo"],
       [`Rango (Fecha de elaboración): ${desde} a ${hasta}`],
+      [`Departamentos: ${etiquetaDepartamentos}`],
       [`Peligros: ${etiquetaPeligros}`],
       [],
       ["Indicador","Valor"],
@@ -15282,9 +15318,9 @@ async function __exportExcelListaEmergenciasByElab(desdeISO, hastaISO, peligrosS
     ];
     topDeps.forEach(r=> dashRows.push([r.dep, r.emergencias]));
     const wsDash = XLSX.utils.aoa_to_sheet(dashRows);
-    __applyRowStyle(wsDash, 4, 2, hdrStyle);
-    __applyRowStyle(wsDash, 13, 2, hdrStyle);
-    wsDash["!merges"] = [{s:{r:0,c:0}, e:{r:0,c:1}}, {s:{r:1,c:0}, e:{r:1,c:1}}, {s:{r:2,c:0}, e:{r:2,c:1}}];
+    __applyRowStyle(wsDash, 5, 2, hdrStyle);
+    __applyRowStyle(wsDash, 14, 2, hdrStyle);
+    wsDash["!merges"] = [{s:{r:0,c:0}, e:{r:0,c:1}}, {s:{r:1,c:0}, e:{r:1,c:1}}, {s:{r:2,c:0}, e:{r:2,c:1}}, {s:{r:3,c:0}, e:{r:3,c:1}}];
     wsDash["!cols"] = [{wch:28},{wch:18}];
     XLSX.utils.book_append_sheet(wb, wsDash, "Dashboard");
 
@@ -15380,10 +15416,43 @@ try{
     const modalEl = document.getElementById("modalExportExcelLista");
     const iDesde = document.getElementById("excelDesdeElab");
     const iHasta = document.getElementById("excelHastaElab");
+    const chkTodosDepartamentos = document.getElementById("excelTodosDepartamentos");
+    const selDepartamentos = document.getElementById("excelDepartamentos");
     const chkTodosPeligros = document.getElementById("excelTodosPeligros");
     const selPeligros = document.getElementById("excelPeligros");
     const btnDo  = document.getElementById("btnDoExportExcelLista");
     let modal = null;
+
+    const populateExcelDepartamentos = ()=>{
+      if(!selDepartamentos) return;
+      const nombres = [
+        "Amazonas", "Áncash", "Apurímac", "Arequipa", "Ayacucho", "Cajamarca", "Callao", "Cusco",
+        "Huancavelica", "Huánuco", "Ica", "Junín", "La Libertad", "Lambayeque", "Lima", "Loreto",
+        "Madre de Dios", "Moquegua", "Pasco", "Piura", "Puno", "San Martín", "Tacna", "Tumbes", "Ucayali"
+      ];
+      try{
+        if(typeof ubigeoData !== "undefined" && Array.isArray(ubigeoData)){
+          ubigeoData.forEach(r=>{ if(r && r.departamento) nombres.push(String(r.departamento).trim()); });
+        }
+      }catch(_e){}
+      try{
+        (Array.isArray(emergencias) ? emergencias : []).forEach(em=>{
+          if(em && em.departamento) nombres.push(String(em.departamento).trim());
+        });
+      }catch(_e){}
+      const unicos = new Map();
+      nombres.filter(Boolean).forEach(nombre=>{
+        const key = __excelNormFilterValue(nombre);
+        if(key && !unicos.has(key)) unicos.set(key, nombre);
+      });
+      const ordenados = Array.from(unicos.values()).sort((a,b)=>String(a).localeCompare(String(b), "es", {sensitivity:"base"}));
+      selDepartamentos.innerHTML = ordenados.map(nombre=>{
+        const option = document.createElement("option");
+        option.value = nombre;
+        option.textContent = nombre;
+        return option.outerHTML;
+      }).join("");
+    };
 
     if(btnX && modalEl){
       modal = new bootstrap.Modal(modalEl);
@@ -15393,6 +15462,12 @@ try{
         const today = __excelLocalISODate(new Date());
         if(iDesde && !iDesde.value) iDesde.value = today;
         if(iHasta && !iHasta.value) iHasta.value = today;
+        populateExcelDepartamentos();
+        if(chkTodosDepartamentos) chkTodosDepartamentos.checked = true;
+        if(selDepartamentos){
+          selDepartamentos.disabled = true;
+          Array.from(selDepartamentos.options || []).forEach(o=>{ o.selected = false; });
+        }
         if(chkTodosPeligros) chkTodosPeligros.checked = true;
         if(selPeligros){
           selPeligros.disabled = true;
@@ -15400,6 +15475,15 @@ try{
         }
         modal.show();
       });
+
+      if(chkTodosDepartamentos && selDepartamentos){
+        chkTodosDepartamentos.addEventListener("change", ()=>{
+          selDepartamentos.disabled = !!chkTodosDepartamentos.checked;
+          if(chkTodosDepartamentos.checked){
+            Array.from(selDepartamentos.options || []).forEach(o=>{ o.selected = false; });
+          }
+        });
+      }
 
       if(chkTodosPeligros && selPeligros){
         chkTodosPeligros.addEventListener("change", ()=>{
@@ -15418,6 +15502,11 @@ try{
             alert("Seleccione la fecha inicial y la fecha final.");
             return;
           }
+          const departamentos = (chkTodosDepartamentos && chkTodosDepartamentos.checked) ? [] : Array.from((selDepartamentos && selDepartamentos.selectedOptions) ? selDepartamentos.selectedOptions : []).map(o=>String(o.value||"").trim()).filter(Boolean);
+          if(chkTodosDepartamentos && !chkTodosDepartamentos.checked && departamentos.length === 0){
+            alert("Seleccione al menos un departamento o marque Todos los departamentos.");
+            return;
+          }
           const peligros = (chkTodosPeligros && chkTodosPeligros.checked) ? [] : Array.from((selPeligros && selPeligros.selectedOptions) ? selPeligros.selectedOptions : []).map(o=>String(o.value||"").trim()).filter(Boolean);
           if(chkTodosPeligros && !chkTodosPeligros.checked && peligros.length === 0){
             alert("Seleccione al menos un peligro o marque Todos los peligros.");
@@ -15427,7 +15516,7 @@ try{
           try{
             btnDo.disabled = true;
             btnDo.textContent = "Exportando...";
-            const ok = await __exportExcelListaEmergenciasByElab(d, h, peligros);
+            const ok = await __exportExcelListaEmergenciasByElab(d, h, peligros, departamentos);
             if(ok) try{ modal.hide(); }catch(_e){}
           }catch(err){
             console.error(err);
